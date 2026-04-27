@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Edit2, Trash2, Shield, X } from "lucide-react";
+import { Plus, Edit2, Trash2, Shield, X, Mail, Calendar, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { Badge } from "@/components/ui/badge";
 import type { User } from "@/lib/types/db";
 import {
   createUserAction, updateUserAction, deleteUserAction,
@@ -75,29 +77,61 @@ function UserCard({
   }
 
   return (
-    <Card>
-      <CardContent className="p-3">
-        <div className="grid grid-cols-12 gap-3 items-center">
-          <div className="col-span-12 sm:col-span-3">
-            <div className="font-semibold text-slate-900 inline-flex items-center gap-1.5">
-              {u.role === "admin" ? "👑" : "👤"} {u.full_name}
-              {isMe && <span className="text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full">คุณ</span>}
+    <Card className="hover:shadow-md hover:border-primary/30 transition-all">
+      <CardContent className="p-4">
+        <div className="grid grid-cols-12 gap-4 items-center">
+          {/* Avatar + name */}
+          <div className="col-span-12 sm:col-span-4 flex items-center gap-3 min-w-0">
+            <UserAvatar
+              name={u.full_name}
+              seed={u.username}
+              role={u.role}
+              size="lg"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="font-semibold text-foreground truncate">
+                  {u.full_name}
+                </div>
+                {isMe && (
+                  <Badge variant="soft" className="text-[10px]">คุณ</Badge>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
+                @{u.username}
+              </div>
             </div>
-            <div className="text-xs text-slate-500 font-mono">@{u.username}</div>
           </div>
-          <div className="col-span-6 sm:col-span-3">
-            <div className="text-sm">
-              <Shield className="inline h-3.5 w-3.5 mr-1 text-slate-400" />
+
+          {/* Role + email */}
+          <div className="col-span-6 sm:col-span-3 min-w-0">
+            <div className="text-sm font-medium text-foreground inline-flex items-center gap-1.5">
+              <Shield className="size-3.5 text-muted-foreground" />
               {ROLE_LABEL[u.role]}
             </div>
-            {u.email && <div className="text-xs text-slate-500 truncate">✉️ {u.email}</div>}
-          </div>
-          <div className="col-span-6 sm:col-span-3 text-xs text-slate-500">
-            <div>📅 {fmtDate(u.created_at)}</div>
-            {u.must_change_password && (
-              <div className="text-amber-600">⚠️ ยังไม่เคยเปลี่ยนรหัสเอง</div>
+            {u.email && (
+              <div className="text-xs text-muted-foreground truncate inline-flex items-center gap-1 mt-1">
+                <Mail className="size-3 flex-shrink-0" />
+                <span className="truncate">{u.email}</span>
+              </div>
             )}
           </div>
+
+          {/* Date + warnings */}
+          <div className="col-span-6 sm:col-span-2 text-xs text-muted-foreground space-y-1">
+            <div className="inline-flex items-center gap-1">
+              <Calendar className="size-3" />
+              {fmtDate(u.created_at)}
+            </div>
+            {u.must_change_password && (
+              <div className="text-amber-600 inline-flex items-center gap-1">
+                <AlertTriangle className="size-3" />
+                ยังไม่เคยเปลี่ยนรหัส
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
           <div className="col-span-12 sm:col-span-3 flex justify-end gap-1.5">
             <Button size="sm" variant="secondary" onClick={onEdit}>
               <Edit2 className="h-3.5 w-3.5" /> แก้ไข
@@ -112,7 +146,7 @@ function UserCard({
                   </Button>
                   <button
                     type="button" onClick={onCancelDel}
-                    className="text-xs text-slate-500 underline">
+                    className="text-xs text-muted-foreground underline">
                     ยกเลิก
                   </button>
                 </>

@@ -3,7 +3,7 @@ import { LogOut, Bell, Package, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 import type { User } from "@/lib/types/db";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -18,7 +18,6 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export function AppHeader({ user }: { user: User }) {
-  const initial = (user.full_name || "U")[0].toUpperCase();
   const isAdmin = user.role === "admin";
 
   return (
@@ -65,10 +64,13 @@ export function AppHeader({ user }: { user: User }) {
             {/* User dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="ml-1 sm:ml-2 sm:pl-2 sm:border-l sm:border-border/40 flex items-center gap-2 group focus:outline-none rounded-lg transition-colors hover:bg-accent/50 px-2 py-1">
-                  <Avatar className="size-8">
-                    <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-                  </Avatar>
+                <button className="ml-1 sm:ml-2 sm:pl-2 sm:border-l sm:border-border/40 flex items-center gap-2.5 group focus:outline-none rounded-lg transition-colors hover:bg-accent/50 px-2 py-1">
+                  <UserAvatar
+                    name={user.full_name}
+                    seed={user.username}
+                    role={user.role}
+                    size="sm"
+                  />
                   <div className="leading-tight hidden lg:block text-left">
                     <div className="text-xs font-semibold text-foreground">
                       {user.full_name}
@@ -80,16 +82,24 @@ export function AppHeader({ user }: { user: User }) {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="font-bold text-sm text-foreground">
-                    {user.full_name}
+                <DropdownMenuLabel className="flex items-center gap-3 py-2.5">
+                  <UserAvatar
+                    name={user.full_name}
+                    seed={user.username}
+                    role={user.role}
+                    size="lg"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-sm text-foreground truncate">
+                      {user.full_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground font-normal mt-0.5 truncate">
+                      @{user.username}
+                    </div>
+                    <Badge variant="soft" className="mt-1.5 text-[10px]">
+                      {ROLE_LABEL[user.role] ?? user.role}
+                    </Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground font-normal mt-0.5">
-                    @{user.username}
-                  </div>
-                  <Badge variant="soft" className="mt-1.5 text-[10px]">
-                    {ROLE_LABEL[user.role] ?? user.role}
-                  </Badge>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {isAdmin && (
