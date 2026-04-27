@@ -10,10 +10,12 @@ import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { User } from "@/lib/types/db";
+import {
+  SESSION_COOKIE, SESSION_IDLE_MIN, SESSION_COOKIE_MAX_AGE_DAYS,
+} from "./constants";
 
-export const SESSION_COOKIE = "lp_session";
-export const SESSION_IDLE_MIN = 60;
-export const SESSION_COOKIE_MAX_AGE_DAYS = 7;
+// Re-export — เผื่อมี import เก่าจาก session.ts
+export { SESSION_COOKIE, SESSION_IDLE_MIN, SESSION_COOKIE_MAX_AGE_DAYS };
 
 /**
  * สร้าง session token ใหม่ + insert ใน DB

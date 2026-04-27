@@ -6,7 +6,7 @@
  * เพื่อหลีกเลี่ยง Edge runtime limitations
  */
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth/session";
+import { SESSION_COOKIE } from "@/lib/auth/constants";
 
 const PUBLIC_PATHS = new Set(["/login", "/api/health"]);
 

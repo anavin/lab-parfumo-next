@@ -5,7 +5,6 @@
  * ⚠️ ห้าม import ใน Client Component หรือส่งไปฝั่ง browser
  */
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/db";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -18,9 +17,12 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 /**
  * สร้าง client ใหม่ทุกครั้งที่เรียก — ป้องกัน state ปนกันข้าม request
+ *
+ * Untyped: เรา cast เป็น Application types (User, Equipment, etc.) ที่จุดใช้
+ * — ดูใน lib/types/db.ts สำหรับ shape
  */
 export function getSupabaseAdmin() {
-  return createClient<Database>(supabaseUrl, supabaseServiceKey, {
+  return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
