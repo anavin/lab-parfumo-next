@@ -4,6 +4,7 @@
  * ใช้ใน Server Components / Server Actions เท่านั้น
  * ห้าม import จาก client component
  */
+import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type {
   PurchaseOrder, PoStatus, Role, PoSortKey, SupplierEntry,
@@ -28,9 +29,12 @@ interface GetPosOpts {
   limit?: number;
 }
 
-export async function getPos({
+/**
+ * Cached ใน same request — layout + page เรียก getPos ก็ไป DB ครั้งเดียว
+ */
+export const getPos = cache(async ({
   userId, role = "requester", status, limit = 500,
-}: GetPosOpts = {}): Promise<PurchaseOrder[]> {
+}: GetPosOpts = {}): Promise<PurchaseOrder[]> => {
   const sb = getSupabaseAdmin();
   let q = sb.from("purchase_orders").select("*");
   if (role === "requester" && userId) {
@@ -43,7 +47,7 @@ export async function getPos({
     .order("created_at", { ascending: false })
     .limit(limit);
   return (data ?? []) as PurchaseOrder[];
-}
+});
 
 export interface DashboardStats {
   total: number;
@@ -236,15 +240,17 @@ export function topSuppliers(pos: PurchaseOrder[], n = 5): Array<{
 // ==================================================================
 // Single PO + related (activities, comments, deliveries)
 // ==================================================================
-export async function getPoById(id: string): Promise<PurchaseOrder | null> {
-  const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("purchase_orders")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  return (data as PurchaseOrder) ?? null;
-}
+export const getPoById = cache(
+  async (id: string): Promise<PurchaseOrder | null> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("purchase_orders")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    return (data as PurchaseOrder) ?? null;
+  },
+);
 
 export interface PoActivity {
   id: string;

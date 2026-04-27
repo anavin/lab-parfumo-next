@@ -6,6 +6,7 @@
  * - DB row ใน user_sessions (token, user_id, last_activity_at)
  * - Idle timeout: 60 นาที (เหมือนเดิม)
  */
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -35,6 +36,9 @@ export async function createSession(userId: string): Promise<string> {
 
 /**
  * ดึง user จาก token (ตรวจ idle + active)
+ *
+ * ⚡ JOIN session + users ใน 1 query (เร็วกว่า 2 queries แยกกัน)
+ *    + touch session แบบ fire-and-forget (ไม่ block response)
  */
 export async function getUserFromToken(
   token: string | undefined,
@@ -42,35 +46,33 @@ export async function getUserFromToken(
   if (!token) return null;
   const sb = getSupabaseAdmin();
 
-  const { data: sess } = await sb
+  // 1 query แทน 2 — JOIN session + user
+  const { data } = await sb
     .from("user_sessions")
-    .select("token, user_id, last_activity_at")
+    .select("token, user_id, last_activity_at, users!inner(*)")
     .eq("token", token)
+    .eq("users.is_active", true)
     .maybeSingle();
-  if (!sess) return null;
+
+  if (!data || !data.users) return null;
 
   // Idle timeout check
-  const last = sess.last_activity_at ? new Date(sess.last_activity_at).getTime() : 0;
+  const last = data.last_activity_at ? new Date(data.last_activity_at).getTime() : 0;
   const idleMin = (Date.now() - last) / 60_000;
   if (idleMin > SESSION_IDLE_MIN) {
-    await deleteSession(token);
+    // fire-and-forget delete (ไม่รอ)
+    sb.from("user_sessions").delete().eq("token", token).then(() => {}, () => {});
     return null;
   }
 
-  const { data: user } = await sb
-    .from("users")
-    .select("*")
-    .eq("id", sess.user_id)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (!user) return null;
-
-  // Touch session (fire-and-forget)
+  // Touch session (fire-and-forget — ไม่ block)
   sb.from("user_sessions")
     .update({ last_activity_at: new Date().toISOString() })
     .eq("token", token)
     .then(() => {}, () => {});
 
+  // Supabase nested return — users เป็น array หรือ object ขึ้นกับ relationship
+  const user = Array.isArray(data.users) ? data.users[0] : data.users;
   return user as User;
 }
 
@@ -84,12 +86,15 @@ export async function deleteSession(token: string): Promise<void> {
 
 /**
  * Helper ใน Server Components — ดึง user ปัจจุบัน
+ *
+ * ⚡ Wrapped ด้วย React.cache() — dedupe call ใน same request
+ *    layout + page เรียกพร้อมกันก็ไป DB แค่ครั้งเดียว
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   return getUserFromToken(token);
-}
+});
 
 export async function setSessionCookie(token: string): Promise<void> {
   const cookieStore = await cookies();

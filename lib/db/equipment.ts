@@ -1,13 +1,18 @@
 /**
  * Equipment + categories queries — server-side
+ *
+ * ⚡ ใช้ React.cache() เพื่อ dedupe ใน same request
+ *    + unstable_cache สำหรับ data ที่ไม่ค่อยเปลี่ยน (categories)
  */
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { Equipment } from "@/lib/types/db";
 
-export async function getEquipmentList(opts: {
+export const getEquipmentList = cache(async (opts: {
   activeOnly?: boolean;
   includePending?: boolean;
-} = {}): Promise<Equipment[]> {
+} = {}): Promise<Equipment[]> => {
   const sb = getSupabaseAdmin();
   let q = sb.from("equipment").select("*");
   if (opts.activeOnly !== false) {
@@ -23,47 +28,58 @@ export async function getEquipmentList(opts: {
   }
   const { data } = await q.order("created_at", { ascending: false });
   return (data ?? []) as Equipment[];
-}
+});
 
-export async function getEquipmentById(id: string): Promise<Equipment | null> {
-  const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("equipment")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-  return (data as Equipment) ?? null;
-}
+export const getEquipmentById = cache(
+  async (id: string): Promise<Equipment | null> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("equipment")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    return (data as Equipment) ?? null;
+  },
+);
 
-export async function getCategories(): Promise<string[]> {
-  const sb = getSupabaseAdmin();
-  // ลอง order ตาม display_order ก่อน — ถ้า column ไม่มีจะ fallback
-  try {
-    const { data, error } = await sb
+/**
+ * Categories — เปลี่ยนน้อยมาก → cache 5 นาทีบน server
+ * (revalidate ผ่าน revalidateTag ใน mutator)
+ */
+export const getCategories = unstable_cache(
+  async (): Promise<string[]> => {
+    const sb = getSupabaseAdmin();
+    try {
+      const { data, error } = await sb
+        .from("equipment_categories")
+        .select("name")
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (!error && data) return data.map((r: { name: string }) => r.name);
+    } catch {
+      // fallthrough
+    }
+    const { data } = await sb
       .from("equipment_categories")
       .select("name")
-      .order("display_order", { ascending: true })
       .order("created_at", { ascending: true });
-    if (!error && data) return data.map((r: { name: string }) => r.name);
-  } catch {
-    // fallthrough
-  }
-  const { data } = await sb
-    .from("equipment_categories")
-    .select("name")
-    .order("created_at", { ascending: true });
-  return (data ?? []).map((r: { name: string }) => r.name);
-}
+    return (data ?? []).map((r: { name: string }) => r.name);
+  },
+  ["categories-list"],
+  { revalidate: 300, tags: ["categories"] },
+);
 
-export async function getPendingEquipment(): Promise<Equipment[]> {
-  const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("equipment")
-    .select("*")
-    .eq("approval_status", "pending")
-    .order("suggested_at", { ascending: false });
-  return (data ?? []) as Equipment[];
-}
+export const getPendingEquipment = cache(
+  async (): Promise<Equipment[]> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("equipment")
+      .select("*")
+      .eq("approval_status", "pending")
+      .order("suggested_at", { ascending: false });
+    return (data ?? []) as Equipment[];
+  },
+);
 
 /** Suggest pending equipment from PO custom item (matches Streamlit behavior) */
 export async function suggestEquipmentFromPo(opts: {
