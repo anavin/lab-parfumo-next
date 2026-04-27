@@ -1,4 +1,16 @@
 node_modules
 .next
+
+# env files (local secrets) — block ทุก variant ยกเว้น .example
 .env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+!.env.local.example
+!.env.example
+
 .DS_Store
+
+# typescript build artifact
+next-env.d.ts

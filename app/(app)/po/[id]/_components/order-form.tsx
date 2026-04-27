@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { updateProcurementAction } from "@/lib/actions/po";
 import type { PoItem } from "@/lib/types/db";
-import type { SupplierEntry } from "@/lib/db/po";
+import type { SupplierEntry } from "@/lib/types/db";
 
 const NEW_SUPPLIER = "+ พิมพ์ supplier ใหม่";
 

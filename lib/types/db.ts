@@ -24,6 +24,32 @@ export const ROLES = ["admin", "requester"] as const;
 export type Role = (typeof ROLES)[number];
 
 // ==================================================================
+// Sort + filter constants (shared by client + server)
+// ==================================================================
+export type PoSortKey =
+  | "newest" | "oldest"
+  | "total_desc" | "total_asc"
+  | "supplier_asc" | "expected_asc";
+
+export const SORT_LABELS: Record<PoSortKey, string> = {
+  newest: "ใหม่สุด",
+  oldest: "เก่าสุด",
+  total_desc: "ยอดเงินสูง→ต่ำ",
+  total_asc: "ยอดเงินต่ำ→สูง",
+  supplier_asc: "Supplier A→Z",
+  expected_asc: "ใกล้ครบกำหนด",
+};
+
+/** Supplier ที่เคยใช้ — สำหรับ autocomplete ในฟอร์มจัดซื้อ */
+export interface SupplierEntry {
+  name: string;
+  lastContact: string;
+  lastUsed: string;     // ISO date
+  poCount: number;
+  lastPo: string;
+}
+
+// ==================================================================
 // Row types
 // ==================================================================
 export interface User {

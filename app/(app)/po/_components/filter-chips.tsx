@@ -2,16 +2,13 @@
 
 /**
  * Status filter chips — URL-driven (preserves other params)
+ *
+ * Note: buildChipOptions + type ChipOption ย้ายไป ./chip-options.ts
+ * เพื่อให้ server component import ได้โดยตรง (ไม่ผ่าน client boundary)
  */
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import { PO_STATUSES } from "@/lib/types/db";
-
-interface ChipOption {
-  value: string;       // status value or "ทั้งหมด"
-  label: string;
-  count: number;
-}
+import type { ChipOption } from "./chip-options";
 
 export function FilterChips({
   active, options,
@@ -64,13 +61,4 @@ export function FilterChips({
       })}
     </div>
   );
-}
-
-export function buildChipOptions(byStatus: Record<string, number>, total: number): ChipOption[] {
-  const opts: ChipOption[] = [{ value: "ทั้งหมด", label: "ทั้งหมด", count: total }];
-  for (const s of PO_STATUSES) {
-    const count = byStatus[s] ?? 0;
-    if (count > 0) opts.push({ value: s, label: s, count });
-  }
-  return opts;
 }

@@ -9,7 +9,8 @@ import {
   getPos, applyPoFilters, type PoFilters, type PoSortKey,
 } from "@/lib/db/po";
 import { PO_STATUSES, type PoStatus } from "@/lib/types/db";
-import { FilterChips, buildChipOptions } from "./_components/filter-chips";
+import { FilterChips } from "./_components/filter-chips";
+import { buildChipOptions } from "./_components/chip-options";
 import { ListControls } from "./_components/list-controls";
 import { Pagination } from "./_components/pagination";
 

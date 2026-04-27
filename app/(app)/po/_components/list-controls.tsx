@@ -8,7 +8,7 @@ import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { SORT_LABELS, type PoSortKey } from "@/lib/db/po";
+import { SORT_LABELS, type PoSortKey } from "@/lib/types/db";
 
 const SORT_OPTIONS: PoSortKey[] = [
   "newest", "oldest", "total_desc", "total_asc",

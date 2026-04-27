@@ -5,7 +5,13 @@
  * ห้าม import จาก client component
  */
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import type { PurchaseOrder, PoStatus, Role } from "@/lib/types/db";
+import type {
+  PurchaseOrder, PoStatus, Role, PoSortKey, SupplierEntry,
+} from "@/lib/types/db";
+
+// Re-export — เผื่อ server code ยัง import จาก lib/db/po
+export type { PoSortKey, SupplierEntry } from "@/lib/types/db";
+export { SORT_LABELS } from "@/lib/types/db";
 
 const ACTIVE_STATUSES: PoStatus[] = [
   "รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว", "กำลังขนส่ง",
@@ -311,21 +317,8 @@ export async function getPoDeliveries(poId: string): Promise<PoDelivery[]> {
 
 // ==================================================================
 // Filters / sorts สำหรับ PO list
+// (PoSortKey + SORT_LABELS ย้ายไป lib/types/db.ts — re-export ด้านบน)
 // ==================================================================
-export type PoSortKey =
-  | "newest" | "oldest"
-  | "total_desc" | "total_asc"
-  | "supplier_asc" | "expected_asc";
-
-export const SORT_LABELS: Record<PoSortKey, string> = {
-  newest: "ใหม่สุด",
-  oldest: "เก่าสุด",
-  total_desc: "ยอดเงินสูง→ต่ำ",
-  total_asc: "ยอดเงินต่ำ→สูง",
-  supplier_asc: "Supplier A→Z",
-  expected_asc: "ใกล้ครบกำหนด",
-};
-
 export interface PoFilters {
   status?: PoStatus | "ทั้งหมด";
   search?: string;
@@ -410,15 +403,7 @@ export async function getPosPendingReceipt(): Promise<PurchaseOrder[]> {
   return (data ?? []) as PurchaseOrder[];
 }
 
-/** Supplier ที่เคยใช้ — สำหรับ autocomplete ในฟอร์มจัดซื้อ */
-export interface SupplierEntry {
-  name: string;
-  lastContact: string;
-  lastUsed: string;     // ISO date
-  poCount: number;
-  lastPo: string;
-}
-
+/** Supplier ที่เคยใช้ — interface ย้ายไป lib/types/db.ts */
 export async function getSupplierHistory(): Promise<SupplierEntry[]> {
   const sb = getSupabaseAdmin();
   const { data } = await sb

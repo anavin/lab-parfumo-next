@@ -15,7 +15,7 @@ import {
   closePoAction, cancelPoAction, clonePoAction,
 } from "@/lib/actions/po";
 import type { PoStatus, PoItem } from "@/lib/types/db";
-import type { SupplierEntry } from "@/lib/db/po";
+import type { SupplierEntry } from "@/lib/types/db";
 import { OrderForm } from "./order-form";
 import { ShipForm } from "./ship-form";
 import { ReceiveForm } from "./receive-form";
