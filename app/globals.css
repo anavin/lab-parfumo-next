@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-800;
+  }
+
+  /* number input — ลด appearance ให้เป็น minimal */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  /* Status pill — match Streamlit เดิม */
+  .lp-pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border;
+  }
+  .lp-pill::before {
+    content: "";
+    @apply w-1.5 h-1.5 rounded-full flex-shrink-0;
+  }
+
+  .lp-pill-pending  { @apply bg-amber-50    text-amber-700    border-amber-200; }
+  .lp-pill-pending::before  { @apply bg-amber-600; }
+
+  .lp-pill-ordered  { @apply bg-blue-50     text-blue-700     border-blue-200; }
+  .lp-pill-ordered::before  { @apply bg-blue-600; }
+
+  .lp-pill-shipping { @apply bg-brand-100   text-brand-700    border-brand-300; }
+  .lp-pill-shipping::before { @apply bg-brand-700; }
+
+  .lp-pill-received { @apply bg-emerald-50  text-emerald-700  border-emerald-200; }
+  .lp-pill-received::before { @apply bg-emerald-600; }
+
+  .lp-pill-done     { @apply bg-emerald-50  text-emerald-700  border-emerald-200; }
+  .lp-pill-done::before     { @apply bg-emerald-600; }
+
+  .lp-pill-problem  { @apply bg-red-50      text-red-700      border-red-200; }
+  .lp-pill-problem::before  { @apply bg-red-600; }
+
+  .lp-pill-cancel   { @apply bg-slate-100   text-slate-500    border-slate-200; }
+  .lp-pill-cancel::before   { @apply bg-slate-400; }
+}
+
+@layer utilities {
+  /* Hide scrollbar utility สำหรับ mobile nav */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
