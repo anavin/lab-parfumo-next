@@ -1,0 +1,158 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Bell, Plus, Search } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import type { Equipment } from "@/lib/types/db";
+import { PendingApproval } from "./pending-approval";
+import { EquipmentGrid } from "./equipment-grid";
+import { AddEquipmentDialog } from "./add-equipment-dialog";
+import { CategoryManager } from "./category-manager";
+
+export function EquipmentClient({
+  equipment, categories, pending,
+}: {
+  equipment: Equipment[];
+  categories: string[];
+  pending: Equipment[];
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<string>("ทั้งหมด");
+  const [sortBy, setSortBy] = useState<"name" | "stock_low" | "reorder">("name");
+  const [showLowOnly, setShowLowOnly] = useState(false);
+
+  const filtered = useMemo(() => {
+    let out = equipment;
+    if (category !== "ทั้งหมด") out = out.filter((e) => e.category === category);
+    if (search) {
+      const s = search.toLowerCase();
+      out = out.filter((e) =>
+        (e.name ?? "").toLowerCase().includes(s) ||
+        (e.sku ?? "").toLowerCase().includes(s),
+      );
+    }
+    if (showLowOnly) {
+      out = out.filter((e) =>
+        (e.reorder_level ?? 0) > 0 && (e.stock ?? 0) <= (e.reorder_level ?? 0),
+      );
+    }
+    if (sortBy === "name") out = [...out].sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortBy === "stock_low") out = [...out].sort((a, b) => (a.stock ?? 0) - (b.stock ?? 0));
+    else if (sortBy === "reorder") {
+      out = [...out].sort((a, b) => {
+        const aRl = a.reorder_level ?? 0;
+        const bRl = b.reorder_level ?? 0;
+        // มี reorder + ใกล้/เลย ขึ้นก่อน
+        if (aRl > 0 && bRl > 0) return ((a.stock ?? 0) - aRl) - ((b.stock ?? 0) - bRl);
+        if (aRl > 0) return -1;
+        if (bRl > 0) return 1;
+        return (a.stock ?? 0) - (b.stock ?? 0);
+      });
+    }
+    return out;
+  }, [equipment, category, search, sortBy, showLowOnly]);
+
+  // Count equipment per category
+  const equipmentByCategory = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const e of equipment) {
+      if (e.category) m[e.category] = (m[e.category] ?? 0) + 1;
+    }
+    return m;
+  }, [equipment]);
+
+  return (
+    <div className="space-y-5">
+      {/* Pending approval */}
+      {pending.length > 0 && (
+        <PendingApproval pending={pending} categories={categories} />
+      )}
+
+      {/* Category manager (collapsible) */}
+      <CategoryManager
+        categories={categories}
+        equipmentByCategory={equipmentByCategory}
+      />
+
+      {/* Filter row */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+            <select
+              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option>ทั้งหมด</option>
+              {categories.map((c) => <option key={c}>{c}</option>)}
+            </select>
+            <div className="relative md:col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                type="search"
+                placeholder="ชื่อ / SKU"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <select
+              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            >
+              <option value="name">🔃 ชื่อ A→Z</option>
+              <option value="stock_low">🔃 สต็อกน้อย→มาก</option>
+              <option value="reorder">🔃 ใกล้ต้องสั่ง 🔴</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <label className="inline-flex items-center gap-1.5 text-slate-700">
+              <input
+                type="checkbox"
+                checked={showLowOnly}
+                onChange={(e) => setShowLowOnly(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600"
+              />
+              🔴 แสดงเฉพาะที่ stock ≤ reorder level
+            </label>
+            <span className="ml-auto text-slate-600">
+              พบ <strong>{filtered.length}</strong> รายการ
+            </span>
+            <Button size="sm" onClick={() => setShowAdd(true)}>
+              <Plus className="h-3.5 w-3.5" /> เพิ่มสินค้าใหม่
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Equipment list */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon="🧴"
+          title="ไม่พบสินค้า"
+          text="ลองเปลี่ยนคำค้นหา หรือเพิ่มสินค้าใหม่"
+          action={
+            <Button onClick={() => setShowAdd(true)}>
+              <Plus className="h-4 w-4" /> เพิ่มสินค้าใหม่
+            </Button>
+          }
+        />
+      ) : (
+        <EquipmentGrid items={filtered} categories={categories} />
+      )}
+
+      {/* Add dialog */}
+      {showAdd && (
+        <AddEquipmentDialog
+          categories={categories}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+    </div>
+  );
+}
