@@ -15,7 +15,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { suggestEquipmentFromPo } from "@/lib/db/equipment";
-import type { PoStatus, PoItem, PurchaseOrder } from "@/lib/types/db";
+import type {
+  PoStatus, PoItem, PurchaseOrder, PoAttachment,
+} from "@/lib/types/db";
 
 interface ActionResult {
   ok: boolean;
@@ -271,7 +273,6 @@ export async function addCommentAction(
 // ==================================================================
 // PO Attachments — add / remove
 // ==================================================================
-import type { PoAttachment } from "@/lib/types/db";
 
 export async function addPoAttachmentsAction(
   poId: string,
