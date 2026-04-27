@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, Bell, Package, Settings } from "lucide-react";
+import { LogOut, Bell, FlaskConical, Sparkles, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 import type { User } from "@/lib/types/db";
 import { Button } from "@/components/ui/button";
@@ -23,24 +23,67 @@ export function AppHeader({ user }: { user: User }) {
   return (
     <header className="sticky top-0 z-30 w-full bg-background/80 backdrop-blur-md border-b border-border/60 supports-[backdrop-filter]:bg-background/70">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 gap-3">
+        <div className="flex items-center justify-between h-16 gap-3">
           {/* Brand */}
           <Link
             href="/dashboard"
-            className="flex items-center gap-2.5 flex-shrink-0 group"
+            className="flex items-center gap-3 flex-shrink-0 group"
           >
+            {/* Logo mark — multi-layer with effects */}
             <div className="relative">
-              <div className="absolute inset-0 bg-primary/20 rounded-lg blur-sm group-hover:blur-md transition-all" />
-              <div className="relative size-9 rounded-lg bg-gradient-to-br from-primary to-brand-900 flex items-center justify-center text-white shadow-brand">
-                <Package className="size-4.5" strokeWidth={2.5} />
+              {/* Outer glow halo (intensifies on hover) */}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary via-brand-700 to-brand-900 rounded-2xl blur-md opacity-50 group-hover:opacity-90 group-hover:blur-lg transition-all duration-500" />
+
+              {/* Logo box with overflow-hidden for shimmer */}
+              <div className="relative size-11 rounded-2xl bg-gradient-to-br from-brand-900 via-primary to-brand-700 shadow-lg ring-1 ring-white/15 overflow-hidden group-hover:scale-105 group-hover:rotate-3 transition-all duration-300">
+                {/* Top-left highlight */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/30 via-white/5 to-transparent" />
+
+                {/* Radial spotlight */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_15%,rgba(255,255,255,0.25),transparent_55%)]" />
+
+                {/* Subtle grid texture */}
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:8px_8px] opacity-60" />
+
+                {/* Main icon — flask (lab) */}
+                <div className="relative h-full w-full flex items-center justify-center">
+                  <FlaskConical
+                    className="size-5 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]"
+                    strokeWidth={2.5}
+                  />
+                </div>
+
+                {/* Animated shimmer sweep on hover */}
+                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-12" />
               </div>
+
+              {/* Sparkle accent (top-right) — twinkles */}
+              <Sparkles
+                className="absolute -top-1 -right-1 size-3.5 text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)] animate-pulse"
+                fill="currentColor"
+                strokeWidth={1}
+              />
+
+              {/* Live status dot (bottom-right) */}
+              <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-background shadow-sm">
+                <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+              </span>
             </div>
+
+            {/* Wordmark */}
             <div className="hidden sm:block leading-tight">
-              <div className="text-sm font-bold text-foreground tracking-tight">
-                Lab Parfumo
+              <div className="text-base font-bold tracking-tight">
+                <span className="text-foreground">Lab</span>{" "}
+                <span className="bg-gradient-to-r from-primary via-brand-700 to-brand-900 bg-clip-text text-transparent">
+                  Parfumo
+                </span>
               </div>
-              <div className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground">
-                PO PRO
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="h-px w-3 bg-gradient-to-r from-primary to-transparent" />
+                <span className="text-[9px] font-black tracking-[0.25em] text-primary">
+                  PO·PRO
+                </span>
+                <span className="h-px flex-1 max-w-[12px] bg-gradient-to-l from-primary/40 to-transparent" />
               </div>
             </div>
           </Link>
