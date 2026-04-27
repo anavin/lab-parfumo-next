@@ -35,13 +35,22 @@ export function NavLinks({
   const pathname = usePathname();
   const items = ITEMS.filter((it) => isAdmin || !it.adminOnly);
 
+  // ⚡ Longest-match wins — ป้องกัน /po และ /po/pending-receipt มาร์ค active พร้อมกัน
+  // 1) เก็บ href ที่ match แล้ว sort หา href ที่ยาวที่สุด
+  const matched = items
+    .filter((it) =>
+      pathname === it.href ||
+      (it.href !== "/dashboard" &&
+        (pathname === it.href || pathname.startsWith(it.href + "/"))),
+    )
+    .sort((a, b) => b.href.length - a.href.length);
+  const activeHref = matched[0]?.href;
+
   return (
     <>
       {items.map((item) => {
         const Icon = item.icon;
-        const active =
-          pathname === item.href ||
-          (item.href !== "/dashboard" && pathname.startsWith(item.href));
+        const active = item.href === activeHref;
         return (
           <Link
             key={item.href}
