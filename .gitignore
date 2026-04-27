@@ -14,3 +14,4 @@ node_modules
 
 # typescript build artifact
 next-env.d.ts
+.vercel

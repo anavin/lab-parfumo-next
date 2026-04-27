@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, PackageOpen, Send, Box,
   Wallet, BarChart3, Users, Settings,
 } from "lucide-react";
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 
 interface NavItem {
   href: string;
@@ -24,10 +24,14 @@ const ITEMS: NavItem[] = [
   { href: "/budget", label: "งบ", icon: Wallet, adminOnly: true },
   { href: "/reports", label: "รายงาน", icon: BarChart3, adminOnly: true },
   { href: "/users", label: "ผู้ใช้", icon: Users, adminOnly: true },
-  { href: "/settings", label: "ตั้งค่า", icon: Settings, adminOnly: true },
 ];
 
-export function NavLinks({ isAdmin, mobile }: { isAdmin: boolean; mobile?: boolean }) {
+export function NavLinks({
+  isAdmin, mobile,
+}: {
+  isAdmin: boolean;
+  mobile?: boolean;
+}) {
   const pathname = usePathname();
   const items = ITEMS.filter((it) => isAdmin || !it.adminOnly);
 
@@ -43,15 +47,18 @@ export function NavLinks({ isAdmin, mobile }: { isAdmin: boolean; mobile?: boole
             key={item.href}
             href={item.href}
             className={cn(
-              "inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-semibold transition-colors",
+              "relative inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-semibold transition-all",
               active
-                ? "bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-              mobile && "h-10 px-3.5",
+                ? "text-primary bg-primary/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+              mobile && "h-10 px-3.5 text-[13px]",
             )}
           >
-            <Icon className="h-4 w-4 flex-shrink-0" />
+            <Icon className="size-4 flex-shrink-0" />
             <span>{item.label}</span>
+            {active && (
+              <span className="absolute -bottom-0.5 left-3 right-3 h-0.5 bg-primary rounded-full" />
+            )}
           </Link>
         );
       })}

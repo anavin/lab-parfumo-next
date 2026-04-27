@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
+import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "./_components/header";
 
 export default async function AppLayout({
@@ -16,11 +17,12 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-b from-muted/40 to-background">
       <AppHeader user={user} />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 animate-fade-in">
         {children}
       </main>
+      <Toaster />
     </div>
   );
 }

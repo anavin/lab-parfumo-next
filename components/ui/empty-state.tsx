@@ -1,7 +1,7 @@
 import { Card, CardContent } from "./card";
 
 interface EmptyStateProps {
-  icon: string;
+  icon: string | React.ReactNode;
   title: string;
   text?: string;
   action?: React.ReactNode;
@@ -9,12 +9,20 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, title, text, action }: EmptyStateProps) {
   return (
-    <Card>
-      <CardContent className="py-12 text-center">
-        <div className="text-5xl mb-3">{icon}</div>
-        <h2 className="text-lg font-semibold text-slate-900 mb-1">{title}</h2>
+    <Card className="border-dashed">
+      <CardContent className="py-16 text-center animate-fade-in-up">
+        <div className="mb-4 flex justify-center">
+          {typeof icon === "string" ? (
+            <div className="text-5xl">{icon}</div>
+          ) : (
+            <div className="size-14 rounded-2xl bg-muted/50 flex items-center justify-center text-muted-foreground">
+              {icon}
+            </div>
+          )}
+        </div>
+        <h2 className="text-lg font-bold text-foreground mb-1">{title}</h2>
         {text && (
-          <p className="text-sm text-slate-500 mb-6 max-w-md mx-auto whitespace-pre-line">
+          <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto whitespace-pre-line">
             {text}
           </p>
         )}

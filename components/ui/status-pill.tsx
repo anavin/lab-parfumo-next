@@ -1,8 +1,8 @@
 /**
- * Status pill — render status ของ PO เป็น chip สีตามสถานะ
+ * Status pill — render PO status เป็น chip สีตามสถานะ
  * (ใช้ class จาก app/globals.css → .lp-pill-*)
  */
-import { cn } from "@/lib/cn";
+import { cn } from "@/lib/utils";
 import type { PoStatus } from "@/lib/types/db";
 
 const PILL_CLASS: Record<PoStatus, string> = {

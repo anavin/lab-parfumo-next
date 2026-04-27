@@ -1,68 +1,89 @@
 /**
- * Button primitive — สไตล์ Lab Parfumo B2B
+ * Button — shadcn/ui style with class-variance-authority
+ * Premium B2B feel — gradient primary, smooth transitions
  */
-import { forwardRef, type ButtonHTMLAttributes } from "react";
-import { cn } from "@/lib/cn";
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md" | "lg";
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 active:scale-[0.98]",
+  {
+    variants: {
+      variant: {
+        default:
+          "bg-gradient-to-br from-primary to-brand-900 text-primary-foreground shadow-sm hover:shadow-brand hover:from-brand-800 hover:to-brand-950 hover:-translate-y-0.5",
+        primary:
+          "bg-gradient-to-br from-primary to-brand-900 text-primary-foreground shadow-sm hover:shadow-brand hover:from-brand-800 hover:to-brand-950 hover:-translate-y-0.5",
+        destructive:
+          "bg-gradient-to-br from-red-600 to-red-700 text-white shadow-sm hover:shadow-md hover:from-red-700 hover:to-red-800 hover:-translate-y-0.5",
+        outline:
+          "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground hover:border-primary/40",
+        secondary:
+          "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 border border-border/60",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground",
+        link:
+          "text-primary underline-offset-4 hover:underline",
+        success:
+          "bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-sm hover:from-emerald-700 hover:to-emerald-800 hover:-translate-y-0.5",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        xs: "h-7 rounded-md px-2 text-xs",
+        sm: "h-9 rounded-md px-3 text-xs",
+        md: "h-10 px-4",
+        lg: "h-11 rounded-md px-6 text-base",
+        xl: "h-12 rounded-lg px-8 text-base",
+        icon: "size-10",
+        "icon-sm": "size-9",
+        "icon-xs": "size-7",
+      },
+      fullWidth: {
+        true: "w-full",
+        false: "",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+      fullWidth: false,
+    },
+  },
+);
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: Size;
-  fullWidth?: boolean;
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
   loading?: boolean;
 }
 
-const VARIANT_CLS: Record<Variant, string> = {
-  primary:
-    "bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm " +
-    "hover:from-brand-700 hover:to-brand-900 hover:shadow-brand hover:-translate-y-px",
-  secondary:
-    "bg-white text-slate-700 border border-slate-300 " +
-    "hover:bg-brand-50 hover:border-brand-600 hover:text-brand-700",
-  ghost:
-    "bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-  danger:
-    "bg-red-600 text-white hover:bg-red-700",
-};
-
-const SIZE_CLS: Record<Size, string> = {
-  sm: "h-9 px-3 text-xs",
-  md: "h-11 px-4 text-sm",
-  lg: "h-12 px-6 text-base",
-};
-
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { className, variant = "primary", size = "md", fullWidth, loading,
-      disabled, children, ...rest },
+    { className, variant, size, fullWidth, asChild = false, loading, children, disabled, ...props },
     ref,
   ) => {
+    const Comp = asChild ? Slot : "button";
     return (
-      <button
+      <Comp
+        className={cn(buttonVariants({ variant, size, fullWidth, className }))}
         ref={ref}
         disabled={disabled || loading}
-        className={cn(
-          "inline-flex items-center justify-center gap-2 rounded-lg font-semibold",
-          "transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed",
-          "focus:outline-none focus:ring-2 focus:ring-brand-300 focus:ring-offset-2",
-          VARIANT_CLS[variant],
-          SIZE_CLS[size],
-          fullWidth && "w-full",
-          className,
-        )}
-        {...rest}
+        {...props}
       >
         {loading && (
-          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+          <svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
         )}
         {children}
-      </button>
+      </Comp>
     );
   },
 );
 Button.displayName = "Button";
+
+export { Button, buttonVariants };

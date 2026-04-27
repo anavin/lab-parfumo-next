@@ -3,31 +3,120 @@
 @tailwind utilities;
 
 @layer base {
+  /* ========================================================
+     Lab Parfumo PO Pro — Theme (shadcn/ui compatible)
+     B2B premium feel — brand navy/blue + neutral grays
+     ======================================================== */
   :root {
-    color-scheme: light;
+    --background: 0 0% 100%;            /* white */
+    --foreground: 222.2 47.4% 11.2%;    /* slate-900 */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+
+    /* Brand: deep navy → premium B2B feel */
+    --primary: 215 39% 35%;             /* brand-700 #3A5A8C */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;         /* slate-100 */
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* slate-500 */
+
+    --accent: 215 56% 95%;              /* brand-100 light */
+    --accent-foreground: 215 39% 35%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 158 64% 38%;             /* emerald */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;              /* amber */
+    --warning-foreground: 0 0% 100%;
+
+    --info: 217 91% 60%;                /* blue */
+    --info-foreground: 0 0% 100%;
+
+    --border: 214.3 31.8% 91.4%;        /* slate-200 */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 215 39% 35%;                /* brand-700 */
+
+    --radius: 0.625rem;                  /* 10px — slightly more rounded for friendly feel */
+  }
+
+  .dark {
+    --background: 222.2 47.4% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 47.4% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47.4% 8%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 215 60% 65%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 158 64% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 65%;
+    --info-foreground: 0 0% 100%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 215 60% 65%;
+  }
+
+  * {
+    @apply border-border;
   }
 
   html {
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-slate-50 text-slate-800;
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* number input — ลด appearance ให้เป็น minimal */
+  /* Number input — minimal */
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
   }
+
+  /* Smoother scrollbar (WebKit) */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: hsl(var(--muted) / 0.4); }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+  /* Selection color */
+  ::selection { background: hsl(var(--primary) / 0.2); }
 }
 
 @layer components {
-  /* Status pill — match Streamlit เดิม */
+  /* ===== Status pills — match Streamlit behavior ===== */
   .lp-pill {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border tracking-wide;
   }
   .lp-pill::before {
     content: "";
@@ -54,10 +143,68 @@
 
   .lp-pill-cancel   { @apply bg-slate-100   text-slate-500    border-slate-200; }
   .lp-pill-cancel::before   { @apply bg-slate-400; }
+
+  /* ===== Premium gradient backgrounds ===== */
+  .gradient-brand {
+    background: linear-gradient(135deg, hsl(215 39% 35%) 0%, hsl(215 56% 25%) 100%);
+  }
+  .gradient-brand-soft {
+    background: linear-gradient(135deg, hsl(215 56% 95%) 0%, hsl(215 56% 92%) 100%);
+  }
+  .gradient-mesh {
+    background:
+      radial-gradient(at 0% 0%, hsl(215 56% 95%) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(217 91% 95%) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, hsl(158 64% 95%) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, hsl(215 56% 95%) 0px, transparent 50%);
+  }
+
+  /* ===== Glass morphism ===== */
+  .glass {
+    background: hsl(var(--background) / 0.6);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* ===== Focus ring (consistent across system) ===== */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* ===== Loading shimmer ===== */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--muted-foreground) / 0.08),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
 }
 
 @layer utilities {
-  /* Hide scrollbar utility สำหรับ mobile nav */
+  /* Hide scrollbar */
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Tabular numbers */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* Number font feature */
+  .nums { font-feature-settings: "tnum"; }
+
+  /* Backdrop animation */
+  .animate-backdrop {
+    animation: fade-in 0.15s ease-out;
+  }
 }
