@@ -59,11 +59,15 @@ export async function GET(
       <PoDocument po={po} company={company} showPrices={showPrices} />,
     );
 
-    return new NextResponse(buffer, {
+    // แปลง Node Buffer → Uint8Array (BodyInit-compatible) ก่อนส่ง
+    const body = new Uint8Array(buffer);
+
+    return new NextResponse(body, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${po.po_number}.pdf"`,
+        "Content-Length": String(body.byteLength),
         "Cache-Control": "no-store",
       },
     });
