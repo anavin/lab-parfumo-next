@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, Bell, FlaskConical, Sparkles, Settings } from "lucide-react";
+import { LogOut, Bell, Package, Sparkles, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 import type { User } from "@/lib/types/db";
 import { Button } from "@/components/ui/button";
@@ -45,10 +45,10 @@ export function AppHeader({ user }: { user: User }) {
                 {/* Subtle grid texture */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:8px_8px] opacity-60" />
 
-                {/* Main icon — flask (lab) */}
+                {/* Main icon — package (กล่อง) */}
                 <div className="relative h-full w-full flex items-center justify-center">
-                  <FlaskConical
-                    className="size-5 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]"
+                  <Package
+                    className="size-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]"
                     strokeWidth={2.5}
                   />
                 </div>
@@ -63,11 +63,6 @@ export function AppHeader({ user }: { user: User }) {
                 fill="currentColor"
                 strokeWidth={1}
               />
-
-              {/* Live status dot (bottom-right) */}
-              <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-background shadow-sm">
-                <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
-              </span>
             </div>
 
             {/* Wordmark */}
