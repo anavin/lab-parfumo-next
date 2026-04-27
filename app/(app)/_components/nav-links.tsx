@@ -46,6 +46,7 @@ export function NavLinks({
           <Link
             key={item.href}
             href={item.href}
+            prefetch
             className={cn(
               "relative inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-semibold transition-all",
               active

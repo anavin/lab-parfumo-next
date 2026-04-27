@@ -3,8 +3,7 @@ import { Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
-import type { Notification } from "@/lib/types/db";
+import { getNotificationsForUser } from "@/lib/db/users";
 import { NotificationsList } from "./_components/notifications-list";
 
 export const metadata: Metadata = {
@@ -13,20 +12,9 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-async function getNotifications(userId: string): Promise<Notification[]> {
-  const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("notifications")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(100);
-  return (data ?? []) as Notification[];
-}
-
 export default async function NotificationsPage() {
   const user = (await getCurrentUser())!;
-  const notifs = await getNotifications(user.id);
+  const notifs = await getNotificationsForUser(user.id);
 
   const unread = notifs.filter((n) => !n.is_read);
   const read = notifs.filter((n) => n.is_read);

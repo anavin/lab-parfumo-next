@@ -1,6 +1,9 @@
 /**
  * Budget queries — งบประมาณรายเดือน/ไตรมาส/ปี
+ *
+ * ⚡ React.cache() — dedupe ใน same request
  */
+import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 export interface Budget {
@@ -15,7 +18,7 @@ export interface Budget {
   created_at: string;
 }
 
-export async function listBudgets(year?: number): Promise<Budget[]> {
+export const listBudgets = cache(async (year?: number): Promise<Budget[]> => {
   const sb = getSupabaseAdmin();
   let q = sb.from("budget_periods" as never).select("*");
   if (year) q = q.eq("period_year", year);
@@ -23,14 +26,14 @@ export async function listBudgets(year?: number): Promise<Budget[]> {
     .order("period_year", { ascending: false })
     .order("period_month", { ascending: true });
   return (data ?? []) as unknown as Budget[];
-}
+});
 
 /** คำนวณยอดใช้จริงในช่วงเวลา */
-export async function calculateActualSpending(
+export const calculateActualSpending = cache(async (
   year: number,
   month: number | null = null,
   category: string | null = null,
-): Promise<number> {
+): Promise<number> => {
   const sb = getSupabaseAdmin();
   const start = month != null
     ? new Date(year, month - 1, 1).toISOString().slice(0, 10)
@@ -82,7 +85,7 @@ export async function calculateActualSpending(
     }
   }
   return total;
-}
+});
 
 export interface BudgetStatus extends Budget {
   actual: number;
@@ -91,9 +94,9 @@ export interface BudgetStatus extends Budget {
   status: "ok" | "warning" | "critical" | "over";
 }
 
-export async function getBudgetStatusForMonth(
+export const getBudgetStatusForMonth = cache(async (
   year: number, month: number,
-): Promise<BudgetStatus[]> {
+): Promise<BudgetStatus[]> => {
   const budgets = (await listBudgets(year)).filter((b) => {
     if (b.period_type === "monthly" && b.period_month === month) return true;
     if (b.period_type === "yearly") return true;
@@ -103,33 +106,35 @@ export async function getBudgetStatusForMonth(
     return false;
   });
 
-  const results: BudgetStatus[] = [];
-  for (const b of budgets) {
+  // ⚡ Parallelize all budget calculations (เดิม run แบบ sequential)
+  const results = await Promise.all(budgets.map(async (b) => {
     let actual: number;
     if (b.period_type === "monthly") {
       actual = await calculateActualSpending(year, b.period_month, b.category);
     } else if (b.period_type === "yearly") {
       actual = await calculateActualSpending(year, null, b.category);
     } else {
-      // quarterly — รวม 3 เดือน
+      // quarterly — รวม 3 เดือน (parallel)
       actual = 0;
       if (b.period_month) {
         const qStart = Math.floor((b.period_month - 1) / 3) * 3 + 1;
-        for (let m = qStart; m < qStart + 3; m++) {
-          actual += await calculateActualSpending(year, m, b.category);
-        }
+        const months = [qStart, qStart + 1, qStart + 2];
+        const sums = await Promise.all(
+          months.map((m) => calculateActualSpending(year, m, b.category)),
+        );
+        actual = sums.reduce((a, b) => a + b, 0);
       }
     }
     const pct = b.amount > 0 ? (actual / b.amount) * 100 : 0;
     const status: BudgetStatus["status"] =
       pct >= 100 ? "over" : pct >= 95 ? "critical" : pct >= 80 ? "warning" : "ok";
-    results.push({
+    return {
       ...b,
       actual,
       remaining: b.amount - actual,
       percent: pct,
       status,
-    });
-  }
+    } as BudgetStatus;
+  }));
   return results;
-}
+});

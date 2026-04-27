@@ -1,6 +1,9 @@
 /**
  * Withdrawal queries — server-side
+ *
+ * ⚡ React.cache() — dedupe ใน same request
  */
+import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { Withdrawal } from "@/lib/types/db";
 
@@ -11,9 +14,9 @@ export interface WithdrawalListOpts {
   limit?: number;
 }
 
-export async function getWithdrawals(
+export const getWithdrawals = cache(async (
   opts: WithdrawalListOpts = {},
-): Promise<Withdrawal[]> {
+): Promise<Withdrawal[]> => {
   const sb = getSupabaseAdmin();
   let q = sb.from("withdrawals").select("*")
     .order("withdrawn_at", { ascending: false })
@@ -23,4 +26,4 @@ export async function getWithdrawals(
   if (opts.startDate) q = q.gte("withdrawn_at", opts.startDate);
   const { data } = await q;
   return (data ?? []) as Withdrawal[];
-}
+});
