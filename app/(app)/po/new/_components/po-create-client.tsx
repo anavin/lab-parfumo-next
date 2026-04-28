@@ -18,14 +18,17 @@ import { CartItems } from "./cart-items";
 
 export function PoCreateClient({
   equipment, categories,
+  initialItems, initialNotes,
 }: {
   equipment: Equipment[];
   categories: string[];
+  initialItems?: PoItem[];
+  initialNotes?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [items, setItems] = useState<PoItem[]>([]);
-  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<PoItem[]>(initialItems ?? []);
+  const [notes, setNotes] = useState(initialNotes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("ทั้งหมด");

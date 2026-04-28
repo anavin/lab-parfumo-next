@@ -5,6 +5,7 @@
  * รองรับ: ดาวน์โหลด PDF, สั่งซื้อ, อัปเดตขนส่ง, รับของ, ปิดงาน, คัดลอก, ยกเลิก
  */
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Copy, X, CheckCircle2,
   ShoppingCart, Truck, PackageOpen, Download,
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
 import {
-  closePoAction, cancelPoAction, clonePoAction,
+  closePoAction, cancelPoAction,
 } from "@/lib/actions/po";
 import type { PoStatus, PoItem } from "@/lib/types/db";
 import type { SupplierEntry } from "@/lib/types/db";
@@ -42,6 +43,7 @@ export function ActionButtons({
   canCancel: boolean;
   suppliers: SupplierEntry[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
@@ -84,15 +86,8 @@ export function ActionButtons({
   }
 
   function handleClone() {
-    startTransition(async () => {
-      try {
-        await clonePoAction(po.id);
-        // success → server redirects to new PO
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (!msg.includes("NEXT_REDIRECT")) toast.error("คัดลอกไม่สำเร็จ");
-      }
-    });
+    // Navigate to /po/new with clone source — user can edit items before submit
+    router.push(`/po/new?clone=${po.id}`);
   }
 
   return (
@@ -163,12 +158,13 @@ export function ActionButtons({
           </Button>
         )}
 
-        {/* Clone */}
+        {/* Clone — navigate to /po/new?clone=ID, edit before save */}
         <Button
           variant="secondary" size="sm" fullWidth
           className="h-10"
           onClick={handleClone}
-          loading={pending}
+          disabled={pending}
+          title="คัดลอกใบนี้ — แก้ไขรายการก่อนบันทึก"
         >
           <Copy className="h-3.5 w-3.5" /> คัดลอก
         </Button>
