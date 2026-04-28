@@ -163,6 +163,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
     borderRadius: 6,
+    overflow: "hidden",
+    minHeight: 90,
   },
   // English-only eyebrow (uppercase, with tracking)
   infoEyebrow: {
@@ -183,13 +185,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "bold",
     color: C.ink,
-    marginBottom: 2,
+    marginBottom: 3,
+    lineHeight: 1.35,
   },
   infoText: {
     fontSize: 9,
     color: C.body,
-    marginBottom: 1,
-    lineHeight: 1.45,
+    marginBottom: 2,
+    lineHeight: 1.5,
   },
   infoMuted: {
     fontSize: 9,
@@ -199,12 +202,14 @@ const styles = StyleSheet.create({
   dateRow: {
     flexDirection: "row",
     fontSize: 9,
-    marginBottom: 3,
+    marginBottom: 4,
+    alignItems: "flex-start",
   },
   dateLabel: {
-    width: 56,
+    width: 78,
     color: C.muted,
     fontSize: 9,
+    paddingRight: 6,
   },
   dateValue: {
     color: C.body,
@@ -462,31 +467,31 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
           <View style={styles.infoCard}>
             <Text style={styles.infoEyebrowTh}>วันที่</Text>
             <View style={styles.dateRow}>
-              <Text style={styles.dateLabel}>สร้าง</Text>
+              <Text style={styles.dateLabel}>วันที่สร้าง</Text>
               <Text style={styles.dateValue}>{fmtDate(po.created_at)}</Text>
             </View>
             {po.ordered_date && (
               <View style={styles.dateRow}>
-                <Text style={styles.dateLabel}>สั่ง</Text>
+                <Text style={styles.dateLabel}>วันที่สั่งซื้อ</Text>
                 <Text style={styles.dateValue}>{fmtDate(po.ordered_date)}</Text>
               </View>
             )}
             {po.expected_date && (
               <View style={styles.dateRow}>
-                <Text style={styles.dateLabel}>คาด</Text>
+                <Text style={styles.dateLabel}>กำหนดรับ</Text>
                 <Text style={styles.dateValue}>{fmtDate(po.expected_date)}</Text>
               </View>
             )}
             {po.received_date && (
               <View style={styles.dateRow}>
-                <Text style={styles.dateLabel}>รับ</Text>
+                <Text style={styles.dateLabel}>วันที่รับของ</Text>
                 <Text style={styles.dateValue}>{fmtDate(po.received_date)}</Text>
               </View>
             )}
           </View>
 
           <View style={styles.infoCard}>
-            <Text style={styles.infoEyebrowTh}>ผู้สั่ง</Text>
+            <Text style={styles.infoEyebrowTh}>ผู้สร้าง PO</Text>
             <Text style={styles.infoStrong}>{po.created_by_name || "—"}</Text>
             {po.tracking_number && (
               <Text style={styles.infoText}>Tracking: {po.tracking_number}</Text>
