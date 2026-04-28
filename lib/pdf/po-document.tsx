@@ -1,15 +1,15 @@
 /**
- * PO PDF document — ภาษาไทย ใช้ฟอนต์ Sarabun
- * Render เป็น PDF buffer ใน server / API route
+ * PO PDF document — premium B2B design
+ * ภาษาไทย ใช้ฟอนต์ Sarabun
  */
 import path from "path";
 import {
   Document, Page, Text, View, StyleSheet, Font,
 } from "@react-pdf/renderer";
-import type { PurchaseOrder } from "@/lib/types/db";
+import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
 
 // ==================================================================
-// Font registration (Sarabun — Thai)
+// Fonts
 // ==================================================================
 const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
 
@@ -27,200 +27,353 @@ function registerFontOnce() {
 }
 
 // ==================================================================
+// Color tokens
+// ==================================================================
+const C = {
+  ink: "#0F172A",        // primary text
+  body: "#1E293B",       // body text
+  muted: "#64748B",      // secondary
+  faint: "#94A3B8",      // tertiary
+  border: "#E2E8F0",     // borders
+  bgSoft: "#F8FAFC",     // soft bg
+  bgTinted: "#F1F5F9",   // tinted bg
+
+  brand: "#1E3A5F",      // primary brand
+  brandLight: "#3A5A8C", // brand light
+  brandPale: "#EFF3F9",  // brand pale tint
+
+  accent: "#D97706",     // accent (warning/notes)
+  accentPale: "#FEF3C7",
+  emerald: "#059669",
+  emeraldPale: "#D1FAE5",
+  red: "#DC2626",
+  redPale: "#FEE2E2",
+  amber: "#D97706",
+  amberPale: "#FEF3C7",
+  blue: "#2563EB",
+  bluePale: "#DBEAFE",
+  indigo: "#4F46E5",
+  indigoPale: "#E0E7FF",
+  cyan: "#0891B2",
+  cyanPale: "#CFFAFE",
+};
+
+// ==================================================================
+// Status visuals
+// ==================================================================
+const STATUS_COLOR: Record<PoStatus, { fg: string; bg: string }> = {
+  "รอจัดซื้อดำเนินการ": { fg: C.amber, bg: C.amberPale },
+  "สั่งซื้อแล้ว":      { fg: C.blue, bg: C.bluePale },
+  "กำลังขนส่ง":         { fg: C.indigo, bg: C.indigoPale },
+  "รับของแล้ว":         { fg: C.cyan, bg: C.cyanPale },
+  "มีปัญหา":            { fg: C.red, bg: C.redPale },
+  "เสร็จสมบูรณ์":       { fg: C.emerald, bg: C.emeraldPale },
+  "ยกเลิก":             { fg: C.muted, bg: C.bgTinted },
+};
+
+// ==================================================================
 // Styles
 // ==================================================================
 const styles = StyleSheet.create({
   page: {
     fontFamily: "Sarabun",
     fontSize: 10,
-    padding: 30,
-    color: "#1E293B",
+    paddingTop: 36,
+    paddingBottom: 56,
+    paddingHorizontal: 40,
+    color: C.body,
+    backgroundColor: "#FFFFFF",
   },
-  // Header
+
+  // ===== Top accent bar =====
+  topBar: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    height: 6,
+    backgroundColor: C.brand,
+  },
+
+  // ===== Header =====
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingBottom: 12,
-    marginBottom: 14,
-    borderBottomWidth: 2,
-    borderBottomColor: "#3A5A8C",
+    marginBottom: 24,
   },
-  brandBlock: {
-    flexDirection: "row",
+  brandRow: { flexDirection: "row", alignItems: "flex-start" },
+  logoBox: {
+    width: 48, height: 48,
+    backgroundColor: C.brand,
+    borderRadius: 10,
+    marginRight: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
-  brandLogo: {
-    width: 36, height: 36,
-    backgroundColor: "#3A5A8C",
+  logoText: {
     color: "white",
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
-    textAlign: "center",
-    paddingTop: 8,
-    marginRight: 10,
-    borderRadius: 8,
+    letterSpacing: 0.5,
   },
   companyName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "bold",
-    color: "#0F172A",
+    color: C.ink,
+    marginBottom: 2,
   },
   companyMeta: {
     fontSize: 9,
-    color: "#64748B",
+    color: C.muted,
+    marginBottom: 1,
+    lineHeight: 1.4,
   },
-  poTitle: {
+
+  docTitleBlock: { alignItems: "flex-end" },
+  docTitleEyebrow: {
+    fontSize: 8,
+    color: C.muted,
+    fontWeight: "bold",
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  docTitle: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#3A5A8C",
-    textAlign: "right",
-  },
-  poNumber: {
-    fontSize: 14,
-    color: "#475569",
-    textAlign: "right",
-    marginTop: 2,
-    fontWeight: "bold",
-  },
-  poStatus: {
-    fontSize: 9,
-    color: "#475569",
-    textAlign: "right",
-    marginTop: 4,
-  },
-  // Sections
-  twoCol: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 14,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-    border: "1px solid #E2E8F0",
-    borderRadius: 6,
-    padding: 10,
-  },
-  cardTitle: {
-    fontSize: 9,
-    color: "#64748B",
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    color: C.brand,
     marginBottom: 4,
   },
-  cardText: {
-    fontSize: 10,
-    color: "#1E293B",
+  docNumber: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: C.body,
+    marginBottom: 8,
   },
-  cardTextBold: {
-    fontSize: 11,
-    color: "#0F172A",
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 14,
+    fontSize: 9,
     fontWeight: "bold",
   },
-  // Items table
-  table: {
-    marginBottom: 12,
+
+  // ===== Divider line =====
+  divider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginBottom: 18,
+  },
+
+  // ===== Info grid =====
+  infoGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 18,
+  },
+  infoCard: {
+    flex: 1,
+    padding: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 4,
+    borderColor: C.border,
+    borderRadius: 6,
+  },
+  infoEyebrow: {
+    fontSize: 8,
+    color: C.muted,
+    fontWeight: "bold",
+    letterSpacing: 1,
+    marginBottom: 5,
+  },
+  infoStrong: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: C.ink,
+    marginBottom: 2,
+  },
+  infoText: {
+    fontSize: 9,
+    color: C.body,
+    marginBottom: 1,
+    lineHeight: 1.45,
+  },
+  infoMuted: {
+    fontSize: 9,
+    color: C.muted,
+  },
+  // Date row inside card
+  dateRow: {
+    flexDirection: "row",
+    fontSize: 9,
+    marginBottom: 2,
+  },
+  dateLabel: {
+    width: 40,
+    color: C.muted,
+  },
+  dateValue: {
+    color: C.body,
+    fontWeight: "bold",
+    flex: 1,
+  },
+
+  // ===== Items table =====
+  tableWrap: {
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 6,
+    overflow: "hidden",
   },
   thead: {
     flexDirection: "row",
-    backgroundColor: "#3A5A8C",
+    backgroundColor: C.brand,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  th: {
     color: "white",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    fontSize: 9,
     fontWeight: "bold",
+    fontSize: 9,
+    letterSpacing: 0.3,
   },
   tr: {
     flexDirection: "row",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: C.border,
   },
-  th: { color: "white", fontWeight: "bold" },
-  td: { color: "#1E293B" },
-  colNo: { width: 22, textAlign: "center" },
-  colName: { flex: 3 },
-  colQty: { width: 60, textAlign: "right" },
-  colUnit: { width: 40, textAlign: "center" },
-  colPrice: { width: 70, textAlign: "right" },
-  colSubtotal: { width: 80, textAlign: "right" },
-  // Totals
+  trAlt: {
+    backgroundColor: C.bgSoft,
+  },
+  td: { color: C.body, fontSize: 10 },
+  tdMuted: { color: C.muted, fontSize: 8.5, marginTop: 2 },
+  // Columns
+  colNo:        { width: 24, textAlign: "center" },
+  colName:      { flex: 1 },
+  colQty:       { width: 56, textAlign: "right" },
+  colUnit:      { width: 42, textAlign: "center" },
+  colPrice:     { width: 70, textAlign: "right" },
+  colSubtotal:  { width: 84, textAlign: "right", fontWeight: "bold" },
+
+  // ===== Totals panel =====
+  totalsPanel: {
+    alignSelf: "flex-end",
+    width: "55%",
+    marginBottom: 14,
+  },
   totalsRow: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 3,
-  },
-  totalsLabel: {
-    fontSize: 10,
-    color: "#475569",
-    width: 100,
-    textAlign: "right",
-    paddingRight: 8,
-  },
-  totalsValue: {
-    fontSize: 10,
-    color: "#1E293B",
-    width: 100,
-    textAlign: "right",
-  },
-  grandTotal: {
-    backgroundColor: "#3A5A8C",
-    color: "white",
-    fontSize: 12,
-    fontWeight: "bold",
-    paddingVertical: 6,
+    justifyContent: "space-between",
+    paddingVertical: 4,
     paddingHorizontal: 10,
-    marginTop: 4,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
+    fontSize: 10,
   },
-  grandTotalLabel: { color: "white", fontWeight: "bold" },
-  grandTotalValue: {
+  totalsRowAlt: {
+    backgroundColor: C.bgSoft,
+  },
+  totalsLabel: { color: C.muted, fontSize: 10 },
+  totalsValue: { color: C.body, fontSize: 10, fontWeight: "bold" },
+  grandRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: C.brand,
     color: "white",
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  grandLabel: {
+    color: "white",
+    fontSize: 11,
     fontWeight: "bold",
+  },
+  grandValue: {
+    color: "white",
     fontSize: 14,
-    minWidth: 100,
-    textAlign: "right",
+    fontWeight: "bold",
   },
-  // Footer
-  footer: {
-    marginTop: 28,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-    fontSize: 8,
-    color: "#94A3B8",
-    textAlign: "center",
-  },
-  signRow: {
+
+  // ===== Notes box =====
+  notesBox: {
     flexDirection: "row",
-    gap: 30,
-    marginTop: 30,
+    backgroundColor: C.amberPale,
+    borderLeftWidth: 3,
+    borderLeftColor: C.amber,
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 16,
+  },
+  notesIcon: {
+    color: C.amber,
+    fontWeight: "bold",
+    fontSize: 11,
+    marginRight: 6,
+  },
+  notesContent: { flex: 1 },
+  notesLabel: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#78350F",
+    marginBottom: 2,
+    letterSpacing: 0.3,
+  },
+  notesText: {
+    fontSize: 10,
+    color: "#451A03",
+    lineHeight: 1.45,
+  },
+
+  // ===== Signatures =====
+  signGrid: {
+    flexDirection: "row",
+    gap: 18,
+    marginTop: 20,
   },
   signBox: {
     flex: 1,
-    paddingTop: 30,
-    borderTopWidth: 1,
-    borderTopColor: "#94A3B8",
+    paddingTop: 26,
     fontSize: 9,
-    color: "#475569",
+  },
+  signLine: {
+    borderTopWidth: 1,
+    borderTopColor: C.body,
+    paddingTop: 6,
+    fontSize: 9,
+    color: C.body,
+    fontWeight: "bold",
     textAlign: "center",
   },
-  notes: {
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: "#FFFBEB",
-    borderLeft: "3px solid #D97706",
-    fontSize: 9,
-    color: "#451A03",
+  signRole: {
+    fontSize: 8.5,
+    color: C.muted,
+    textAlign: "center",
+    marginTop: 1,
   },
+  signName: {
+    fontSize: 8,
+    color: C.faint,
+    textAlign: "center",
+    marginTop: 4,
+  },
+
+  // ===== Footer =====
+  footer: {
+    position: "absolute",
+    bottom: 22,
+    left: 40,
+    right: 40,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    fontSize: 7.5,
+    color: C.faint,
+  },
+  footerLeft: { color: C.muted, fontWeight: "bold" },
+  footerCenter: { color: C.faint },
+  footerRight: { color: C.muted },
 });
 
 // ==================================================================
@@ -238,68 +391,135 @@ export interface CompanyInfo {
 export interface PoDocumentProps {
   po: PurchaseOrder;
   company: CompanyInfo;
-  showPrices: boolean;  // false = staff PDF (no prices)
+  showPrices: boolean;
+}
+
+function logoLetter(name: string): string {
+  const trimmed = (name || "LP").trim();
+  // Try first letter of each word; fallback to first 2 chars
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase();
 }
 
 export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
   registerFontOnce();
   const items = po.items ?? [];
+  const statusColor = STATUS_COLOR[po.status as PoStatus] ?? STATUS_COLOR["รอจัดซื้อดำเนินการ"];
+  const docDate = new Date().toLocaleDateString("th-TH", {
+    day: "2-digit", month: "long", year: "numeric",
+  });
+  const docTime = new Date().toLocaleTimeString("th-TH", {
+    hour: "2-digit", minute: "2-digit",
+  });
 
   return (
     <Document
       title={`${po.po_number}.pdf`}
       author={company.name}
       creator="Lab Parfumo PO Pro"
+      subject={`ใบสั่งซื้อ ${po.po_number}`}
     >
-      <Page size="A4" style={styles.page}>
-        {/* Header */}
+      <Page size="A4" style={styles.page} wrap>
+        {/* Top accent bar */}
+        <View style={styles.topBar} fixed />
+
+        {/* Header — brand left, doc info right */}
         <View style={styles.header}>
-          <View style={styles.brandBlock}>
-            <Text style={styles.brandLogo}>📦</Text>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoText}>{logoLetter(company.name || "LP")}</Text>
+            </View>
             <View>
               <Text style={styles.companyName}>{company.name || "Lab Parfumo"}</Text>
-              {company.name_th && <Text style={styles.companyMeta}>{company.name_th}</Text>}
-              {company.address && <Text style={styles.companyMeta}>{company.address}</Text>}
-              {company.phone && <Text style={styles.companyMeta}>โทร: {company.phone}</Text>}
-              {company.tax_id && <Text style={styles.companyMeta}>เลขผู้เสียภาษี: {company.tax_id}</Text>}
+              {company.name_th && (
+                <Text style={styles.companyMeta}>{company.name_th}</Text>
+              )}
+              {company.address && (
+                <Text style={styles.companyMeta}>{company.address}</Text>
+              )}
+              {company.phone && (
+                <Text style={styles.companyMeta}>โทร {company.phone}</Text>
+              )}
+              {company.email && (
+                <Text style={styles.companyMeta}>{company.email}</Text>
+              )}
+              {company.tax_id && (
+                <Text style={styles.companyMeta}>เลขผู้เสียภาษี {company.tax_id}</Text>
+              )}
             </View>
           </View>
-          <View>
-            <Text style={styles.poTitle}>ใบสั่งซื้อ</Text>
-            <Text style={styles.poNumber}>{po.po_number}</Text>
-            <Text style={styles.poStatus}>สถานะ: {po.status}</Text>
+
+          <View style={styles.docTitleBlock}>
+            <Text style={styles.docTitleEyebrow}>PURCHASE ORDER</Text>
+            <Text style={styles.docTitle}>ใบสั่งซื้อ</Text>
+            <Text style={styles.docNumber}>{po.po_number}</Text>
+            <Text
+              style={[
+                styles.statusBadge,
+                { color: statusColor.fg, backgroundColor: statusColor.bg },
+              ]}
+            >
+              {po.status}
+            </Text>
           </View>
         </View>
 
-        {/* Two-column info */}
-        <View style={styles.twoCol}>
-          {showPrices && (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>SUPPLIER</Text>
-              <Text style={styles.cardTextBold}>{po.supplier_name || "—"}</Text>
-              {po.supplier_contact && (
-                <Text style={styles.cardText}>{po.supplier_contact}</Text>
-              )}
-            </View>
-          )}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>วันที่</Text>
-            <Text style={styles.cardText}>สร้าง: {fmtDate(po.created_at)}</Text>
-            {po.ordered_date && <Text style={styles.cardText}>สั่ง: {fmtDate(po.ordered_date)}</Text>}
-            {po.expected_date && <Text style={styles.cardText}>คาด: {fmtDate(po.expected_date)}</Text>}
-            {po.received_date && <Text style={styles.cardText}>รับของ: {fmtDate(po.received_date)}</Text>}
+        <View style={styles.divider} />
+
+        {/* Info grid: Supplier · Dates · Buyer */}
+        <View style={styles.infoGrid}>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoEyebrow}>SUPPLIER</Text>
+            {showPrices && po.supplier_name ? (
+              <>
+                <Text style={styles.infoStrong}>{po.supplier_name}</Text>
+                {po.supplier_contact && (
+                  <Text style={styles.infoText}>{po.supplier_contact}</Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.infoMuted}>—</Text>
+            )}
           </View>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>ผู้สั่ง</Text>
-            <Text style={styles.cardTextBold}>{po.created_by_name || "—"}</Text>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoEyebrow}>วันที่</Text>
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>สร้าง</Text>
+              <Text style={styles.dateValue}>{fmtDate(po.created_at)}</Text>
+            </View>
+            {po.ordered_date && (
+              <View style={styles.dateRow}>
+                <Text style={styles.dateLabel}>สั่ง</Text>
+                <Text style={styles.dateValue}>{fmtDate(po.ordered_date)}</Text>
+              </View>
+            )}
+            {po.expected_date && (
+              <View style={styles.dateRow}>
+                <Text style={styles.dateLabel}>คาด</Text>
+                <Text style={styles.dateValue}>{fmtDate(po.expected_date)}</Text>
+              </View>
+            )}
+            {po.received_date && (
+              <View style={styles.dateRow}>
+                <Text style={styles.dateLabel}>รับ</Text>
+                <Text style={styles.dateValue}>{fmtDate(po.received_date)}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoEyebrow}>ผู้สั่ง</Text>
+            <Text style={styles.infoStrong}>{po.created_by_name || "—"}</Text>
             {po.tracking_number && (
-              <Text style={styles.cardText}>Tracking: {po.tracking_number}</Text>
+              <Text style={styles.infoText}>Tracking: {po.tracking_number}</Text>
             )}
           </View>
         </View>
 
         {/* Items table */}
-        <View style={styles.table}>
+        <View style={styles.tableWrap}>
           <View style={styles.thead}>
             <Text style={[styles.colNo, styles.th]}>#</Text>
             <Text style={[styles.colName, styles.th]}>รายการ</Text>
@@ -307,20 +527,22 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
             <Text style={[styles.colUnit, styles.th]}>หน่วย</Text>
             {showPrices && (
               <>
-                <Text style={[styles.colPrice, styles.th]}>ราคา</Text>
+                <Text style={[styles.colPrice, styles.th]}>ราคา/หน่วย</Text>
                 <Text style={[styles.colSubtotal, styles.th]}>รวม</Text>
               </>
             )}
           </View>
           {items.map((it, i) => (
-            <View key={i} style={styles.tr}>
+            <View
+              key={i}
+              style={[styles.tr, i % 2 === 1 ? styles.trAlt : {}]}
+              wrap={false}
+            >
               <Text style={[styles.colNo, styles.td]}>{i + 1}</Text>
               <View style={styles.colName}>
                 <Text style={styles.td}>{it.name}</Text>
                 {it.notes && (
-                  <Text style={{ fontSize: 8, color: "#64748B", marginTop: 1 }}>
-                    {it.notes}
-                  </Text>
+                  <Text style={styles.tdMuted}>{it.notes}</Text>
                 )}
               </View>
               <Text style={[styles.colQty, styles.td]}>
@@ -332,7 +554,7 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
                   <Text style={[styles.colPrice, styles.td]}>
                     {(it.unit_price ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </Text>
-                  <Text style={[styles.colSubtotal, styles.td]}>
+                  <Text style={[styles.colSubtotal, styles.td, { fontWeight: "bold" }]}>
                     {(it.subtotal ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </Text>
                 </>
@@ -343,80 +565,101 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
 
         {/* Totals */}
         {showPrices && po.total != null && po.total > 0 && (
-          <>
+          <View style={styles.totalsPanel}>
             <View style={styles.totalsRow}>
-              <Text style={styles.totalsLabel}>ยอดรวม:</Text>
+              <Text style={styles.totalsLabel}>ยอดรวม</Text>
               <Text style={styles.totalsValue}>
                 ฿{(po.subtotal ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </Text>
             </View>
             {(po.discount ?? 0) > 0 && (
-              <View style={styles.totalsRow}>
-                <Text style={styles.totalsLabel}>ส่วนลด:</Text>
-                <Text style={styles.totalsValue}>
+              <View style={[styles.totalsRow, styles.totalsRowAlt]}>
+                <Text style={styles.totalsLabel}>ส่วนลด</Text>
+                <Text style={[styles.totalsValue, { color: C.red }]}>
                   -฿{(po.discount ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             )}
             {(po.shipping_fee ?? 0) > 0 && (
               <View style={styles.totalsRow}>
-                <Text style={styles.totalsLabel}>ค่าส่ง:</Text>
+                <Text style={styles.totalsLabel}>ค่าจัดส่ง</Text>
                 <Text style={styles.totalsValue}>
                   ฿{(po.shipping_fee ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             )}
             {(po.vat ?? 0) > 0 && (
-              <View style={styles.totalsRow}>
-                <Text style={styles.totalsLabel}>VAT:</Text>
+              <View style={[styles.totalsRow, styles.totalsRowAlt]}>
+                <Text style={styles.totalsLabel}>ภาษีมูลค่าเพิ่ม (VAT 7%)</Text>
                 <Text style={styles.totalsValue}>
                   ฿{(po.vat ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             )}
-            <View style={styles.grandTotal}>
-              <Text style={styles.grandTotalLabel}>ยอดสุทธิ:</Text>
-              <Text style={styles.grandTotalValue}>
+            <View style={styles.grandRow}>
+              <Text style={styles.grandLabel}>ยอดสุทธิ</Text>
+              <Text style={styles.grandValue}>
                 ฿{(po.total ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </Text>
             </View>
-          </>
+          </View>
         )}
 
         {/* Notes */}
         {po.notes && (
-          <View style={styles.notes}>
-            <Text style={{ fontWeight: "bold" }}>หมายเหตุ:</Text>
-            <Text>{po.notes}</Text>
+          <View style={styles.notesBox} wrap={false}>
+            <Text style={styles.notesIcon}>!</Text>
+            <View style={styles.notesContent}>
+              <Text style={styles.notesLabel}>หมายเหตุ</Text>
+              <Text style={styles.notesText}>{po.notes}</Text>
+            </View>
+          </View>
+        )}
+
+        {po.procurement_notes && showPrices && (
+          <View style={styles.notesBox} wrap={false}>
+            <Text style={styles.notesIcon}>!</Text>
+            <View style={styles.notesContent}>
+              <Text style={styles.notesLabel}>หมายเหตุจัดซื้อ</Text>
+              <Text style={styles.notesText}>{po.procurement_notes}</Text>
+            </View>
           </View>
         )}
 
         {/* Signatures */}
-        <View style={styles.signRow}>
+        <View style={styles.signGrid} wrap={false}>
           <View style={styles.signBox}>
-            <Text>ผู้สั่งซื้อ / Buyer</Text>
-            <Text style={{ fontSize: 8, color: "#94A3B8", marginTop: 2 }}>
-              ({po.created_by_name || "—"})
-            </Text>
+            <Text style={styles.signLine}>ผู้สั่งซื้อ</Text>
+            <Text style={styles.signRole}>Buyer</Text>
+            <Text style={styles.signName}>({po.created_by_name || "..............."})</Text>
           </View>
           <View style={styles.signBox}>
-            <Text>ผู้อนุมัติ / Approver</Text>
-            <Text style={{ fontSize: 8, color: "#94A3B8", marginTop: 2 }}>(................)</Text>
+            <Text style={styles.signLine}>ผู้อนุมัติ</Text>
+            <Text style={styles.signRole}>Approver</Text>
+            <Text style={styles.signName}>(...............)</Text>
           </View>
           {showPrices && (
             <View style={styles.signBox}>
-              <Text>Supplier</Text>
-              <Text style={{ fontSize: 8, color: "#94A3B8", marginTop: 2 }}>
-                ({po.supplier_name || "—"})
-              </Text>
+              <Text style={styles.signLine}>Supplier</Text>
+              <Text style={styles.signRole}>ผู้รับใบสั่งซื้อ</Text>
+              <Text style={styles.signName}>({po.supplier_name || "..............."})</Text>
             </View>
           )}
         </View>
 
         {/* Footer */}
-        <Text style={styles.footer}>
-          สร้างโดย Lab Parfumo PO Pro • {new Date().toLocaleString("th-TH")}
-        </Text>
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerLeft}>{po.po_number}</Text>
+          <Text style={styles.footerCenter}>
+            สร้างโดย Lab Parfumo PO Pro · {docDate} {docTime}
+          </Text>
+          <Text
+            style={styles.footerRight}
+            render={({ pageNumber, totalPages }) =>
+              `หน้า ${pageNumber} / ${totalPages}`
+            }
+          />
+        </View>
       </Page>
     </Document>
   );
