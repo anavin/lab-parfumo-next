@@ -49,6 +49,19 @@ export async function uploadImageAction(
   const buffer = Buffer.from(arr);
 
   const sb = getSupabaseAdmin();
+
+  // Ensure bucket exists (auto-provision on first use)
+  const ensured = await ensureBucket(sb, bucket, {
+    public: true,
+    fileSizeLimit: 5 * 1024 * 1024,
+  });
+  if (!ensured.ok) {
+    return {
+      ok: false,
+      error: `ไม่สามารถสร้าง bucket: ${ensured.error ?? "unknown"}`,
+    };
+  }
+
   const { error } = await sb.storage
     .from(bucket)
     .upload(filename, buffer, {
@@ -57,7 +70,10 @@ export async function uploadImageAction(
     });
   if (error) {
     console.error("[upload] failed:", error);
-    return { ok: false, error: "อัปโหลดไม่สำเร็จ" };
+    return {
+      ok: false,
+      error: `อัปโหลดไม่สำเร็จ: ${error.message ?? "unknown"}`,
+    };
   }
 
   const { data: urlData } = sb.storage.from(bucket).getPublicUrl(filename);
@@ -119,6 +135,38 @@ export interface UploadedAttachment {
 }
 
 /**
+ * Ensure a Supabase Storage bucket exists. Idempotent — safe to call repeatedly.
+ * Service role key (admin client) is required.
+ */
+async function ensureBucket(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  bucket: string,
+  opts: { public: boolean; fileSizeLimit?: number } = { public: true },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data: existing } = await sb.storage.getBucket(bucket);
+    if (existing) return { ok: true };
+  } catch {
+    // fall through — try to create
+  }
+  const { error } = await sb.storage.createBucket(bucket, {
+    public: opts.public,
+    fileSizeLimit: opts.fileSizeLimit,
+  });
+  if (error) {
+    // Race condition: another request may have created it in parallel
+    if (
+      String(error.message ?? "").toLowerCase().includes("already") ||
+      (error as { statusCode?: string }).statusCode === "409"
+    ) {
+      return { ok: true };
+    }
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
  * Upload single attachment (any file type) → return metadata
  * ใช้ Server Action — ส่ง FormData มา (key: "file" — single)
  */
@@ -139,18 +187,37 @@ export async function uploadSingleAttachmentAction(
 
   const ext = (file.name.split(".").pop() ?? "bin").toLowerCase();
   const contentType = ATTACHMENT_MIME[ext] ?? "application/octet-stream";
-  const safeName = `${randomBytes(16).toString("hex")}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  // Strip non-ASCII (Thai etc.) since Supabase storage paths must be ASCII
+  const baseName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeName = `${randomBytes(16).toString("hex")}_${baseName}`;
 
   const arr = await file.arrayBuffer();
   const buffer = Buffer.from(arr);
 
   const sb = getSupabaseAdmin();
+
+  // Ensure bucket exists (auto-provision on first use)
+  const ensured = await ensureBucket(sb, "po-attachments", {
+    public: true,
+    fileSizeLimit: 10 * 1024 * 1024,
+  });
+  if (!ensured.ok) {
+    console.error("[upload-attachment] ensureBucket failed:", ensured.error);
+    return {
+      ok: false,
+      error: `ไม่สามารถสร้าง storage bucket: ${ensured.error ?? "unknown"}`,
+    };
+  }
+
   const { error } = await sb.storage
     .from("po-attachments")
     .upload(safeName, buffer, { contentType, upsert: false });
   if (error) {
     console.error("[upload-attachment] failed:", error);
-    return { ok: false, error: "อัปโหลดไม่สำเร็จ" };
+    return {
+      ok: false,
+      error: `อัปโหลดไม่สำเร็จ: ${error.message ?? "unknown error"}`,
+    };
   }
 
   const { data: urlData } = sb.storage.from("po-attachments").getPublicUrl(safeName);
