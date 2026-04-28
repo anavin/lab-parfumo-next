@@ -383,31 +383,30 @@ export function OrderForm({
           ไฟล์แนบ (ใบเสนอราคา / สัญญา / อื่นๆ)
         </label>
 
-        {/* Drop zone / picker */}
-        <div
+        {/* Drop zone / picker — entire label is clickable */}
+        <label
+          htmlFor="po-attachment-file-input"
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
           onDrop={(e) => {
             e.preventDefault();
             e.stopPropagation();
             handleFiles(e.dataTransfer.files);
           }}
-          className="border-2 border-dashed border-border rounded-xl p-4 bg-muted/30 hover:bg-muted/50 hover:border-primary/40 transition-colors text-center"
+          className={`block border-2 border-dashed border-border rounded-xl p-4 bg-muted/30 hover:bg-muted/50 hover:border-primary/40 transition-colors text-center ${
+            pending || uploading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+          }`}
         >
           <input
+            id="po-attachment-file-input"
             ref={fileInputRef}
             type="file"
             multiple
-            className="hidden"
+            className="sr-only"
             onChange={(e) => handleFiles(e.target.files)}
             disabled={pending || uploading}
             accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip,.rar,.7z"
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pending || uploading}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 disabled:opacity-50"
-          >
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
             {uploading ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -419,11 +418,11 @@ export function OrderForm({
                 คลิกเพื่อเลือกไฟล์ <span className="text-muted-foreground font-normal">หรือลากมาวาง</span>
               </>
             )}
-          </button>
+          </span>
           <div className="text-[11px] text-muted-foreground mt-1">
             PDF · Word · Excel · รูปภาพ · ZIP — สูงสุด 10 MB ต่อไฟล์
           </div>
-        </div>
+        </label>
 
         {/* Pending files list */}
         {pendingFiles.length > 0 && (
