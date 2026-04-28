@@ -255,3 +255,28 @@ export interface SearchResult {
   equipment: Equipment[];
   suppliers: Array<{ name: string; poCount: number }>;
 }
+
+// ==================================================================
+// PO Delivery (ประวัติการรับของ) — shared by client lightbox UI
+// ==================================================================
+export interface PoDeliveryItem {
+  equipment_id: string | null;
+  name: string;
+  qty_ordered: number;
+  qty_received: number;
+  qty_damaged: number;
+  notes?: string;
+}
+
+export interface PoDelivery {
+  id: string;
+  po_id: string;
+  delivery_no: number;
+  received_date: string;
+  received_by_name: string | null;
+  items_received: PoDeliveryItem[];
+  overall_condition: string;
+  issue_description: string | null;
+  notes: string | null;
+  image_urls: string[] | null;
+}

@@ -7,11 +7,11 @@
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type {
-  PurchaseOrder, PoStatus, Role, PoSortKey, SupplierEntry,
+  PurchaseOrder, PoStatus, Role, PoSortKey, SupplierEntry, PoDelivery,
 } from "@/lib/types/db";
 
 // Re-export — เผื่อ server code ยัง import จาก lib/db/po
-export type { PoSortKey, SupplierEntry } from "@/lib/types/db";
+export type { PoSortKey, SupplierEntry, PoDelivery } from "@/lib/types/db";
 export { SORT_LABELS } from "@/lib/types/db";
 
 const ACTIVE_STATUSES: PoStatus[] = [
@@ -289,26 +289,6 @@ export async function getPoComments(poId: string): Promise<PoComment[]> {
     .eq("po_id", poId)
     .order("created_at", { ascending: true });
   return (data ?? []) as unknown as PoComment[];
-}
-
-export interface PoDelivery {
-  id: string;
-  po_id: string;
-  delivery_no: number;
-  received_date: string;
-  received_by_name: string | null;
-  items_received: Array<{
-    equipment_id: string | null;
-    name: string;
-    qty_ordered: number;
-    qty_received: number;
-    qty_damaged: number;
-    notes?: string;
-  }>;
-  overall_condition: string;
-  issue_description: string | null;
-  notes: string | null;
-  image_urls: string[] | null;
 }
 
 export async function getPoDeliveries(poId: string): Promise<PoDelivery[]> {

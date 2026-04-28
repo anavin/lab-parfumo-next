@@ -19,6 +19,7 @@ import { ItemsList } from "./_components/items-list";
 import { ActionButtons } from "./_components/action-buttons";
 import { CommentForm } from "./_components/comment-form";
 import { AttachmentsSection } from "./_components/attachments-section";
+import { DeliveriesList } from "./_components/deliveries-list";
 
 export const dynamic = "force-dynamic";
 
@@ -266,45 +267,7 @@ export default async function PoViewPage({
             <SectionTitle icon={<Package className="h-4 w-4" />}>
               ประวัติการรับของ ({deliveries.length})
             </SectionTitle>
-            <div className="space-y-3">
-              {deliveries.map((d) => (
-                <div key={d.id} className="border border-slate-200 rounded-xl p-3">
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                    <div>
-                      <span className="font-bold text-slate-900">ครั้งที่ {d.delivery_no}</span>
-                      <span className="text-slate-500 ml-2 text-sm">{fmtDate(d.received_date)}</span>
-                    </div>
-                    <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        d.overall_condition === "ปกติ"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-red-50 text-red-700 border border-red-200"
-                      }`}
-                    >
-                      {d.overall_condition === "ปกติ" ? "✅" : "⚠️"} {d.overall_condition}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 mb-1">
-                    ผู้รับ: {d.received_by_name ?? "—"}
-                  </div>
-                  <ul className="text-sm space-y-0.5">
-                    {d.items_received.map((it, i) => (
-                      <li key={i} className="text-slate-700">
-                        <span className="font-semibold">{it.name}</span>: รับ {it.qty_received}/{it.qty_ordered}
-                        {it.qty_damaged > 0 && (
-                          <span className="text-red-600"> (เสีย {it.qty_damaged})</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  {d.issue_description && (
-                    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2 rounded-r">
-                      ⚠️ ปัญหา: {d.issue_description}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <DeliveriesList deliveries={deliveries} />
           </CardContent>
         </Card>
       )}
