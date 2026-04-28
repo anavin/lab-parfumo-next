@@ -53,7 +53,10 @@ export function ActionButtons({
   const canClose = ["รับของแล้ว", "มีปัญหา"].includes(po.status);
   const canOrder = isAdmin && po.status === "รอจัดซื้อดำเนินการ";
   const canShip = isAdmin && po.status === "สั่งซื้อแล้ว";
-  const canReceive = ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(po.status);
+  // รับของได้เฉพาะเมื่อ admin อัปเดตสถานะเป็น "กำลังขนส่ง" แล้วเท่านั้น
+  const canReceive = po.status === "กำลังขนส่ง";
+  // แสดง hint เมื่อยังกดรับไม่ได้ (status ยังเป็น "สั่งซื้อแล้ว")
+  const receiveBlockedHint = po.status === "สั่งซื้อแล้ว";
   const showCancelBtn = canCancel && !["เสร็จสมบูรณ์", "ยกเลิก"].includes(po.status);
 
   function handleClose() {
@@ -181,6 +184,18 @@ export function ActionButtons({
           </Button>
         )}
       </div>
+
+      {/* Hint when receive is blocked (status is สั่งซื้อแล้ว — needs admin to ship first) */}
+      {receiveBlockedHint && (
+        <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+          <Truck className="size-4 flex-shrink-0 mt-0.5 text-amber-600" />
+          <div className="leading-snug">
+            <span className="font-bold">ยังกดรับของไม่ได้</span> —
+            กรุณารอแอดมินกด <strong>"อัปเดตขนส่ง"</strong> เพื่อเปลี่ยนสถานะเป็น
+            <strong> "กำลังขนส่ง"</strong> ก่อน
+          </div>
+        </div>
+      )}
 
       {/* Confirm close dialog */}
       <ConfirmDialog

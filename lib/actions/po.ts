@@ -702,6 +702,19 @@ export async function addDeliveryAction(
   // Note: ทุก user (admin + staff) สามารถกดรับสินค้าได้บน PO ใดๆ ก็ได้
   // ผู้กดรับจะถูกบันทึกใน received_by_name ด้านล่าง
 
+  // Workflow gate: รับของได้เฉพาะเมื่อสถานะเป็น "กำลังขนส่ง" เท่านั้น
+  // (ต้องผ่านขั้น "สั่งซื้อแล้ว" → "กำลังขนส่ง" ก่อน admin อัปเดตขนส่ง
+  //  จากนั้น ใครก็ได้ถึงจะกดรับของได้)
+  if (po.status !== "กำลังขนส่ง") {
+    const hint = po.status === "สั่งซื้อแล้ว"
+      ? "รอแอดมินอัปเดตสถานะขนส่งก่อน"
+      : `สถานะปัจจุบัน: ${po.status}`;
+    return {
+      ok: false,
+      error: `ยังกดรับของไม่ได้ — ${hint}`,
+    };
+  }
+
   // หา delivery_no ใหม่
   const { data: existingDeliveries } = await sb
     .from("po_deliveries" as never)

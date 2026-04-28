@@ -284,11 +284,20 @@ export function PendingRow({
 
       {/* Action footer — compact */}
       <div className="flex items-center gap-1.5 px-4 pb-3 pt-1 border-t border-border/40">
-        <Link href={`/po/${po.id}`}>
-          <Button size="xs" variant="primary">
-            <PackageOpen className="size-3" /> รับของ
-          </Button>
-        </Link>
+        {isShipping ? (
+          <Link href={`/po/${po.id}`}>
+            <Button size="xs" variant="primary">
+              <PackageOpen className="size-3" /> รับของ
+            </Button>
+          </Link>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 font-semibold"
+            title="ต้องรอแอดมินอัปเดตสถานะขนส่งก่อน ถึงจะกดรับของได้"
+          >
+            <Truck className="size-3" /> รอขนส่งก่อน
+          </span>
+        )}
         <Link href={`/po/${po.id}`}>
           <Button size="xs" variant="outline">
             ดูรายละเอียด
