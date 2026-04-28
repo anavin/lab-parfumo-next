@@ -1,33 +1,52 @@
 "use client";
 
+/**
+ * Reports — premium B2B redesign
+ * Filter pills + colored KPI hero + clean charts + sortable tables
+ */
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import {
+  Download, FileText, CheckCircle2, Banknote, BarChart3,
+  Calendar, TrendingUp, TrendingDown, Building2, Package,
+  AlertTriangle,
+} from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, PieChart, Pie, Cell, LineChart, Line,
+  CartesianGrid, Tooltip, PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { PurchaseOrder } from "@/lib/types/db";
+import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
 
 type Period = "7" | "30" | "month" | "year" | "all" | "custom";
 
-const STATUS_COLORS: Record<string, string> = {
-  "รอจัดซื้อดำเนินการ": "#94A3B8",
-  "สั่งซื้อแล้ว": "#0F6E56",
-  "กำลังขนส่ง": "#BA7517",
-  "รับของแล้ว": "#1D9E75",
-  "มีปัญหา": "#A32D2D",
-  "เสร็จสมบูรณ์": "#27500A",
-  "ยกเลิก": "#666666",
+const PERIOD_LABEL: Record<Period, string> = {
+  "7": "7 วันล่าสุด",
+  "30": "30 วันล่าสุด",
+  "month": "เดือนนี้",
+  "year": "ปีนี้",
+  "all": "ทั้งหมด",
+  "custom": "กำหนดเอง",
 };
 
-const PIE_COLORS = ["#3A5A8C", "#4A6FA5", "#6388B7", "#8FA8C9", "#A8C0E0",
-                    "#1E3A5F", "#2E4D78", "#5C7BA2"];
+const STATUS_COLORS: Record<PoStatus, string> = {
+  "รอจัดซื้อดำเนินการ": "#F59E0B",  // amber
+  "สั่งซื้อแล้ว":      "#3B82F6",  // blue
+  "กำลังขนส่ง":         "#6366F1",  // indigo
+  "รับของแล้ว":         "#06B6D4",  // cyan
+  "มีปัญหา":            "#DC2626",  // red
+  "เสร็จสมบูรณ์":       "#059669",  // emerald
+  "ยกเลิก":             "#94A3B8",  // slate
+};
+
+const PIE_COLORS = [
+  "#3A5A8C", "#2563EB", "#7C3AED", "#0891B2", "#059669",
+  "#D97706", "#DC2626", "#94A3B8",
+];
 
 export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
-  const [period, setPeriod] = useState<Period>("30");
   const today = new Date();
+  const [period, setPeriod] = useState<Period>("30");
   const [from, setFrom] = useState(() => {
     const d = new Date(today);
     d.setDate(d.getDate() - 30);
@@ -63,6 +82,21 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, from, to]);
 
+  // Previous period (for comparison)
+  const prevRange = useMemo(() => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const days = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400_000));
+    const prevEnd = new Date(startDate);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevStart.getDate() - days);
+    return {
+      start: prevStart.toISOString().slice(0, 10),
+      end: prevEnd.toISOString().slice(0, 10),
+    };
+  }, [start, end]);
+
   const filtered = useMemo(
     () => pos.filter((p) => {
       const d = (p.created_at ?? "").slice(0, 10);
@@ -73,11 +107,27 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
 
   const valid = filtered.filter((p) => p.status !== "ยกเลิก");
 
-  // Stats
+  // Previous period stats for trend
+  const prevValid = useMemo(() => {
+    return pos
+      .filter((p) => {
+        const d = (p.created_at ?? "").slice(0, 10);
+        return d >= prevRange.start && d <= prevRange.end;
+      })
+      .filter((p) => p.status !== "ยกเลิก");
+  }, [pos, prevRange]);
+
   const totalOrders = filtered.length;
   const completedCount = valid.filter((p) => p.status === "เสร็จสมบูรณ์").length;
+  const problemCount = filtered.filter((p) => p.status === "มีปัญหา").length;
   const totalSpend = valid.reduce((s, p) => s + (p.total ?? 0), 0);
   const avgPerOrder = valid.length ? totalSpend / valid.length : 0;
+
+  const prevSpend = prevValid.reduce((s, p) => s + (p.total ?? 0), 0);
+  const spendDelta = prevSpend > 0 ? ((totalSpend - prevSpend) / prevSpend) * 100 : 0;
+
+  const prevOrders = prevValid.length;
+  const ordersDelta = prevOrders > 0 ? ((totalOrders - prevOrders) / prevOrders) * 100 : 0;
 
   // Status breakdown
   const statusCount = useMemo(() => {
@@ -119,22 +169,30 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
       .slice(0, 10);
   }, [valid]);
 
-  // Daily trend (if range > 7 days)
+  // Daily trend
   const daysInRange = Math.ceil(
     (new Date(end).getTime() - new Date(start).getTime()) / 86400_000,
   );
   const dailyData = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, { total: number; count: number }>();
     for (const p of valid) {
       const d = (p.created_at ?? "").slice(0, 10);
-      if (d) m.set(d, (m.get(d) ?? 0) + (p.total ?? 0));
+      if (d) {
+        const cur = m.get(d) ?? { total: 0, count: 0 };
+        cur.total += p.total ?? 0;
+        cur.count += 1;
+        m.set(d, cur);
+      }
     }
     return Array.from(m.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, total]) => ({ date: date.slice(5), total }));
+      .map(([date, v]) => ({
+        date: date.slice(5),
+        total: v.total,
+        count: v.count,
+      }));
   }, [valid]);
 
-  // Export CSV
   function downloadCsv() {
     const headers = [
       "PO", "วันสร้าง", "ผู้สร้าง", "Supplier", "รายการ",
@@ -156,7 +214,6 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
       p.expected_date ?? "",
       p.received_date ?? "",
     ]);
-    // BOM + CSV with quote escaping
     const lines = [headers, ...rows].map((row) =>
       row.map((v) => {
         const s = String(v ?? "");
@@ -175,60 +232,109 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
 
   return (
     <div className="space-y-5">
-      {/* Filter row */}
+      {/* Period filter — pill style */}
       <Card>
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as Period)}
-              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm"
-            >
-              <option value="7">📅 7 วัน</option>
-              <option value="30">📅 30 วัน</option>
-              <option value="month">📅 เดือนนี้</option>
-              <option value="year">📅 ปีนี้</option>
-              <option value="all">📅 ทั้งหมด</option>
-              <option value="custom">📅 กำหนดเอง</option>
-            </select>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-xs font-bold text-muted-foreground">
+              <Calendar className="inline size-3.5 mr-1" />
+              ช่วงเวลา:
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(["7", "30", "month", "year", "all", "custom"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={`inline-flex items-center h-9 px-3 rounded-lg text-xs font-semibold transition-all ${
+                    period === p
+                      ? "bg-gradient-to-br from-primary to-brand-900 text-white shadow-sm"
+                      : "bg-card border border-border text-foreground hover:bg-accent"
+                  }`}
+                >
+                  {PERIOD_LABEL[p]}
+                </button>
+              ))}
+            </div>
             {period === "custom" && (
-              <>
-                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-                       className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm" />
-                <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-                       className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm" />
-              </>
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
+                <input
+                  type="date" value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+                <span className="text-muted-foreground">→</span>
+                <input
+                  type="date" value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
             )}
+            <div className="ml-auto text-xs text-muted-foreground">
+              {start} → {end} · <strong className="text-foreground">{filtered.length}</strong> ใบ
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="📝 PO" value={totalOrders.toLocaleString("th-TH")} />
-        <Kpi label="✅ เสร็จสิ้น" value={completedCount.toLocaleString("th-TH")} />
-        <Kpi label="💰 ยอดรวม" value={`฿${totalSpend.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`} />
-        <Kpi label="📊 เฉลี่ย/ใบ" value={`฿${avgPerOrder.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`} />
+      {/* KPI hero — 4 colored cards with delta vs previous period */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          icon={FileText}
+          label="PO ทั้งหมด"
+          value={totalOrders.toLocaleString("th-TH")}
+          unit="ใบ"
+          delta={ordersDelta}
+          color="primary"
+        />
+        <KpiCard
+          icon={CheckCircle2}
+          label="เสร็จสมบูรณ์"
+          value={completedCount.toLocaleString("th-TH")}
+          unit="ใบ"
+          subtitle={totalOrders > 0 ? `${((completedCount / totalOrders) * 100).toFixed(0)}% ของทั้งหมด` : undefined}
+          color="emerald"
+        />
+        <KpiCard
+          icon={Banknote}
+          label="ยอดรวม"
+          value={fmtMoney(totalSpend)}
+          unit="บาท"
+          delta={spendDelta}
+          color="amber"
+        />
+        <KpiCard
+          icon={BarChart3}
+          label="เฉลี่ยต่อใบ"
+          value={fmtMoney(avgPerOrder)}
+          unit="บาท"
+          subtitle={problemCount > 0 ? `⚠️ มีปัญหา ${problemCount} ใบ` : undefined}
+          color={problemCount > 0 ? "red" : "indigo"}
+        />
       </div>
 
       {/* Charts row 1 */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
+      <div className="grid lg:grid-cols-5 gap-4">
+        {/* Status — 3 cols */}
+        <Card className="lg:col-span-3">
           <CardContent className="p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-              สถานะ PO
-            </h3>
+            <SectionHeader
+              icon={<BarChart3 className="size-4" />}
+              title="สถานะ PO"
+              subtitle="แยกตามสถานะปัจจุบัน"
+            />
             {statusCount.length > 0 ? (
               <div className="h-72">
                 <ResponsiveContainer>
-                  <BarChart data={statusCount} margin={{ top: 5, right: 5, left: 0, bottom: 30 }}>
+                  <BarChart data={statusCount} margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-25} textAnchor="end" height={50} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748B" }} angle={-25} textAnchor="end" height={60} axisLine={{ stroke: "#E2E8F0" }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<StatusTooltip />} cursor={{ fill: "#F1F5F9" }} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                       {statusCount.map((entry, i) => (
-                        <Cell key={i} fill={STATUS_COLORS[entry.name] ?? "#94A3B8"} />
+                        <Cell key={i} fill={STATUS_COLORS[entry.name as PoStatus] ?? "#94A3B8"} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -237,13 +343,17 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
             ) : <EmptyChart />}
           </CardContent>
         </Card>
-        <Card>
+
+        {/* Top suppliers donut — 2 cols */}
+        <Card className="lg:col-span-2">
           <CardContent className="p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-              ยอดสั่งซื้อแยก Supplier (top 8)
-            </h3>
+            <SectionHeader
+              icon={<Building2 className="size-4" />}
+              title="Top Suppliers"
+              subtitle="สัดส่วนยอดสั่งซื้อ"
+            />
             {supplierData.length > 0 ? (
-              <div className="h-72">
+              <div className="h-72 relative">
                 <ResponsiveContainer>
                   <PieChart>
                     <Pie
@@ -251,145 +361,347 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
                       dataKey="total"
                       nameKey="name"
                       cx="50%" cy="50%"
-                      outerRadius={90}
-                      label={(e) => e.name && e.name.length > 12 ? e.name.slice(0, 11) + "…" : e.name}
-                      labelLine={false}
+                      innerRadius="55%"
+                      outerRadius="88%"
+                      paddingAngle={2}
+                      stroke="none"
                     >
                       {supplierData.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} className="hover:opacity-80 transition-opacity" />
                       ))}
                     </Pie>
-                    <Tooltip
-                      formatter={(v: number) => `฿${v.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`}
-                    />
+                    <Tooltip content={<DonutTooltip total={totalSpend} />} />
                   </PieChart>
                 </ResponsiveContainer>
+                {/* Center label */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
+                    ยอดรวม
+                  </div>
+                  <div className="text-base font-extrabold text-foreground tabular-nums">
+                    {fmtMoneyCompact(totalSpend)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {supplierData.length} ราย
+                  </div>
+                </div>
               </div>
             ) : <EmptyChart />}
           </CardContent>
         </Card>
       </div>
 
-      {/* Daily trend (if range > 7 days) */}
+      {/* Daily trend (area chart) */}
       {daysInRange > 7 && dailyData.length > 0 && (
         <Card>
           <CardContent className="p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-              📅 ยอดสั่งซื้อรายวัน
-            </h3>
+            <SectionHeader
+              icon={<TrendingUp className="size-4" />}
+              title="ยอดสั่งซื้อรายวัน"
+              subtitle={`${daysInRange} วัน`}
+            />
             <div className="h-64">
               <ResponsiveContainer>
-                <LineChart data={dailyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    formatter={(v: number) => `฿${v.toLocaleString("th-TH")}`}
-                  />
-                  <Line type="monotone" dataKey="total" stroke="#3A5A8C" strokeWidth={2}
-                        dot={{ r: 3, fill: "#3A5A8C" }} />
-                </LineChart>
+                <AreaChart data={dailyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="reportArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3A5A8C" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="#3A5A8C" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }} axisLine={{ stroke: "#E2E8F0" }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "#64748B" }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtMoneyCompact(v)} />
+                  <Tooltip content={<DailyTooltip />} cursor={{ stroke: "#3A5A8C", strokeWidth: 1, strokeDasharray: "3 3" }} />
+                  <Area type="monotone" dataKey="total" stroke="#3A5A8C" strokeWidth={2.5} fill="url(#reportArea)" dot={{ r: 3, fill: "#fff", stroke: "#3A5A8C", strokeWidth: 2 }} activeDot={{ r: 5 }} />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Top suppliers + items table */}
+      {/* Tables row */}
       <div className="grid lg:grid-cols-2 gap-4">
+        {/* Suppliers table */}
         <Card>
           <CardContent className="p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-              🏭 ตาม Supplier
-            </h3>
+            <SectionHeader
+              icon={<Building2 className="size-4" />}
+              title="Supplier ทั้งหมด"
+              subtitle={`${supplierData.length} ราย`}
+            />
             {supplierData.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left py-2">Supplier</th>
-                    <th className="text-right py-2">จำนวน</th>
-                    <th className="text-right py-2">ยอดรวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {supplierData.map((s) => (
-                    <tr key={s.name} className="border-b border-slate-100">
-                      <td className="py-2 truncate">{s.name}</td>
-                      <td className="text-right tabular-nums">{s.count}</td>
-                      <td className="text-right tabular-nums font-semibold">
-                        ฿{s.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <EmptyChart />}
+              <div className="space-y-1.5">
+                {supplierData.map((s, i) => {
+                  const pct = totalSpend > 0 ? (s.total / totalSpend) * 100 : 0;
+                  return (
+                    <div
+                      key={s.name}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <span
+                        className="size-7 rounded-md flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                        style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-foreground truncate" title={s.name}>
+                          {s.name}
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-sm font-bold tabular-nums text-foreground">
+                          ฿{s.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground tabular-nums">
+                          {pct.toFixed(0)}% · {s.count} ใบ
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <EmptyChart small />}
           </CardContent>
         </Card>
+
+        {/* Top items table */}
         <Card>
           <CardContent className="p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-              📦 Top Items
-            </h3>
+            <SectionHeader
+              icon={<Package className="size-4" />}
+              title="Top สินค้าที่สั่ง"
+              subtitle={`${topItems.length} รายการแรก`}
+            />
             {topItems.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left py-2">รายการ</th>
-                    <th className="text-right py-2">จำนวน</th>
-                    <th className="text-right py-2">ยอดรวม</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topItems.map((it, i) => (
-                    <tr key={i} className="border-b border-slate-100">
-                      <td className="py-2 truncate" title={it.name}>{it.name}</td>
-                      <td className="text-right tabular-nums">{it.qty.toLocaleString("th-TH")}</td>
-                      <td className="text-right tabular-nums font-semibold">
+              <div className="space-y-1.5">
+                {topItems.map((it, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors"
+                  >
+                    <span className="size-7 rounded-md bg-muted text-foreground flex items-center justify-center text-[11px] font-bold flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-foreground truncate" title={it.name}>
+                        {it.name}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+                        จำนวน <span className="font-semibold text-foreground">{it.qty.toLocaleString("th-TH")}</span> ชิ้น
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-bold tabular-nums text-foreground">
                         ฿{it.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <EmptyChart />}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyChart small />}
           </CardContent>
         </Card>
       </div>
 
       {/* Export */}
-      <Card>
-        <CardContent className="p-5">
-          <h3 className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-3">
-            📥 Export
-          </h3>
+      <Card className="bg-gradient-to-br from-brand-50/30 to-blue-50/20 border-primary/20">
+        <CardContent className="p-5 flex items-center gap-4 flex-wrap">
+          <div className="size-12 rounded-2xl bg-gradient-to-br from-primary to-brand-900 text-white flex items-center justify-center shadow-md">
+            <Download className="size-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-foreground">
+              ดาวน์โหลดข้อมูลดิบ (CSV)
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              ไฟล์ Excel-compatible พร้อม UTF-8 BOM — รองรับภาษาไทย
+            </div>
+          </div>
           <Button onClick={downloadCsv}>
-            <Download className="h-4 w-4" /> ดาวน์โหลด CSV ({filtered.length} ใบ)
+            <Download className="size-4" /> CSV ({filtered.length} ใบ)
           </Button>
-          <p className="text-xs text-slate-500 mt-2">
-            UTF-8 with BOM — เปิดด้วย Excel ภาษาไทยถูกต้อง
-          </p>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+// ==================================================================
+// KPI Card
+// ==================================================================
+const KPI_TONE: Record<string, { gradient: string; ring: string }> = {
+  primary: { gradient: "bg-gradient-to-br from-blue-500 to-blue-700", ring: "ring-blue-200" },
+  emerald: { gradient: "bg-gradient-to-br from-emerald-500 to-emerald-700", ring: "ring-emerald-200" },
+  amber: { gradient: "bg-gradient-to-br from-amber-400 to-orange-500", ring: "ring-amber-200" },
+  red: { gradient: "bg-gradient-to-br from-red-500 to-rose-600", ring: "ring-red-200" },
+  indigo: { gradient: "bg-gradient-to-br from-indigo-500 to-violet-600", ring: "ring-indigo-200" },
+};
+
+function KpiCard({
+  icon: Icon, label, value, unit, delta, subtitle, color,
+}: {
+  icon: typeof FileText;
+  label: string;
+  value: string;
+  unit?: string;
+  delta?: number;
+  subtitle?: string;
+  color: keyof typeof KPI_TONE;
+}) {
+  const tone = KPI_TONE[color];
+  const showDelta = delta !== undefined && Number.isFinite(delta) && delta !== 0;
+  const isUp = (delta ?? 0) > 0;
   return (
-    <Card>
-      <CardContent className="p-4 text-center">
-        <div className="text-xl font-bold text-slate-900 tabular-nums">{value}</div>
-        <div className="text-xs text-slate-500 mt-1">{label}</div>
-      </CardContent>
-    </Card>
+    <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all">
+      <div className="flex items-center gap-3">
+        <div className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring}`}>
+          <Icon className="size-5" strokeWidth={2.5} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
+            {label}
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+              {value}
+            </span>
+            {unit && (
+              <span className="text-[11px] font-medium text-muted-foreground">{unit}</span>
+            )}
+          </div>
+          {showDelta && (
+            <div className={`inline-flex items-center gap-0.5 text-[10px] font-bold mt-0.5 ${isUp ? "text-emerald-600" : "text-rose-600"}`}>
+              {isUp ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
+              <span className="tabular-nums">
+                {isUp ? "+" : ""}{delta!.toFixed(1)}% เทียบช่วงก่อน
+              </span>
+            </div>
+          )}
+          {subtitle && !showDelta && (
+            <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+              {subtitle}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function EmptyChart() {
+// ==================================================================
+// Helpers
+// ==================================================================
+function SectionHeader({
+  icon, title, subtitle, action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="h-72 flex items-center justify-center text-sm text-slate-400">
-      ไม่มีข้อมูลในช่วงเวลานี้
+    <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-border/40">
+      <div className="flex items-center gap-2.5">
+        <div className="size-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+          {icon}
+        </div>
+        <div>
+          <div className="text-sm font-bold text-foreground">{title}</div>
+          {subtitle && <div className="text-[11px] text-muted-foreground">{subtitle}</div>}
+        </div>
+      </div>
+      {action}
     </div>
   );
+}
+
+function EmptyChart({ small }: { small?: boolean } = {}) {
+  return (
+    <div className={`${small ? "py-8" : "h-72"} flex flex-col items-center justify-center text-center text-sm text-muted-foreground`}>
+      <AlertTriangle className="size-8 text-muted-foreground/50 mb-2" />
+      <div>ไม่มีข้อมูลในช่วงเวลานี้</div>
+      <div className="text-xs mt-1">ลองเปลี่ยนช่วงเวลาด้านบน</div>
+    </div>
+  );
+}
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: { name?: string; value?: number; date?: string; total?: number; count?: number } }>;
+}
+
+function StatusTooltip({ active, payload }: TooltipProps) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+      <div className="text-xs font-bold text-foreground">{d.name}</div>
+      <div className="text-base font-extrabold tabular-nums mt-1">
+        {(d.value ?? 0).toLocaleString("th-TH")} ใบ
+      </div>
+    </div>
+  );
+}
+
+function DailyTooltip({ active, payload }: TooltipProps) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="bg-popover border border-border rounded-lg shadow-lg p-3 min-w-[160px]">
+      <div className="text-xs text-muted-foreground">{d.date}</div>
+      <div className="text-base font-extrabold tabular-nums mt-1">
+        ฿{(d.total ?? 0).toLocaleString("th-TH", { maximumFractionDigits: 0 })}
+      </div>
+      <div className="text-xs text-muted-foreground mt-1">
+        <span className="font-semibold text-foreground">{d.count}</span> ใบ
+      </div>
+    </div>
+  );
+}
+
+interface DonutTipProps {
+  active?: boolean;
+  payload?: Array<{ payload: { name: string; total: number; count: number } }>;
+  total: number;
+}
+
+function DonutTooltip({ active, payload, total }: DonutTipProps) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const pct = total > 0 ? (d.total / total) * 100 : 0;
+  return (
+    <div className="bg-popover border border-border rounded-xl shadow-lg p-3 min-w-[180px]">
+      <div className="text-sm font-bold text-foreground truncate">{d.name}</div>
+      <div className="text-base font-extrabold tabular-nums mt-1">
+        ฿{d.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}
+      </div>
+      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+        <span className="font-semibold tabular-nums">{pct.toFixed(1)}%</span>
+        <span className="text-muted-foreground/60">·</span>
+        <span className="tabular-nums">{d.count} ใบ</span>
+      </div>
+    </div>
+  );
+}
+
+function fmtMoney(n: number): string {
+  return n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+}
+
+function fmtMoneyCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+  return n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
 }
