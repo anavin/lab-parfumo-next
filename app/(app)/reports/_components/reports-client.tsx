@@ -232,49 +232,60 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
 
   return (
     <div className="space-y-5">
-      {/* Period filter — pill style */}
+      {/* Period filter — equal-width pills */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="text-xs font-bold text-muted-foreground">
-              <Calendar className="inline size-3.5 mr-1" />
-              ช่วงเวลา:
+        <CardContent className="p-4 space-y-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-xs font-bold text-muted-foreground inline-flex items-center gap-1.5">
+              <Calendar className="size-3.5" />
+              ช่วงเวลา
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(["7", "30", "month", "year", "all", "custom"] as Period[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriod(p)}
-                  className={`inline-flex items-center h-9 px-3 rounded-lg text-xs font-semibold transition-all ${
-                    period === p
-                      ? "bg-gradient-to-br from-primary to-brand-900 text-white shadow-sm"
-                      : "bg-card border border-border text-foreground hover:bg-accent"
-                  }`}
-                >
-                  {PERIOD_LABEL[p]}
-                </button>
-              ))}
-            </div>
-            {period === "custom" && (
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
-                <input
-                  type="date" value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                  className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-                <span className="text-muted-foreground">→</span>
-                <input
-                  type="date" value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            )}
-            <div className="ml-auto text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground tabular-nums">
               {start} → {end} · <strong className="text-foreground">{filtered.length}</strong> ใบ
             </div>
           </div>
+
+          {/* Pills — equal width via grid */}
+          <div
+            className="grid gap-1.5"
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+            }}
+          >
+            {(["7", "30", "month", "year", "all", "custom"] as Period[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`inline-flex items-center justify-center h-9 px-3 rounded-lg text-xs font-semibold transition-all ${
+                  period === p
+                    ? "bg-gradient-to-br from-primary to-brand-900 text-white shadow-sm"
+                    : "bg-card border border-border text-foreground hover:bg-accent hover:-translate-y-0.5 hover:shadow-sm"
+                }`}
+              >
+                <span className="truncate">{PERIOD_LABEL[p]}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Custom date range */}
+          {period === "custom" && (
+            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-border/40">
+              <span className="text-xs text-muted-foreground">จาก</span>
+              <input
+                type="date" value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <span className="text-xs text-muted-foreground">ถึง</span>
+              <input
+                type="date" value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
