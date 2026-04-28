@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Check, Plus, X, ChevronLeft, ChevronRight, FolderOpen } from "lucide-react";
+import {
+  Check, Plus, X, ChevronLeft, ChevronRight, FolderOpen,
+  Hash, Package as PackageIcon, Banknote, AlertCircle,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Equipment } from "@/lib/types/db";
 
@@ -150,26 +153,70 @@ function EquipmentCard({
       )}
 
       {/* Details */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 space-y-1.5">
+        {/* Name */}
         <div className="font-bold text-sm text-foreground line-clamp-2 leading-tight" title={eq.name}>
           {eq.name}
         </div>
-        <div className="text-xs text-muted-foreground mt-1.5 font-mono">
-          SKU: {eq.sku || "-"}
-        </div>
-        <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
-          <FolderOpen className="size-3" />
-          <span className="truncate">{eq.category || "-"}</span>
+
+        {/* Description (if exists) */}
+        {eq.description && (
+          <div
+            className="text-[11px] text-muted-foreground line-clamp-2 leading-snug"
+            title={eq.description}
+          >
+            {eq.description}
+          </div>
+        )}
+
+        {/* Meta grid: SKU + Category + Unit */}
+        <div className="space-y-0.5 pt-1 border-t border-border/40">
+          <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 w-full">
+            <Hash className="size-3 flex-shrink-0" />
+            <span className="font-mono truncate">{eq.sku || "-"}</span>
+          </div>
+          <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 w-full">
+            <FolderOpen className="size-3 flex-shrink-0" />
+            <span className="truncate">{eq.category || "-"}</span>
+          </div>
+          {eq.unit && (
+            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 w-full">
+              <PackageIcon className="size-3 flex-shrink-0" />
+              <span>หน่วย: <span className="font-semibold text-foreground">{eq.unit}</span></span>
+            </div>
+          )}
+          {eq.last_cost > 0 && (
+            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 w-full">
+              <Banknote className="size-3 flex-shrink-0 text-emerald-600" />
+              <span>
+                ราคาล่าสุด{" "}
+                <span className="font-bold text-foreground tabular-nums">
+                  ฿{eq.last_cost.toLocaleString("th-TH", { maximumFractionDigits: 0 })}
+                </span>
+                {eq.unit && <span className="text-muted-foreground/70"> / {eq.unit}</span>}
+              </span>
+            </div>
+          )}
+          {eq.reorder_level > 0 && (
+            <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 w-full">
+              <AlertCircle className="size-3 flex-shrink-0" />
+              <span>
+                จุดสั่งซื้อ:{" "}
+                <span className="font-semibold tabular-nums text-foreground">{eq.reorder_level}</span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Stock chip */}
-        <div className="mt-2">
+        <div className="pt-1">
           <span
             className={cn(
-              "inline-block px-2 py-0.5 text-[11px] font-semibold rounded-md border",
+              "inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-md border",
               stockChip.bg, stockChip.color,
             )}
           >
+            <PackageIcon className="size-3" />
             {stockChip.text}
           </span>
         </div>
