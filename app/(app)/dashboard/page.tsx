@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { requireUser } from "@/lib/auth/require-user";
 import {
-  getPos, computeStats, pickActionItems,
+  getPos, getPosPendingReceipt, computeStats, pickActionItems,
   buildMonthlyTrend, topSuppliers,
 } from "@/lib/db/po";
 import { TrendChart, SuppliersChart } from "./_components/lazy-charts";
+import { StaffDashboard } from "./_components/staff-dashboard";
 import type { PoStatus, PurchaseOrder } from "@/lib/types/db";
 
 export const metadata: Metadata = {
@@ -92,6 +93,27 @@ function fmtNumber(n: number): string {
 export default async function DashboardPage() {
   const user = await requireUser();
   const isAdmin = user.role === "admin";
+
+  // === Staff (non-admin) — render personalized dashboard ===
+  if (!isAdmin) {
+    const [myPos, pendingReceipt] = await Promise.all([
+      getPos({ userId: user.id, role: user.role }),
+      getPosPendingReceipt(),
+    ]);
+    // ทุก user รับของได้ — แต่กดได้เฉพาะ "กำลังขนส่ง" (ตาม workflow gate)
+    const readyToReceive = pendingReceipt.filter(
+      (p) => p.status === "กำลังขนส่ง",
+    );
+    return (
+      <StaffDashboard
+        user={user}
+        myPos={myPos}
+        readyToReceive={readyToReceive}
+      />
+    );
+  }
+
+  // === Admin path ===
   const pos = await getPos({ userId: user.id, role: user.role });
 
   // === Empty state ===
@@ -101,19 +123,16 @@ export default async function DashboardPage() {
         <PageHeader />
         <Card className="border-dashed">
           <CardContent className="py-20 text-center">
-            <div className="text-6xl mb-4">{isAdmin ? "📦" : "📝"}</div>
+            <div className="text-6xl mb-4">📦</div>
             <h2 className="text-xl font-bold text-foreground mb-2">
-              {isAdmin ? "ยินดีต้อนรับสู่ Lab Parfumo PO Pro!" : "ยินดีต้อนรับ!"}
+              ยินดีต้อนรับสู่ Lab Parfumo PO Pro!
             </h2>
             <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-              {isAdmin
-                ? "เริ่มต้นใช้งานง่ายๆ — เพิ่มอุปกรณ์ในระบบก่อน แล้วทีมจะสร้าง PO ได้"
-                : "ยังไม่มี PO — กดปุ่มด้านล่างเพื่อสร้างใบแรก"}
+              เริ่มต้นใช้งานง่ายๆ — เพิ่มอุปกรณ์ในระบบก่อน แล้วทีมจะสร้าง PO ได้
             </p>
-            <Link href={isAdmin ? "/equipment" : "/po/new"}>
+            <Link href="/equipment">
               <Button size="lg">
-                <Plus className="size-4" />
-                {isAdmin ? "เพิ่มอุปกรณ์" : "สร้างใบ PO ใหม่"}
+                <Plus className="size-4" /> เพิ่มอุปกรณ์
               </Button>
             </Link>
           </CardContent>
