@@ -549,101 +549,136 @@ function InsightCards({
       ? { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-200/60" }
       : { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-200/60" };
 
+  // Find the actual longest-pending PO so we can deep-link to it
+  const ACTIVE = ["รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว", "กำลังขนส่ง"] as const;
+  let longestPo: PurchaseOrder | null = null;
+  let longestDays = 0;
+  for (const p of pos) {
+    if (!ACTIVE.includes(p.status as typeof ACTIVE[number])) continue;
+    if (!p.created_at) continue;
+    const d = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400_000);
+    if (d > longestDays) {
+      longestDays = d;
+      longestPo = p;
+    }
+  }
+
   return (
     <>
       {sup && (
-        <Card className="overflow-hidden border-amber-200/50 bg-gradient-to-br from-amber-50/70 via-amber-50/40 to-orange-50/30 shadow-sm hover:shadow-md transition-shadow">
-          <CardContent className="p-4 relative">
-            {/* Decorative orb */}
-            <div className="absolute -top-6 -right-6 size-20 rounded-full bg-amber-200/30 blur-2xl" />
+        <Link
+          href={`/po?search=${encodeURIComponent(sup.name)}`}
+          className="block group"
+          title={`ดู PO ทั้งหมดของ ${sup.name}`}
+        >
+          <Card className="overflow-hidden border-amber-200/50 bg-gradient-to-br from-amber-50/70 via-amber-50/40 to-orange-50/30 shadow-sm group-hover:shadow-md group-hover:border-amber-300 group-hover:-translate-y-0.5 transition-all duration-200">
+            <CardContent className="p-4 relative">
+              {/* Decorative orb */}
+              <div className="absolute -top-6 -right-6 size-20 rounded-full bg-amber-200/30 blur-2xl" />
 
-            <div className="relative flex items-center justify-center gap-3.5">
-              {/* Icon badge — left */}
-              <div className="flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm ring-2 ring-amber-100">
-                <Trophy className="size-6" strokeWidth={2.25} />
-              </div>
+              {/* Hover arrow */}
+              <ArrowRight className="absolute top-3 right-3 size-3.5 text-amber-600/0 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
 
-              {/* Content — right */}
-              <div className="min-w-0 max-w-[180px]">
-                <div className="text-[10px] tracking-wider font-bold text-amber-700 uppercase">
-                  Top Supplier
+              <div className="relative flex items-center justify-center gap-3.5">
+                <div className="flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm ring-2 ring-amber-100">
+                  <Trophy className="size-6" strokeWidth={2.25} />
                 </div>
-                <div className="text-base font-extrabold text-foreground truncate" title={sup.name}>
-                  {sup.name}
-                </div>
-                <div className="flex items-center gap-2 mt-1 text-xs">
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {fmtMoney(sup.spend)}
-                  </span>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold tabular-nums text-[10px]">
-                    {supPct.toFixed(0)}%
-                  </span>
+
+                <div className="min-w-0 max-w-[180px]">
+                  <div className="text-[10px] tracking-wider font-bold text-amber-700 uppercase">
+                    Top Supplier
+                  </div>
+                  <div className="text-base font-extrabold text-foreground truncate" title={sup.name}>
+                    {sup.name}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-xs">
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {fmtMoney(sup.spend)}
+                    </span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold tabular-nums text-[10px]">
+                      {supPct.toFixed(0)}%
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
       )}
 
       {stats.longestPendingDays > 0 && (
-        <Card className="hover:shadow-md transition-shadow">
-          <CardContent className="p-4">
+        <Link
+          href={longestPo ? `/po/${longestPo.id}` : "/po?status=รอจัดซื้อดำเนินการ"}
+          className="block group"
+          title={longestPo ? `ดูใบ ${longestPo.po_number}` : "ดู PO ที่รออยู่"}
+        >
+          <Card className="group-hover:shadow-md group-hover:border-primary/40 group-hover:-translate-y-0.5 transition-all duration-200">
+            <CardContent className="p-4 relative">
+              <ArrowRight className="absolute top-3 right-3 size-3.5 text-muted-foreground/0 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+
+              <div className="flex items-center justify-center gap-3.5">
+                <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${longTone.bg} ${longTone.text} ${longTone.ring}`}>
+                  <Clock className="size-6" strokeWidth={2.25} />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
+                    PO ค้างนานสุด
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className={`text-2xl font-extrabold tabular-nums leading-none ${longTone.text}`}>
+                      {stats.longestPendingDays}
+                    </span>
+                    <span className="text-sm font-semibold text-muted-foreground">วัน</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {longestPo ? longestPo.po_number : "รอดำเนินการ"}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      <Link
+        href="/reports"
+        className="block group"
+        title="เปิดหน้ารายงาน + วิเคราะห์เพิ่มเติม"
+      >
+        <Card className="group-hover:shadow-md group-hover:border-primary/40 group-hover:-translate-y-0.5 transition-all duration-200">
+          <CardContent className="p-4 relative">
+            <ArrowRight className="absolute top-3 right-3 size-3.5 text-muted-foreground/0 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+
             <div className="flex items-center justify-center gap-3.5">
-              {/* Icon — left */}
-              <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${longTone.bg} ${longTone.text} ${longTone.ring}`}>
-                <Clock className="size-6" strokeWidth={2.25} />
+              <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${
+                trendUp
+                  ? "bg-emerald-50 text-emerald-600 ring-emerald-200/60"
+                  : "bg-rose-50 text-rose-600 ring-rose-200/60"
+              }`}>
+                {trendUp ? <TrendingUp className="size-6" strokeWidth={2.25} /> : <TrendingDown className="size-6" strokeWidth={2.25} />}
               </div>
 
-              {/* Content — right */}
               <div className="min-w-0">
                 <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
-                  PO ค้างนานสุด
+                  เทียบเดือนก่อน
                 </div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className={`text-2xl font-extrabold tabular-nums leading-none ${longTone.text}`}>
-                    {stats.longestPendingDays}
-                  </span>
-                  <span className="text-sm font-semibold text-muted-foreground">วัน</span>
+                <div className={`text-xl font-extrabold tabular-nums leading-none mt-0.5 ${
+                  trendUp ? "text-emerald-700" : "text-rose-700"
+                }`}>
+                  {trendUp ? "+" : ""}{fmtMoney(diff)}
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5">รอดำเนินการ</div>
+                <div className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums ${
+                  trendUp ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                }`}>
+                  {trendUp ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
+                  {trendUp ? "+" : ""}{stats.spendGrowth.toFixed(1)}%
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
-      )}
-
-      <Card className="hover:shadow-md transition-shadow">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-center gap-3.5">
-            {/* Icon — left */}
-            <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${
-              trendUp
-                ? "bg-emerald-50 text-emerald-600 ring-emerald-200/60"
-                : "bg-rose-50 text-rose-600 ring-rose-200/60"
-            }`}>
-              {trendUp ? <TrendingUp className="size-6" strokeWidth={2.25} /> : <TrendingDown className="size-6" strokeWidth={2.25} />}
-            </div>
-
-            {/* Content — right */}
-            <div className="min-w-0">
-              <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
-                เทียบเดือนก่อน
-              </div>
-              <div className={`text-xl font-extrabold tabular-nums leading-none mt-0.5 ${
-                trendUp ? "text-emerald-700" : "text-rose-700"
-              }`}>
-                {trendUp ? "+" : ""}{fmtMoney(diff)}
-              </div>
-              <div className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums ${
-                trendUp ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
-              }`}>
-                {trendUp ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
-                {trendUp ? "+" : ""}{stats.spendGrowth.toFixed(1)}%
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      </Link>
     </>
   );
 }
