@@ -5,7 +5,9 @@
  */
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Save, X, ShoppingCart } from "lucide-react";
+import {
+  Save, X, ShoppingCart, FolderOpen, ChevronDown, ChevronRight,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -49,6 +51,45 @@ export function PoCreateClient({
     }
     return out;
   }, [equipment, category, search]);
+
+  // ===== Group filtered items by category =====
+  const groupedByCategory = useMemo(() => {
+    const groups = new Map<string, Equipment[]>();
+    for (const c of categories) groups.set(c, []);
+    const noCategory: Equipment[] = [];
+    for (const eq of filteredEq) {
+      const c = (eq.category ?? "").trim();
+      if (c) {
+        if (!groups.has(c)) groups.set(c, []);
+        groups.get(c)!.push(eq);
+      } else {
+        noCategory.push(eq);
+      }
+    }
+    const result: Array<{ name: string; items: Equipment[] }> = [];
+    for (const [name, items] of groups) {
+      if (items.length > 0) result.push({ name, items });
+    }
+    if (noCategory.length > 0) {
+      result.push({ name: "ไม่ระบุหมวดหมู่", items: noCategory });
+    }
+    return result;
+  }, [filteredEq, categories]);
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const allCollapsed = collapsed.size > 0 && collapsed.size === groupedByCategory.length;
+  function toggleCategory(name: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+  function toggleAll() {
+    if (allCollapsed) setCollapsed(new Set());
+    else setCollapsed(new Set(groupedByCategory.map((g) => g.name)));
+  }
 
   // ===== Cart actions =====
   const selectedEqIds = useMemo(
@@ -207,13 +248,24 @@ export function PoCreateClient({
               ))}
             </select>
           </div>
-          <div className="text-xs text-slate-500">
-            พบ <strong>{filteredEq.length}</strong> รายการ — คลิกการ์ดเพื่อเพิ่ม
+          <div className="flex items-center justify-between gap-3 flex-wrap text-xs">
+            <span className="text-slate-500">
+              พบ <strong>{filteredEq.length}</strong> รายการ ใน <strong>{groupedByCategory.length}</strong> หมวด — คลิกการ์ดเพื่อเพิ่ม
+            </span>
+            {groupedByCategory.length > 1 && (
+              <Button size="sm" variant="outline" onClick={toggleAll}>
+                {allCollapsed ? (
+                  <><ChevronDown className="size-3.5" /> ขยายทั้งหมด</>
+                ) : (
+                  <><ChevronRight className="size-3.5" /> ย่อทั้งหมด</>
+                )}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* ===== Equipment grid ===== */}
+      {/* ===== Equipment grouped by category ===== */}
       {filteredEq.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-slate-500">
@@ -221,11 +273,52 @@ export function PoCreateClient({
           </CardContent>
         </Card>
       ) : (
-        <EquipmentGrid
-          items={filteredEq}
-          selectedIds={selectedEqIds}
-          onToggle={toggleEquipment}
-        />
+        <div className="space-y-4">
+          {groupedByCategory.map((group) => {
+            const isCollapsed = collapsed.has(group.name);
+            return (
+              <section
+                key={group.name}
+                className="bg-card border border-border rounded-2xl overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(group.name)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left"
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                    <FolderOpen className="size-4" strokeWidth={2.25} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-base text-foreground">
+                      {group.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {group.items.length} รายการ
+                    </div>
+                  </div>
+                  <span
+                    className={`size-7 rounded-md text-muted-foreground flex items-center justify-center transition-transform ${isCollapsed ? "" : "rotate-180"}`}
+                    aria-hidden
+                  >
+                    <ChevronDown className="size-4" />
+                  </span>
+                </button>
+
+                {!isCollapsed && (
+                  <div className="px-4 pb-4 pt-1 border-t border-border/40">
+                    <EquipmentGrid
+                      items={group.items}
+                      selectedIds={selectedEqIds}
+                      onToggle={toggleEquipment}
+                    />
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {/* ===== Custom item form ===== */}

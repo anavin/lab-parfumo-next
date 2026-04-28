@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Send, X, Search, Hash, FolderOpen, Package as PackageIcon,
-  Banknote, AlertCircle, ChevronLeft, ChevronRight,
+  Banknote, AlertCircle, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,45 @@ export function WithdrawForm({
     [equipment, selectedId],
   );
 
+  // Group filtered items by category — same pattern as equipment catalog
+  const groupedByCategory = useMemo(() => {
+    const groups = new Map<string, Equipment[]>();
+    for (const c of categories) groups.set(c, []);
+    const noCategory: Equipment[] = [];
+    for (const eq of filtered) {
+      const c = (eq.category ?? "").trim();
+      if (c) {
+        if (!groups.has(c)) groups.set(c, []);
+        groups.get(c)!.push(eq);
+      } else {
+        noCategory.push(eq);
+      }
+    }
+    const result: Array<{ name: string; items: Equipment[] }> = [];
+    for (const [name, items] of groups) {
+      if (items.length > 0) result.push({ name, items });
+    }
+    if (noCategory.length > 0) {
+      result.push({ name: "ไม่ระบุหมวดหมู่", items: noCategory });
+    }
+    return result;
+  }, [filtered, categories]);
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const allCollapsed = collapsed.size > 0 && collapsed.size === groupedByCategory.length;
+  function toggleCategory(name: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+  function toggleAll() {
+    if (allCollapsed) setCollapsed(new Set());
+    else setCollapsed(new Set(groupedByCategory.map((g) => g.name)));
+  }
+
   return (
     <>
       <div className="space-y-4">
@@ -104,13 +143,22 @@ export function WithdrawForm({
                 แสดงสินค้าที่หมดด้วย
               </label>
               <span className="ml-auto">
-                พบ <strong>{filtered.length}</strong> รายการ
+                พบ <strong>{filtered.length}</strong> รายการ ใน <strong>{groupedByCategory.length}</strong> หมวด
               </span>
+              {groupedByCategory.length > 1 && (
+                <Button size="sm" variant="outline" onClick={toggleAll}>
+                  {allCollapsed ? (
+                    <><ChevronDown className="size-3.5" /> ขยายทั้งหมด</>
+                  ) : (
+                    <><ChevronRight className="size-3.5" /> ย่อทั้งหมด</>
+                  )}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Equipment grid (rich, 4 cols) */}
+        {/* Equipment grid grouped by category (collapsible) */}
         {filtered.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-slate-500">
@@ -118,20 +166,61 @@ export function WithdrawForm({
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {filtered.map((eq) => (
-              <RichWithdrawCard
-                key={eq.id}
-                eq={eq}
-                isSelected={selectedId === eq.id}
-                onSelect={() =>
-                  setSelectedId(selectedId === eq.id ? null : eq.id)
-                }
-                onPreview={(images, index) =>
-                  setPreview({ images, index, name: eq.name })
-                }
-              />
-            ))}
+          <div className="space-y-4">
+            {groupedByCategory.map((group) => {
+              const isCollapsed = collapsed.has(group.name);
+              return (
+                <section
+                  key={group.name}
+                  className="bg-card border border-border rounded-2xl overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(group.name)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left"
+                    aria-expanded={!isCollapsed}
+                  >
+                    <span className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                      <FolderOpen className="size-4" strokeWidth={2.25} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-base text-foreground">
+                        {group.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {group.items.length} รายการ
+                      </div>
+                    </div>
+                    <span
+                      className={`size-7 rounded-md text-muted-foreground flex items-center justify-center transition-transform ${isCollapsed ? "" : "rotate-180"}`}
+                      aria-hidden
+                    >
+                      <ChevronDown className="size-4" />
+                    </span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div className="px-4 pb-4 pt-1 border-t border-border/40">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {group.items.map((eq) => (
+                          <RichWithdrawCard
+                            key={eq.id}
+                            eq={eq}
+                            isSelected={selectedId === eq.id}
+                            onSelect={() =>
+                              setSelectedId(selectedId === eq.id ? null : eq.id)
+                            }
+                            onPreview={(images, index) =>
+                              setPreview({ images, index, name: eq.name })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         )}
 
