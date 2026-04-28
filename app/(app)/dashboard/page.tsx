@@ -436,15 +436,16 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(po.created_at).getTime()) / 86400_000));
   const ageLabel = ageDays === 0 ? "วันนี้" : ageDays < 7 ? `${ageDays} วัน` : `${ageDays}+ วัน`;
   const isStale = ageDays >= 3;
+  const items = po.items ?? [];
 
   return (
     <Link
       href={`/po/${po.id}`}
-      className="group relative flex items-center gap-3.5 py-3 px-3 -mx-3 hover:bg-accent/40 rounded-xl transition-all duration-200"
+      className="group relative flex items-start gap-3.5 py-3 px-3 -mx-3 hover:bg-accent/40 rounded-xl transition-all duration-200"
     >
       {/* Status icon */}
       <div
-        className={`relative size-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+        className={`relative size-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-110 ${
           isProblem
             ? "bg-red-50 text-red-600 ring-1 ring-red-200/60"
             : isStale
@@ -464,7 +465,8 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
+        {/* Row 1: PO# + status */}
+        <div className="flex items-baseline gap-2 flex-wrap">
           <div className="font-bold text-sm text-foreground font-mono tracking-tight">
             {po.po_number}
           </div>
@@ -474,15 +476,48 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
             • {po.status}
           </div>
         </div>
+
+        {/* Row 2: requester · total qty */}
         <div className="text-xs text-muted-foreground mt-0.5 truncate">
           {po.created_by_name ?? "—"}
           <span className="mx-1.5 text-muted-foreground/40">·</span>
-          {(po.items?.length ?? 0)} รายการ
+          {items.length} รายการ
+          {items.length > 0 && (
+            <>
+              <span className="mx-1.5 text-muted-foreground/40">·</span>
+              รวม <span className="font-semibold text-foreground tabular-nums">
+                {items.reduce((s, it) => s + (it.qty ?? 0), 0).toLocaleString("th-TH")}
+              </span> ชิ้น
+            </>
+          )}
         </div>
+
+        {/* Row 3: item chips (max 3 + "+N more") */}
+        {items.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {items.slice(0, 3).map((it, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 max-w-[180px] bg-muted/60 text-foreground/80 text-[11px] font-medium rounded-md px-2 py-0.5"
+                title={`${it.name} ×${it.qty} ${it.unit ?? ""}`}
+              >
+                <span className="truncate">{it.name}</span>
+                <span className="font-bold text-primary tabular-nums flex-shrink-0">
+                  ×{it.qty}
+                </span>
+              </span>
+            ))}
+            {items.length > 3 && (
+              <span className="inline-flex items-center bg-muted/40 text-muted-foreground text-[11px] font-medium rounded-md px-2 py-0.5">
+                +{items.length - 3} เพิ่มเติม
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Age + arrow */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
         <div className={`text-xs font-semibold tabular-nums ${
           isStale ? "text-amber-600" : "text-muted-foreground"
         }`}>
