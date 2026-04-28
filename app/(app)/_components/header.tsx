@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, Bell, Package, Sparkles, Settings } from "lucide-react";
+import { LogOut, Bell, Package, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 import type { User } from "@/lib/types/db";
 import { Button } from "@/components/ui/button";
@@ -56,13 +56,6 @@ export function AppHeader({ user }: { user: User }) {
                 {/* Animated shimmer sweep on hover */}
                 <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-12" />
               </div>
-
-              {/* Sparkle accent (top-right) — twinkles */}
-              <Sparkles
-                className="absolute -top-1 -right-1 size-3.5 text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)] animate-pulse"
-                fill="currentColor"
-                strokeWidth={1}
-              />
             </div>
 
             {/* Wordmark */}
