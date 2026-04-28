@@ -310,9 +310,10 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
             <span className="size-1 rounded-full bg-emerald-400 animate-pulse" />
             ใช้จ่ายเดือนนี้
           </div>
-          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)]">
+          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)] leading-none">
             {fmtNumber(stats.thisMonthSpend)}
           </div>
+          <div className="text-xs font-semibold text-white/60 tracking-[0.2em] uppercase mt-1.5">บาท</div>
           {stats.lastMonthSpend > 0 && (
             <div className="flex justify-center mt-3">
               <span
@@ -334,10 +335,11 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
           <div className="text-[11px] uppercase tracking-[0.25em] text-white/70 font-black mb-3">
             PO ทั้งหมด
           </div>
-          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)]">
+          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none">
             {stats.total}
           </div>
-          <div className="text-xs text-white/70 mt-3 font-medium">
+          <div className="text-xs font-semibold text-white/60 tracking-[0.2em] uppercase mt-1.5">ใบ</div>
+          <div className="text-xs text-white/70 mt-2 font-medium">
             <span className="text-emerald-300 font-bold">+{stats.newThisWeek}</span> ใบใหม่สัปดาห์นี้
           </div>
         </div>
@@ -350,17 +352,18 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
             )}
             รอดำเนินการ
           </div>
-          <div className={`text-4xl sm:text-5xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] ${
+          <div className={`text-4xl sm:text-5xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none ${
             stats.staleCount > 0 ? "bg-gradient-to-br from-white via-amber-100 to-amber-200 bg-clip-text text-transparent" : "text-white"
           }`}>
             {stats.pending}
           </div>
+          <div className="text-xs font-semibold text-white/60 tracking-[0.2em] uppercase mt-1.5">ใบ</div>
           {stats.staleCount > 0 ? (
-            <div className="text-xs text-amber-200 mt-3 font-semibold">
+            <div className="text-xs text-amber-200 mt-2 font-semibold">
               ⚠️ {stats.staleCount} ใบค้างเกิน 3 วัน
             </div>
           ) : (
-            <div className="text-xs text-white/60 mt-3">ไม่มีค้าง</div>
+            <div className="text-xs text-white/60 mt-2">ไม่มีค้าง</div>
           )}
         </div>
       </div>
