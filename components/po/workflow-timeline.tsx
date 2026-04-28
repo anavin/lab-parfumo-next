@@ -43,28 +43,39 @@ export function WorkflowTimeline({ status }: { status: PoStatus }) {
         return (
           <div
             key={step.status}
-            className="flex-1 flex flex-col items-center relative min-w-0"
+            className="flex-1 flex flex-col items-center relative min-w-0 animate-fade-in-up"
+            style={{ animationDelay: `${i * 80}ms`, animationFillMode: "backwards" }}
           >
             {/* Connecting line */}
             {!isLast && (
               <div
-                className={`absolute top-3.5 left-1/2 w-full h-0.5 ${
-                  isDone || isActive ? "bg-brand-600" : "bg-slate-300"
-                }`}
+                className="absolute top-3.5 left-1/2 w-full h-0.5 bg-slate-300 overflow-hidden"
                 style={{ zIndex: 0 }}
-              />
+              >
+                {/* Animated fill */}
+                <div
+                  className="h-full bg-brand-600 transition-all duration-700 ease-out"
+                  style={{
+                    width: isDone ? "100%" : isActive ? "50%" : "0%",
+                    transitionDelay: `${i * 80 + 200}ms`,
+                  }}
+                />
+              </div>
             )}
             {/* Dot */}
             <div
-              className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+              className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300 ${
                 isDone
                   ? "bg-brand-600 border-brand-600 text-white"
                   : isActive
-                    ? "bg-brand-600 border-brand-600 text-white ring-4 ring-brand-100"
+                    ? "bg-brand-600 border-brand-600 text-white ring-4 ring-brand-100 shadow-md scale-110"
                     : "bg-white border-slate-300 text-slate-400"
               }`}
             >
-              {isDone ? "✓" : i + 1}
+              {isActive && (
+                <span className="absolute inset-0 rounded-full bg-brand-600 animate-ping opacity-30" />
+              )}
+              <span className="relative">{isDone ? "✓" : i + 1}</span>
             </div>
             {/* Label */}
             <div
