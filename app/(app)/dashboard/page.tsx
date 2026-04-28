@@ -3,6 +3,8 @@ import Link from "next/link";
 import {
   AlertTriangle, Clock, Plus, FileText, Package,
   TrendingUp, TrendingDown, Trophy, AlertCircle, ArrowRight,
+  ClipboardEdit, ShoppingBag, Truck, PackageCheck,
+  CheckCircle2, XCircle, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,14 +30,57 @@ const STATUS_ORDER: PoStatus[] = [
   "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์", "ยกเลิก",
 ];
 
-const STATUS_EMOJI: Record<PoStatus, string> = {
-  "รอจัดซื้อดำเนินการ": "📝",
-  "สั่งซื้อแล้ว": "✅",
-  "กำลังขนส่ง": "🚚",
-  "รับของแล้ว": "📦",
-  "มีปัญหา": "⚠️",
-  "เสร็จสมบูรณ์": "✓",
-  "ยกเลิก": "❌",
+interface StatusVisual {
+  icon: LucideIcon;
+  label: string;
+  /** Tailwind classes for the icon background + text */
+  tone: string;
+  ring: string;
+}
+
+const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
+  "รอจัดซื้อดำเนินการ": {
+    icon: ClipboardEdit,
+    label: "รอจัดซื้อ",
+    tone: "bg-amber-100 text-amber-700",
+    ring: "ring-amber-200/60",
+  },
+  "สั่งซื้อแล้ว": {
+    icon: ShoppingBag,
+    label: "สั่งซื้อแล้ว",
+    tone: "bg-blue-100 text-blue-700",
+    ring: "ring-blue-200/60",
+  },
+  "กำลังขนส่ง": {
+    icon: Truck,
+    label: "กำลังขนส่ง",
+    tone: "bg-indigo-100 text-indigo-700",
+    ring: "ring-indigo-200/60",
+  },
+  "รับของแล้ว": {
+    icon: PackageCheck,
+    label: "รับของแล้ว",
+    tone: "bg-cyan-100 text-cyan-700",
+    ring: "ring-cyan-200/60",
+  },
+  "มีปัญหา": {
+    icon: AlertTriangle,
+    label: "มีปัญหา",
+    tone: "bg-red-100 text-red-600",
+    ring: "ring-red-200/60",
+  },
+  "เสร็จสมบูรณ์": {
+    icon: CheckCircle2,
+    label: "เสร็จสมบูรณ์",
+    tone: "bg-emerald-100 text-emerald-700",
+    ring: "ring-emerald-200/60",
+  },
+  "ยกเลิก": {
+    icon: XCircle,
+    label: "ยกเลิก",
+    tone: "bg-slate-100 text-slate-500",
+    ring: "ring-slate-200/60",
+  },
 };
 
 function fmtMoney(n: number): string {
@@ -170,28 +215,39 @@ export default async function DashboardPage() {
         <h2 className="text-[11px] uppercase tracking-wide font-bold text-muted-foreground mb-3">
           ภาพรวมสถานะ
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {STATUS_ORDER.map((status) => {
+            const visual = STATUS_VISUAL[status];
+            const Icon = visual.icon;
             const count = stats.byStatus[status] ?? 0;
             const warn = status === "รอจัดซื้อดำเนินการ" && count > 0;
-            const short = status.length > 10 ? `${status.slice(0, 9)}…` : status;
+            const isEmpty = count === 0;
             return (
               <Link
                 key={status}
                 href={`/po?status=${encodeURIComponent(status)}`}
-                className={`group relative bg-card border border-border rounded-xl p-3.5 hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5 transition-all ${
-                  warn ? "ring-1 ring-warning/30" : ""
-                }`}
+                className={`group relative bg-card border border-border/80 rounded-2xl p-4 flex flex-col items-center justify-center text-center hover:border-primary/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ${
+                  warn ? `ring-1 ${visual.ring}` : ""
+                } ${isEmpty ? "opacity-70 hover:opacity-100" : ""}`}
               >
+                {/* Warning pulse dot */}
                 {warn && (
-                  <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-warning ring-4 ring-warning/20" />
+                  <span className="absolute top-3 right-3 size-2 rounded-full bg-amber-500 ring-4 ring-amber-200/60 animate-pulse" />
                 )}
-                <div className="text-base mb-1">{STATUS_EMOJI[status]}</div>
-                <div className="text-xl font-bold text-foreground leading-none tabular-nums">
+
+                {/* Icon badge */}
+                <div className={`size-11 rounded-xl flex items-center justify-center mb-3 transition-transform duration-300 group-hover:scale-110 ${visual.tone} ring-1 ${visual.ring}`}>
+                  <Icon className="size-5" strokeWidth={2.25} />
+                </div>
+
+                {/* Count */}
+                <div className="text-2xl font-extrabold text-foreground leading-none tabular-nums">
                   {count}
                 </div>
-                <div className="text-[11px] text-muted-foreground font-medium mt-1.5 truncate">
-                  {short}
+
+                {/* Label — full text, no truncation */}
+                <div className="text-xs text-muted-foreground font-semibold mt-2 leading-tight">
+                  {visual.label}
                 </div>
               </Link>
             );
