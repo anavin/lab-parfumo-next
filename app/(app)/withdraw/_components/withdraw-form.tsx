@@ -11,6 +11,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import type { Equipment } from "@/lib/types/db";
 import { createWithdrawalAction } from "@/lib/actions/withdraw";
@@ -407,79 +410,75 @@ function SelectedItemForm({
   }
 
   return (
-    <Card className="bg-brand-50/60 border-brand-300 ring-1 ring-brand-200/40 sticky bottom-2 shadow-lg z-10">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <div className="text-xs font-bold text-brand-700 mb-0.5 uppercase tracking-wide">📤 กำลังเบิก</div>
-            <div className="font-bold text-foreground">{eq.name}</div>
-            <div className="text-xs text-muted-foreground">
-              สต็อก: <strong>{stock}</strong> {eq.unit}
+    <Dialog open onOpenChange={(o) => !o && !pending && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <Send className="size-4" />
+            </span>
+            เบิก: {eq.name}
+          </DialogTitle>
+          <DialogDescription>
+            สต็อกคงเหลือ <strong className="text-foreground tabular-nums">{stock}</strong> {eq.unit}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">จำนวน *</label>
+              <input
+                type="number" min="1" max={stock}
+                value={qty}
+                onChange={(e) => setQty(Math.max(1, Math.min(stock, parseInt(e.target.value, 10) || 1)))}
+                onFocus={(e) => e.currentTarget.select()}
+                disabled={pending}
+                autoFocus
+                className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm tabular-nums focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">วันที่ใช้</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                disabled={pending}
+                className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">หน่วย</label>
+              <Input value={eq.unit ?? "ชิ้น"} disabled />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={pending}
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="ปิด"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs font-medium text-foreground mb-1">จำนวน *</label>
-            <input
-              type="number" min="1" max={stock}
-              value={qty}
-              onChange={(e) => setQty(Math.max(1, Math.min(stock, parseInt(e.target.value, 10) || 1)))}
-              onFocus={(e) => e.currentTarget.select()}
+            <label className="block text-xs font-medium text-foreground mb-1">
+              ใช้ทำอะไร / ใช้ที่ไหน *
+            </label>
+            <Input
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="เช่น ผลิต CELEB lot 24, ตัวอย่างลูกค้า"
               disabled={pending}
-              className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm tabular-nums focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">วันที่ใช้</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              disabled={pending}
-              className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">หน่วย</label>
-            <Input value={eq.unit ?? "ชิ้น"} disabled />
+
+          {error && <Alert tone="danger" className="text-sm">❌ {error}</Alert>}
+
+          <div className="flex gap-2 pt-2">
+            <Button onClick={handleSubmit} loading={pending}>
+              <Send className="h-4 w-4" /> บันทึกเบิก
+            </Button>
+            <Button variant="outline" onClick={onClose} disabled={pending}>
+              ยกเลิก
+            </Button>
           </div>
         </div>
-
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">
-            ใช้ทำอะไร / ใช้ที่ไหน *
-          </label>
-          <Input
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="เช่น ผลิต CELEB lot 24, ตัวอย่างลูกค้า"
-            disabled={pending}
-          />
-        </div>
-
-        {error && <Alert tone="danger" className="text-sm">❌ {error}</Alert>}
-
-        <div className="flex gap-2">
-          <Button onClick={handleSubmit} loading={pending}>
-            <Send className="h-4 w-4" /> บันทึกเบิก
-          </Button>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
-            ยกเลิก
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
