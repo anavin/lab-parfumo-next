@@ -42,6 +42,10 @@ function fmtMoney(n: number): string {
   return `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`;
 }
 
+function fmtNumber(n: number): string {
+  return n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+}
+
 function daysAgo(iso: string): string {
   try {
     const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000);
@@ -306,8 +310,8 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
             <span className="size-1 rounded-full bg-emerald-400 animate-pulse" />
             ใช้จ่ายเดือนนี้
           </div>
-          <div className="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)]">
-            {fmtMoney(stats.thisMonthSpend)}
+          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)]">
+            {fmtNumber(stats.thisMonthSpend)}
           </div>
           {stats.lastMonthSpend > 0 && (
             <div className="flex justify-center mt-3">
@@ -330,7 +334,7 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
           <div className="text-[11px] uppercase tracking-[0.25em] text-white/70 font-black mb-3">
             PO ทั้งหมด
           </div>
-          <div className="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)]">
+          <div className="text-4xl sm:text-5xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)]">
             {stats.total}
           </div>
           <div className="text-xs text-white/70 mt-3 font-medium">
@@ -346,7 +350,7 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
             )}
             รอดำเนินการ
           </div>
-          <div className={`text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] ${
+          <div className={`text-4xl sm:text-5xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] ${
             stats.staleCount > 0 ? "bg-gradient-to-br from-white via-amber-100 to-amber-200 bg-clip-text text-transparent" : "text-white"
           }`}>
             {stats.pending}
