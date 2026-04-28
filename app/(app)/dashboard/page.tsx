@@ -9,8 +9,6 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { StatusPill } from "@/components/ui/status-pill";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   getPos, computeStats, pickActionItems,
@@ -89,17 +87,6 @@ function fmtMoney(n: number): string {
 
 function fmtNumber(n: number): string {
   return n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
-}
-
-function daysAgo(iso: string): string {
-  try {
-    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000);
-    if (days === 0) return "วันนี้";
-    if (days < 7) return `${days} วันที่แล้ว`;
-    return `${days} วัน`;
-  } catch {
-    return "";
-  }
 }
 
 export default async function DashboardPage() {
@@ -260,23 +247,42 @@ export default async function DashboardPage() {
         {/* LEFT: Action items */}
         <Card className={isAdmin ? "lg:col-span-3" : "lg:col-span-5"}>
           <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="text-[11px] uppercase tracking-wide font-bold text-foreground">
-                ที่ต้องดำเนินการ
+            <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-border/40">
+              <div className="flex items-center gap-2.5">
+                <div className="size-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <Clock className="size-4" strokeWidth={2.5} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-foreground">
+                    ที่ต้องดำเนินการ
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {actionItems.length > 0
+                      ? `${actionItems.length} ใบรอจัดการ`
+                      : "ไม่มีงานค้าง"}
+                  </div>
+                </div>
               </div>
               {actionItems.length > 0 && (
-                <Badge variant="destructive" className="text-[10px]">
-                  {actionItems.length}
-                </Badge>
+                <Link
+                  href="/po?status=รอจัดซื้อดำเนินการ"
+                  className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  ดูทั้งหมด
+                  <ArrowRight className="size-3" />
+                </Link>
               )}
             </div>
             {actionItems.length === 0 ? (
               <div className="text-center py-10 text-sm text-muted-foreground">
-                <div className="text-2xl mb-2">🎉</div>
-                ไม่มีงานค้าง — ทำดีมาก!
+                <div className="size-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="size-6" strokeWidth={2.25} />
+                </div>
+                <div className="font-semibold text-foreground">ไม่มีงานค้าง</div>
+                <div className="text-xs mt-0.5">ทำดีมาก! ทุกอย่างเรียบร้อย 🎉</div>
               </div>
             ) : (
-              <div className="divide-y divide-border/50 -my-1">
+              <div className="space-y-0.5">
                 {actionItems.map((po) => (
                   <ActionRow key={po.id} po={po} />
                 ))}
@@ -427,35 +433,63 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
 
 function ActionRow({ po }: { po: PurchaseOrder }) {
   const isProblem = po.status === "มีปัญหา";
+  const ageDays = Math.max(0, Math.floor((Date.now() - new Date(po.created_at).getTime()) / 86400_000));
+  const ageLabel = ageDays === 0 ? "วันนี้" : ageDays < 7 ? `${ageDays} วัน` : `${ageDays}+ วัน`;
+  const isStale = ageDays >= 3;
+
   return (
     <Link
       href={`/po/${po.id}`}
-      className="flex items-center gap-3 py-3 px-2 -mx-2 hover:bg-accent/50 rounded-lg transition-colors"
+      className="group relative flex items-center gap-3.5 py-3 px-3 -mx-3 hover:bg-accent/40 rounded-xl transition-all duration-200"
     >
+      {/* Status icon */}
       <div
-        className={`size-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+        className={`relative size-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
           isProblem
-            ? "bg-destructive/10 text-destructive"
-            : "bg-warning/10 text-warning-foreground/100 [color:hsl(var(--warning))]"
+            ? "bg-red-50 text-red-600 ring-1 ring-red-200/60"
+            : isStale
+              ? "bg-amber-50 text-amber-600 ring-1 ring-amber-200/60"
+              : "bg-blue-50 text-blue-600 ring-1 ring-blue-200/60"
         }`}
       >
-        {isProblem ? <AlertCircle className="size-5" /> : <Clock className="size-5" />}
+        {isProblem
+          ? <AlertCircle className="size-5" strokeWidth={2.25} />
+          : <Clock className="size-5" strokeWidth={2.25} />
+        }
+        {/* Pulse for problems */}
+        {isProblem && (
+          <span className="absolute inset-0 rounded-xl bg-red-400 animate-ping opacity-20" />
+        )}
       </div>
+
+      {/* Main content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="font-bold text-sm text-foreground font-mono">
+        <div className="flex items-baseline gap-2">
+          <div className="font-bold text-sm text-foreground font-mono tracking-tight">
             {po.po_number}
           </div>
-          <StatusPill status={po.status} />
+          <div className={`text-[11px] font-semibold ${
+            isProblem ? "text-red-600" : isStale ? "text-amber-600" : "text-blue-600"
+          }`}>
+            • {po.status}
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">
-          {po.created_by_name ?? "—"} • {(po.items?.length ?? 0)} รายการ
+        <div className="text-xs text-muted-foreground mt-0.5 truncate">
+          {po.created_by_name ?? "—"}
+          <span className="mx-1.5 text-muted-foreground/40">·</span>
+          {(po.items?.length ?? 0)} รายการ
         </div>
       </div>
-      <div className="text-xs text-muted-foreground flex-shrink-0">
-        {daysAgo(po.created_at)}
+
+      {/* Age + arrow */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <div className={`text-xs font-semibold tabular-nums ${
+          isStale ? "text-amber-600" : "text-muted-foreground"
+        }`}>
+          {ageLabel}
+        </div>
+        <ArrowRight className="size-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
       </div>
-      <ArrowRight className="size-4 text-muted-foreground/40 flex-shrink-0" />
     </Link>
   );
 }
