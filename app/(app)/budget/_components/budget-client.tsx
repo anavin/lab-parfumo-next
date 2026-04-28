@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, BarChart3, Settings } from "lucide-react";
-import { cn } from "@/lib/cn";
+import { BarChart3, Settings as SettingsIcon } from "lucide-react";
 import type { Budget, BudgetStatus } from "@/lib/types/db";
 import { BudgetDashboard } from "./budget-dashboard";
 import { BudgetSettings } from "./budget-settings";
@@ -21,12 +20,21 @@ export function BudgetClient({
   const [tab, setTab] = useState<Tab>("dashboard");
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 border-b border-slate-200">
-        <TabButton active={tab === "dashboard"} onClick={() => setTab("dashboard")}
-                    icon={<BarChart3 className="h-4 w-4" />} label="Dashboard" />
-        <TabButton active={tab === "settings"} onClick={() => setTab("settings")}
-                    icon={<Settings className="h-4 w-4" />} label={`ตั้งงบ (${allBudgets.length})`} />
+    <div className="space-y-5">
+      {/* Tabs — segmented pill style (consistent with app) */}
+      <div className="flex gap-1 bg-muted rounded-xl p-1 max-w-md">
+        <TabButton
+          active={tab === "dashboard"}
+          onClick={() => setTab("dashboard")}
+          icon={<BarChart3 className="size-4" />}
+          label="Dashboard"
+        />
+        <TabButton
+          active={tab === "settings"}
+          onClick={() => setTab("settings")}
+          icon={<SettingsIcon className="size-4" />}
+          label={`ตั้งงบประมาณ (${allBudgets.length})`}
+        />
       </div>
 
       {tab === "dashboard" ? (
@@ -58,12 +66,11 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors",
+      className={`flex-1 inline-flex items-center justify-center gap-1.5 px-4 h-10 rounded-lg text-sm font-semibold transition-all ${
         active
-          ? "border-brand-700 text-brand-700"
-          : "border-transparent text-slate-500 hover:text-slate-900",
-      )}
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground"
+      }`}
     >
       {icon}
       {label}
