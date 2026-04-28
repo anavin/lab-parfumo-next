@@ -119,62 +119,20 @@ export function PoCreateClient({
 
   return (
     <div className="space-y-5">
-      {/* ===== Search + Filter ===== */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <h2 className="text-sm font-bold text-slate-900">📦 รายการที่ต้องการ</h2>
-          <div className="grid sm:grid-cols-3 gap-2">
-            <Input
-              type="search"
-              placeholder="🔍 ชื่อสินค้า / SKU"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="sm:col-span-2"
-            />
-            <select
-              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <option value="ทั้งหมด">📂 ทั้งหมด</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>📂 {c}</option>
-              ))}
-            </select>
-          </div>
-          <div className="text-xs text-slate-500">
-            พบ <strong>{filteredEq.length}</strong> รายการ — คลิกการ์ดเพื่อเพิ่ม
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ===== Equipment grid ===== */}
-      {filteredEq.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-slate-500">
-            ไม่พบรายการที่ตรงกับเงื่อนไข — ลองเปลี่ยนคำค้นหา หรือใช้ "พิมพ์ชื่อเอง" ด้านล่าง
-          </CardContent>
-        </Card>
-      ) : (
-        <EquipmentGrid
-          items={filteredEq}
-          selectedIds={selectedEqIds}
-          onToggle={toggleEquipment}
-        />
-      )}
-
-      {/* ===== Custom item form ===== */}
-      <CustomItemForm onAdd={addCustomItem} />
-
-      {/* ===== Cart ===== */}
-      {items.length > 0 ? (
-        <Card className="bg-brand-50 border-brand-300">
+      {/* ===== Cart (TOP — visible whenever items exist) ===== */}
+      {items.length > 0 && (
+        <Card className="bg-brand-50/60 border-brand-300 ring-1 ring-brand-200/40 shadow-sm">
           <CardContent className="p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-brand-700" />
-              <h2 className="text-base font-bold text-slate-900">
-                รายการในใบ PO ({items.length})
-              </h2>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-brand-700" />
+                <h2 className="text-base font-bold text-slate-900">
+                  รายการในใบ PO ({items.length})
+                </h2>
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                เลือก / แก้จำนวน → กดบันทึกด้านล่าง
+              </div>
             </div>
 
             <CartItems
@@ -222,10 +180,62 @@ export function PoCreateClient({
             </div>
           </CardContent>
         </Card>
-      ) : (
+      )}
+
+      {/* ===== Search + Filter ===== */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h2 className="text-sm font-bold text-slate-900">
+            📦 {items.length > 0 ? "เพิ่มรายการเพิ่มเติม" : "เลือกรายการที่ต้องการ"}
+          </h2>
+          <div className="grid sm:grid-cols-3 gap-2">
+            <Input
+              type="search"
+              placeholder="🔍 ชื่อสินค้า / SKU"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <select
+              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="ทั้งหมด">📂 ทั้งหมด</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>📂 {c}</option>
+              ))}
+            </select>
+          </div>
+          <div className="text-xs text-slate-500">
+            พบ <strong>{filteredEq.length}</strong> รายการ — คลิกการ์ดเพื่อเพิ่ม
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ===== Equipment grid ===== */}
+      {filteredEq.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-slate-500">
-            👆 คลิกการ์ดสินค้าด้านบน หรือกด "พิมพ์ชื่อเอง" เพื่อเริ่มเพิ่มรายการ
+            ไม่พบรายการที่ตรงกับเงื่อนไข — ลองเปลี่ยนคำค้นหา หรือใช้ &quot;พิมพ์ชื่อเอง&quot; ด้านล่าง
+          </CardContent>
+        </Card>
+      ) : (
+        <EquipmentGrid
+          items={filteredEq}
+          selectedIds={selectedEqIds}
+          onToggle={toggleEquipment}
+        />
+      )}
+
+      {/* ===== Custom item form ===== */}
+      <CustomItemForm onAdd={addCustomItem} />
+
+      {/* Empty hint at bottom (only when no items) */}
+      {items.length === 0 && (
+        <Card className="border-dashed">
+          <CardContent className="p-8 text-center text-sm text-muted-foreground">
+            👆 คลิกการ์ดสินค้าด้านบน หรือกด &quot;พิมพ์ชื่อเอง&quot; เพื่อเริ่มเพิ่มรายการ
           </CardContent>
         </Card>
       )}
