@@ -2,13 +2,23 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building, Lock, Save } from "lucide-react";
+import {
+  Building, Lock, Save, Mail, Send, CheckCircle2, AlertCircle, Eye, EyeOff,
+  Server, Trash2,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
-import { updateCompanySettingsAction } from "@/lib/actions/settings";
+import { toast } from "sonner";
+import {
+  updateCompanySettingsAction,
+  updateEmailSettingsAction,
+  clearEmailSettingsAction,
+  testEmailAction,
+} from "@/lib/actions/settings";
 
 export interface CompanySettings {
   name: string;
@@ -26,43 +36,63 @@ export interface CompanySettings {
   updated_by_name: string;
 }
 
-type Tab = "company" | "login";
+export interface EmailUiSettings {
+  host: string;
+  port: number;
+  user: string;
+  hasPassword: boolean;
+  fromEmail: string;
+  fromName: string;
+  secure: boolean;
+  source: "env" | "db" | "none";
+  managedByEnv: boolean;
+}
 
-export function SettingsClient({ initial }: { initial: CompanySettings }) {
+type Tab = "company" | "login" | "email";
+
+export function SettingsClient({
+  initial, email, adminEmail,
+}: {
+  initial: CompanySettings;
+  email: EmailUiSettings;
+  adminEmail: string;
+}) {
   const [tab, setTab] = useState<Tab>("company");
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
         <TabButton active={tab === "company"} onClick={() => setTab("company")}
                     icon={<Building className="h-4 w-4" />} label="ข้อมูลบริษัท" />
         <TabButton active={tab === "login"} onClick={() => setTab("login")}
                     icon={<Lock className="h-4 w-4" />} label="หน้า Login" />
+        <TabButton active={tab === "email"} onClick={() => setTab("email")}
+                    icon={<Mail className="h-4 w-4" />} label="อีเมล (SMTP)"
+                    badge={email.source === "none" ? "ยังไม่ตั้ง" : undefined} />
       </div>
 
-      {tab === "company" ? (
-        <CompanyForm initial={initial} />
-      ) : (
-        <LoginIntroForm initial={initial} />
-      )}
+      {tab === "company" && <CompanyForm initial={initial} />}
+      {tab === "login" && <LoginIntroForm initial={initial} />}
+      {tab === "email" && <EmailForm initial={email} adminEmail={adminEmail} />}
     </div>
   );
 }
 
 function TabButton({
-  active, onClick, icon, label,
+  active, onClick, icon, label, badge,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  badge?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors",
+        "inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap",
         active
           ? "border-brand-700 text-brand-700"
           : "border-transparent text-slate-500 hover:text-slate-900",
@@ -70,6 +100,11 @@ function TabButton({
     >
       {icon}
       {label}
+      {badge && (
+        <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -353,6 +388,404 @@ function LoginIntroForm({ initial }: { initial: CompanySettings }) {
           )}
         </div>
       </CardContent>
+    </Card>
+  );
+}
+
+// ==================================================================
+// Email/SMTP form
+// ==================================================================
+type Preset = { name: string; host: string; port: number; secure: boolean; help?: string };
+const PRESETS: Preset[] = [
+  { name: "Gmail", host: "smtp.gmail.com", port: 587, secure: false, help: "ต้องใช้ App Password (ไม่ใช่รหัส Gmail ปกติ)" },
+  { name: "Resend", host: "smtp.resend.com", port: 587, secure: false, help: "Username = 'resend', Password = API Key" },
+  { name: "SendGrid", host: "smtp.sendgrid.net", port: 587, secure: false, help: "Username = 'apikey', Password = API Key" },
+  { name: "Outlook", host: "smtp-mail.outlook.com", port: 587, secure: false },
+  { name: "Custom", host: "", port: 587, secure: false },
+];
+
+function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEmail: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [testing, startTesting] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const [host, setHost] = useState(initial.host);
+  const [port, setPort] = useState(String(initial.port));
+  const [user, setUser] = useState(initial.user);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [fromEmail, setFromEmail] = useState(initial.fromEmail);
+  const [fromName, setFromName] = useState(initial.fromName || "Lab Parfumo PO");
+  const [secure, setSecure] = useState(initial.secure);
+
+  const [testTo, setTestTo] = useState(adminEmail || "");
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+
+  const isConfigured = initial.source !== "none";
+  const managedByEnv = initial.managedByEnv;
+
+  function applyPreset(p: Preset) {
+    setHost(p.host);
+    setPort(String(p.port));
+    setSecure(p.secure);
+    if (p.help) toast.info(p.help, { duration: 5000 });
+  }
+
+  function handleSubmit() {
+    setError(null);
+    if (!host.trim()) {
+      setError("กรุณากรอก SMTP Host");
+      return;
+    }
+    const portNum = parseInt(port, 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      setError("Port ไม่ถูกต้อง (1-65535)");
+      return;
+    }
+    if (!user.trim()) {
+      setError("กรุณากรอก Username");
+      return;
+    }
+    if (!initial.hasPassword && !password) {
+      setError("กรุณากรอก Password");
+      return;
+    }
+    if (!fromEmail.trim()) {
+      setError("กรุณากรอก From Email");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await updateEmailSettingsAction({
+        smtp_host: host.trim(),
+        smtp_port: portNum,
+        smtp_user: user.trim(),
+        smtp_password: password, // ถ้า empty → คงค่าเดิม
+        smtp_from_email: fromEmail.trim(),
+        smtp_from_name: fromName.trim(),
+        smtp_secure: secure,
+      });
+      if (!res.ok) {
+        setError(res.error ?? "บันทึกไม่สำเร็จ");
+        return;
+      }
+      toast.success("บันทึกแล้ว — ลองกดทดสอบส่งอีเมลด้านล่าง");
+      setPassword("");
+      router.refresh();
+    });
+  }
+
+  function handleTest() {
+    if (!testTo.trim()) {
+      toast.error("กรอกอีเมลที่จะทดสอบ");
+      return;
+    }
+    startTesting(async () => {
+      const r = await testEmailAction(testTo.trim());
+      if (r.ok) {
+        toast.success(`📨 ส่งทดสอบไปยัง ${testTo} แล้ว — ตรวจ inbox (รวม Spam)`);
+      } else {
+        toast.error(`ส่งไม่สำเร็จ: ${r.error ?? "unknown"}`, { duration: 8000 });
+      }
+    });
+  }
+
+  function handleClear() {
+    startTransition(async () => {
+      const r = await clearEmailSettingsAction();
+      if (!r.ok) {
+        toast.error(r.error ?? "ล้างไม่สำเร็จ");
+        return;
+      }
+      setHost(""); setPort("587"); setUser(""); setPassword("");
+      setFromEmail(""); setFromName("Lab Parfumo PO"); setSecure(false);
+      toast.success("ล้างค่า SMTP แล้ว — ระบบจะหยุดส่งอีเมล");
+      router.refresh();
+    });
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-5 space-y-4">
+        {/* Status banner */}
+        <div className={cn(
+          "flex items-start gap-3 p-3.5 rounded-xl border",
+          isConfigured
+            ? "bg-emerald-50 border-emerald-200"
+            : "bg-amber-50 border-amber-200",
+        )}>
+          <div className={cn(
+            "flex-shrink-0 size-9 rounded-lg flex items-center justify-center",
+            isConfigured ? "bg-emerald-500" : "bg-amber-500",
+          )}>
+            {isConfigured
+              ? <CheckCircle2 className="size-5 text-white" />
+              : <AlertCircle className="size-5 text-white" />
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className={cn(
+              "text-sm font-bold",
+              isConfigured ? "text-emerald-900" : "text-amber-900",
+            )}>
+              {isConfigured
+                ? `🟢 ตั้งค่าแล้ว (${initial.source === "env" ? "จาก Environment Variables" : "จาก Database"})`
+                : "🔴 ยังไม่ตั้งค่า — ระบบจะไม่ส่งอีเมล"
+              }
+            </div>
+            <div className={cn(
+              "text-xs mt-0.5",
+              isConfigured ? "text-emerald-700" : "text-amber-700",
+            )}>
+              {isConfigured
+                ? `${initial.host}:${initial.port} • ${initial.user}`
+                : "อีเมลต้อนรับเมื่อสร้าง user ใหม่ + Daily digest จะไม่ทำงาน"
+              }
+            </div>
+          </div>
+        </div>
+
+        {managedByEnv && (
+          <Alert tone="info">
+            🔒 <strong>SMTP ตั้งค่าผ่าน Environment Variables</strong> —
+            ฟอร์มด้านล่างเป็น read-only เพื่อแสดงค่าปัจจุบัน
+            <div className="text-xs mt-1 text-slate-500">
+              ถ้าจะแก้ผ่าน UI ให้ลบ env: <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> ใน Vercel
+            </div>
+          </Alert>
+        )}
+
+        {/* Presets */}
+        {!managedByEnv && (
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              ⚡ Quick setup
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  disabled={pending}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 hover:border-brand-300 transition-colors"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Server config */}
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-2 inline-flex items-center gap-1.5">
+            <Server className="size-4 text-brand-600" />
+            SMTP Server
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Host *</label>
+              <Input value={host} onChange={(e) => setHost(e.target.value)}
+                     placeholder="smtp.gmail.com"
+                     disabled={pending || managedByEnv} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Port *</label>
+              <Input type="number" value={port}
+                     onChange={(e) => setPort(e.target.value)}
+                     placeholder="587"
+                     disabled={pending || managedByEnv} />
+            </div>
+          </div>
+          <label className="inline-flex items-center gap-2 mt-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={secure}
+              onChange={(e) => setSecure(e.target.checked)}
+              disabled={pending || managedByEnv}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600"
+            />
+            <span className="text-xs text-slate-700">
+              ใช้ SSL/TLS โดยตรง <span className="text-slate-400">(เปิดเฉพาะ port 465 — port 587 ใช้ STARTTLS อัตโนมัติ)</span>
+            </span>
+          </label>
+        </div>
+
+        {/* Auth */}
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-2 inline-flex items-center gap-1.5">
+            <Lock className="size-4 text-brand-600" />
+            Authentication
+          </h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Username *</label>
+              <Input value={user} onChange={(e) => setUser(e.target.value)}
+                     placeholder="you@gmail.com"
+                     disabled={pending || managedByEnv} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Password *
+                {initial.hasPassword && (
+                  <span className="text-[11px] text-emerald-600 ml-1.5 font-normal">
+                    (มีอยู่แล้ว — เว้นว่างถ้าไม่เปลี่ยน)
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={initial.hasPassword ? "•••••••• (เก็บไว้)" : "App Password / API Key"}
+                  disabled={pending || managedByEnv}
+                  className="pr-10"
+                />
+                {!managedByEnv && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* From */}
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-2 inline-flex items-center gap-1.5">
+            <Mail className="size-4 text-brand-600" />
+            ผู้ส่ง (From)
+          </h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">From Email *</label>
+              <Input type="email" value={fromEmail}
+                     onChange={(e) => setFromEmail(e.target.value)}
+                     placeholder="noreply@labparfumo.com"
+                     disabled={pending || managedByEnv} />
+              <p className="text-[11px] text-slate-500 mt-1">
+                ปกติให้ตรงกับ Username (Gmail บังคับ)
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">From Name</label>
+              <Input value={fromName}
+                     onChange={(e) => setFromName(e.target.value)}
+                     placeholder="Lab Parfumo PO"
+                     disabled={pending || managedByEnv} />
+              <p className="text-[11px] text-slate-500 mt-1">
+                ชื่อที่ผู้รับเห็นในกล่อง inbox
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {error && <Alert tone="danger">❌ {error}</Alert>}
+
+        {/* Actions */}
+        {!managedByEnv && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+            <Button onClick={handleSubmit} loading={pending}>
+              <Save className="h-4 w-4" /> บันทึก
+            </Button>
+            {isConfigured && (
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmClearOpen(true)}
+                disabled={pending}
+              >
+                <Trash2 className="h-4 w-4" /> ล้างค่า
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Test send */}
+        <div className="pt-4 border-t border-slate-200 space-y-2">
+          <h3 className="text-sm font-bold text-slate-900 inline-flex items-center gap-1.5">
+            <Send className="size-4 text-brand-600" />
+            ทดสอบส่งอีเมล
+          </h3>
+          <p className="text-xs text-slate-500">
+            ส่งอีเมลทดสอบเพื่อตรวจสอบว่า SMTP ทำงานถูกต้อง — กรุณาเช็ค Spam folder ด้วย
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder="you@example.com"
+              disabled={testing || !isConfigured}
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              onClick={handleTest}
+              loading={testing}
+              disabled={!isConfigured}
+            >
+              <Send className="h-4 w-4" /> ส่งทดสอบ
+            </Button>
+          </div>
+          {!isConfigured && (
+            <p className="text-xs text-amber-600">
+              ⚠️ บันทึก SMTP ก่อน ถึงจะทดสอบได้
+            </p>
+          )}
+        </div>
+
+        {/* Help */}
+        <details className="pt-4 border-t border-slate-200">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900 inline-flex items-center gap-1.5">
+            💡 วิธีตั้งค่า Gmail / Resend / SendGrid
+          </summary>
+          <div className="mt-3 space-y-3 text-xs text-slate-600">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="font-bold text-slate-900 mb-1">📧 Gmail (ฟรี — 500 emails/วัน)</div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                <li>เปิด <a className="text-brand-700 underline" href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer">2-Step Verification</a> ใน Google Account</li>
+                <li>สร้าง <a className="text-brand-700 underline" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">App Password</a> (ไม่ใช่รหัส Gmail ปกติ)</li>
+                <li>กดปุ่ม <strong>Gmail</strong> ด้านบน → ใส่ email ใน Username + paste 16-digit App Password ใน Password</li>
+              </ol>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="font-bold text-slate-900 mb-1">📨 Resend (ฟรี — 3,000 emails/เดือน)</div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                <li>สมัคร + ขอ API key ที่ <a className="text-brand-700 underline" href="https://resend.com" target="_blank" rel="noopener noreferrer">resend.com</a></li>
+                <li>กดปุ่ม <strong>Resend</strong> ด้านบน</li>
+                <li>Username = <code>resend</code> | Password = API key (เริ่มด้วย <code>re_</code>)</li>
+                <li>From email = <code>onboarding@resend.dev</code> (สำหรับเทส) หรือ domain ที่ verify แล้ว</li>
+              </ol>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="font-bold text-slate-900 mb-1">📮 SendGrid (ฟรี — 100 emails/วัน)</div>
+              <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                <li>สมัคร + สร้าง API key ที่ <a className="text-brand-700 underline" href="https://sendgrid.com" target="_blank" rel="noopener noreferrer">sendgrid.com</a></li>
+                <li>Username = <code>apikey</code> (ตัวอักษรนี้เลย) | Password = API key</li>
+              </ol>
+            </div>
+          </div>
+        </details>
+      </CardContent>
+
+      <ConfirmDialog
+        open={confirmClearOpen}
+        onOpenChange={setConfirmClearOpen}
+        title="ล้างค่า SMTP?"
+        description="ระบบจะหยุดส่งอีเมล (อีเมลต้อนรับ + Daily digest) จนกว่าจะตั้งค่าใหม่"
+        confirmText="ล้างค่า"
+        variant="danger"
+        onConfirm={handleClear}
+      />
     </Card>
   );
 }

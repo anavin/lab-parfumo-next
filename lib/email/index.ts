@@ -1,32 +1,54 @@
 /**
  * Email sender — SMTP via nodemailer
  *
- * Env vars:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
- *   FROM_EMAIL, FROM_NAME
+ * Config sources (in priority order):
+ *   1) Env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD,
+ *                FROM_EMAIL, FROM_NAME
+ *   2) DB: company_settings.smtp_*  (admin ตั้งผ่าน UI)
  *
- * ถ้าไม่ตั้ง — function จะ no-op (return ok=false silently)
+ * ถ้าไม่มีทั้งคู่ — function return ok=false (ไม่ส่ง)
+ *
+ * Cache: transporter ถูก cache ตาม config string เพื่อให้
+ * เปลี่ยน config ใน UI แล้วใช้ได้ทันที (ไม่ต้อง restart)
  */
 import nodemailer from "nodemailer";
+import { getEmailSettings } from "@/lib/db/email-settings";
 
-let _transporter: nodemailer.Transporter | null = null;
+interface CachedTransporter {
+  key: string;
+  transporter: nodemailer.Transporter;
+}
+let _cached: CachedTransporter | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
-  if (_transporter) return _transporter;
+async function getTransporter(): Promise<{
+  transporter: nodemailer.Transporter | null;
+  fromEmail: string;
+  fromName: string;
+}> {
+  const s = await getEmailSettings();
+  if (s.source === "none") {
+    return { transporter: null, fromEmail: "", fromName: "" };
+  }
 
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
+  // cache key: ถ้า config เปลี่ยน จะสร้าง transporter ใหม่
+  const key = `${s.host}:${s.port}:${s.user}:${s.password}:${s.secure}`;
+  if (_cached && _cached.key === key) {
+    return { transporter: _cached.transporter, fromEmail: s.fromEmail, fromName: s.fromName };
+  }
 
-  if (!host || !user || !pass) return null;
-
-  _transporter = nodemailer.createTransport({
-    host, port,
-    secure: port === 465,
-    auth: { user, pass },
+  const transporter = nodemailer.createTransport({
+    host: s.host,
+    port: s.port,
+    secure: s.secure,
+    auth: { user: s.user, pass: s.password },
   });
-  return _transporter;
+  _cached = { key, transporter };
+  return { transporter, fromEmail: s.fromEmail, fromName: s.fromName };
+}
+
+/** ล้าง cache (เรียกเมื่อ admin บันทึก config ใหม่) */
+export function invalidateEmailTransporter() {
+  _cached = null;
 }
 
 export interface SendResult {
@@ -40,16 +62,16 @@ export async function sendEmail(opts: {
   html: string;
   text?: string;
 }): Promise<SendResult> {
-  const t = getTransporter();
-  if (!t) {
+  const { transporter, fromEmail, fromName } = await getTransporter();
+  if (!transporter) {
     return { ok: false, error: "SMTP not configured" };
   }
-  const fromName = process.env.FROM_NAME ?? "Lab Parfumo PO";
-  const fromEmail = process.env.FROM_EMAIL ?? process.env.SMTP_USER ?? "noreply@example.com";
+  const finalFrom = fromEmail || "noreply@example.com";
+  const finalName = fromName || "Lab Parfumo PO";
 
   try {
-    await t.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
+    await transporter.sendMail({
+      from: `"${finalName}" <${finalFrom}>`,
       to: opts.to,
       subject: opts.subject,
       text: opts.text,

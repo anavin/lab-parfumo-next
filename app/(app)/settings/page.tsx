@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth/require-user";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { getEmailSettingsForUi } from "@/lib/db/email-settings";
 import { SettingsClient, type CompanySettings } from "./_components/settings-client";
 
 export const metadata: Metadata = {
@@ -36,18 +37,25 @@ async function getCompanySettings(): Promise<CompanySettings> {
 }
 
 export default async function SettingsPage() {
-  await requireAdmin();
-  const settings = await getCompanySettings();
+  const me = await requireAdmin();
+  const [settings, emailSettings] = await Promise.all([
+    getCompanySettings(),
+    getEmailSettingsForUi(),
+  ]);
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">ตั้งค่าระบบ</h1>
         <p className="text-sm text-slate-500">
-          ข้อมูลบริษัท + ข้อความหน้า Login
+          ข้อมูลบริษัท • หน้า Login • อีเมล
         </p>
       </div>
-      <SettingsClient initial={settings} />
+      <SettingsClient
+        initial={settings}
+        email={emailSettings}
+        adminEmail={me.email ?? ""}
+      />
     </div>
   );
 }
