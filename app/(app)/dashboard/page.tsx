@@ -284,52 +284,79 @@ function PageHeader() {
 function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
   const trendUp = stats.spendGrowth >= 0;
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-900 via-primary to-brand-950 text-white p-7 sm:p-8 shadow-xl">
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-primary to-brand-950 text-white p-8 sm:p-10 lg:p-12 shadow-2xl ring-1 ring-white/10">
       {/* Decorative orbs */}
-      <div className="absolute -top-24 -right-24 size-64 rounded-full bg-brand-400/20 blur-3xl" />
-      <div className="absolute -bottom-32 -left-32 size-72 rounded-full bg-brand-500/10 blur-3xl" />
+      <div className="absolute -top-32 -right-32 size-80 rounded-full bg-brand-400/25 blur-3xl animate-pulse" style={{ animationDuration: "5s" }} />
+      <div className="absolute -bottom-40 -left-40 size-96 rounded-full bg-brand-500/15 blur-3xl animate-pulse" style={{ animationDuration: "7s", animationDelay: "1s" }} />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-72 rounded-full bg-cyan-400/10 blur-3xl" />
+
       {/* Grid */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:32px_32px]" />
 
-      <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1.5">
+      {/* Top-left highlight */}
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent" />
+
+      {/* Shimmer line */}
+      <div className="absolute -top-px left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+
+      <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-4 text-center">
+        {/* Spend this month — biggest, with sparkle */}
+        <div className="relative">
+          <div className="text-[11px] uppercase tracking-[0.25em] text-white/70 font-black mb-3 flex items-center justify-center gap-1.5">
+            <span className="size-1 rounded-full bg-emerald-400 animate-pulse" />
             ใช้จ่ายเดือนนี้
           </div>
-          <div className="text-3xl sm:text-4xl font-bold tabular-nums">
+          <div className="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)]">
             {fmtMoney(stats.thisMonthSpend)}
           </div>
           {stats.lastMonthSpend > 0 && (
-            <span
-              className={`mt-2 inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${
-                trendUp
-                  ? "bg-emerald-400/20 text-emerald-200"
-                  : "bg-red-400/20 text-red-200"
-              }`}
-            >
-              {trendUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-              {Math.abs(stats.spendGrowth).toFixed(1)}% จากเดือนก่อน
-            </span>
+            <div className="flex justify-center mt-3">
+              <span
+                className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-sm ring-1 ${
+                  trendUp
+                    ? "bg-emerald-400/20 text-emerald-200 ring-emerald-300/30"
+                    : "bg-red-400/20 text-red-200 ring-red-300/30"
+                }`}
+              >
+                {trendUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                {Math.abs(stats.spendGrowth).toFixed(1)}% จากเดือนก่อน
+              </span>
+            </div>
           )}
         </div>
-        <div className="sm:border-l sm:border-white/10 sm:pl-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1.5">
+
+        {/* PO total */}
+        <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
+          <div className="text-[11px] uppercase tracking-[0.25em] text-white/70 font-black mb-3">
             PO ทั้งหมด
           </div>
-          <div className="text-3xl font-bold tabular-nums">{stats.total}</div>
-          <div className="text-xs text-white/60 mt-1.5">
-            +{stats.newThisWeek} ใบใหม่สัปดาห์นี้
+          <div className="text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)]">
+            {stats.total}
+          </div>
+          <div className="text-xs text-white/70 mt-3 font-medium">
+            <span className="text-emerald-300 font-bold">+{stats.newThisWeek}</span> ใบใหม่สัปดาห์นี้
           </div>
         </div>
-        <div className="sm:border-l sm:border-white/10 sm:pl-6">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 font-bold mb-1.5">
+
+        {/* Pending */}
+        <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
+          <div className="text-[11px] uppercase tracking-[0.25em] text-white/70 font-black mb-3 flex items-center justify-center gap-1.5">
+            {stats.staleCount > 0 && (
+              <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+            )}
             รอดำเนินการ
           </div>
-          <div className="text-3xl font-bold tabular-nums">{stats.pending}</div>
-          {stats.staleCount > 0 && (
-            <div className="text-xs text-amber-200 mt-1.5">
+          <div className={`text-5xl sm:text-6xl lg:text-7xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] ${
+            stats.staleCount > 0 ? "bg-gradient-to-br from-white via-amber-100 to-amber-200 bg-clip-text text-transparent" : "text-white"
+          }`}>
+            {stats.pending}
+          </div>
+          {stats.staleCount > 0 ? (
+            <div className="text-xs text-amber-200 mt-3 font-semibold">
               ⚠️ {stats.staleCount} ใบค้างเกิน 3 วัน
             </div>
+          ) : (
+            <div className="text-xs text-white/60 mt-3">ไม่มีค้าง</div>
           )}
         </div>
       </div>
