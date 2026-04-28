@@ -139,15 +139,34 @@ async function _updateStatus(
 }
 
 // ==================================================================
-// Close PO
+// Close PO — เฉพาะ status ที่รับของแล้ว
 // ==================================================================
+const CLOSEABLE_STATUSES: PoStatus[] = ["รับของแล้ว", "มีปัญหา"];
+
 export async function closePoAction(poId: string): Promise<ActionResult> {
+  // Workflow gate: ปิดงานได้เฉพาะหลังจากรับของแล้วเท่านั้น
+  // ก่อนหน้า: ปิดได้จากทุก state (แม้ draft) → audit "BROKEN"
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("status")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (!CLOSEABLE_STATUSES.includes(po.status as PoStatus)) {
+    return {
+      ok: false,
+      error: `ปิดงานไม่ได้ — สถานะปัจจุบัน "${po.status}" • ต้องเป็น "รับของแล้ว" หรือ "มีปัญหา" ก่อน`,
+    };
+  }
   return _updateStatus(poId, "เสร็จสมบูรณ์", "ปิดงาน");
 }
 
 // ==================================================================
-// Cancel PO (with reason)
+// Cancel PO (with reason) — ห้ามยกเลิก terminal state
 // ==================================================================
+const TERMINAL_STATUSES: PoStatus[] = ["เสร็จสมบูรณ์", "ยกเลิก"];
+
 export async function cancelPoAction(
   poId: string, reason: string,
 ): Promise<ActionResult> {
@@ -159,17 +178,26 @@ export async function cancelPoAction(
     return { ok: false, error: formatZodError(parsed.error) };
   }
 
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("created_by, status")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+
   // Permission: requester ยกเลิกได้เฉพาะของตัวเอง
-  if (user.role === "requester") {
-    const sb = getSupabaseAdmin();
-    const { data: po } = await sb
-      .from("purchase_orders")
-      .select("created_by")
-      .eq("id", poId)
-      .maybeSingle();
-    if (!po || po.created_by !== user.id) {
-      return { ok: false, error: "ไม่มีสิทธิ์ยกเลิก PO นี้" };
-    }
+  if (user.role === "requester" && po.created_by !== user.id) {
+    return { ok: false, error: "ไม่มีสิทธิ์ยกเลิก PO นี้" };
+  }
+
+  // Status gate: ห้ามยกเลิก PO ที่อยู่ใน terminal state
+  // ก่อนหน้า: ยกเลิก "เสร็จสมบูรณ์" หรือ "ยกเลิก" ซ้ำได้ → audit log สับสน
+  if (TERMINAL_STATUSES.includes(po.status as PoStatus)) {
+    return {
+      ok: false,
+      error: `ยกเลิกไม่ได้ — สถานะ "${po.status}" เป็น terminal state แล้ว`,
+    };
   }
 
   return _updateStatus(poId, "ยกเลิก", reason);
