@@ -699,10 +699,8 @@ export async function addDeliveryAction(
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
 
-  // Permission: requester รับของได้เฉพาะ PO ที่ตัวเองสร้าง
-  if (user.role === "requester" && po.created_by !== user.id) {
-    return { ok: false, error: "ไม่มีสิทธิ์รับของ PO นี้" };
-  }
+  // Note: ทุก user (admin + staff) สามารถกดรับสินค้าได้บน PO ใดๆ ก็ได้
+  // ผู้กดรับจะถูกบันทึกใน received_by_name ด้านล่าง
 
   // หา delivery_no ใหม่
   const { data: existingDeliveries } = await sb

@@ -49,8 +49,21 @@ export default async function PoViewPage({
   const po = await getPoById(id);
   if (!po) notFound();
 
-  // Permission: requester เห็นเฉพาะ PO ของตัวเอง
-  if (!isAdmin && po.created_by !== user.id) {
+  // Permission: staff (non-admin) เห็น PO ของตัวเอง
+  // หรือ PO ที่อยู่ในสถานะที่ทุกคนกดรับได้/ดูประวัติได้
+  // (สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์)
+  const STAFF_VIEWABLE_STATUSES = [
+    "สั่งซื้อแล้ว",
+    "กำลังขนส่ง",
+    "รับของแล้ว",
+    "มีปัญหา",
+    "เสร็จสมบูรณ์",
+  ];
+  if (
+    !isAdmin
+    && po.created_by !== user.id
+    && !STAFF_VIEWABLE_STATUSES.includes(po.status)
+  ) {
     redirect("/po");
   }
 
