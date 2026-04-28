@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, Calendar, Clock, PackageOpen, Truck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertTriangle, Calendar, Clock, PackageOpen, ArrowLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { StatusPill } from "@/components/ui/status-pill";
+import { PoRow } from "@/components/po/po-row";
 import { requireUser } from "@/lib/auth/require-user";
 import { getPosPendingReceipt, bucketByUrgency } from "@/lib/db/po";
-import type { PurchaseOrder } from "@/lib/types/db";
 
 export const metadata: Metadata = {
   title: "รอรับของ — Lab Parfumo PO",
@@ -19,18 +19,23 @@ export default async function PendingReceiptPage() {
   const user = await requireUser();
   const isAdmin = user.role === "admin";
 
-  // staff เห็นเฉพาะของตัวเอง? ไม่ — รอรับของเป็นของทุกคน (เห็นได้ทั้งทีม)
-  // แต่ถ้า requester แสดงเฉพาะของตัวเอง อาจจะดีกว่า — ให้ดูทุกใบเหมือน Streamlit เดิม
   const pos = await getPosPendingReceipt();
 
   if (pos.length === 0) {
     return (
       <div className="space-y-5">
-        <Header total={0} />
+        <PageHeader />
         <EmptyState
           icon="🎉"
           title="ไม่มี PO รอรับของ"
           text={"ทุกอย่างเสร็จเรียบร้อยแล้ว!\nถ้ามี PO ใหม่ที่กำลังขนส่ง จะปรากฏที่นี่"}
+          action={
+            <Link href="/po">
+              <Button variant="outline">
+                <ArrowLeft className="size-4" /> ดู PO ทั้งหมด
+              </Button>
+            </Link>
+          }
         />
       </div>
     );
@@ -40,53 +45,102 @@ export default async function PendingReceiptPage() {
 
   return (
     <div className="space-y-5">
-      <Header total={pos.length} />
+      <PageHeader />
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard label="เลยกำหนด" count={buckets.overdue.length}
-                 icon={<AlertTriangle className="h-5 w-5" />} tone="danger" />
-        <KpiCard label="วันนี้" count={buckets.today.length}
-                 icon={<Calendar className="h-5 w-5" />} tone="warning" />
-        <KpiCard label="ใน 3 วัน" count={buckets.upcoming.length}
-                 icon={<Clock className="h-5 w-5" />} tone="warning" />
-        <KpiCard label="ทั้งหมด" count={pos.length}
-                 icon={<PackageOpen className="h-5 w-5" />} />
+      {/* KPI cards (consistent with /po list) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="เลยกำหนด"
+          value={buckets.overdue.length}
+          unit="ใบ"
+          icon={AlertTriangle}
+          color={buckets.overdue.length > 0 ? "red" : "slate"}
+        />
+        <KpiCard
+          label="วันนี้"
+          value={buckets.today.length}
+          unit="ใบ"
+          icon={Calendar}
+          color={buckets.today.length > 0 ? "amber" : "slate"}
+        />
+        <KpiCard
+          label="ใน 3 วัน"
+          value={buckets.upcoming.length}
+          unit="ใบ"
+          icon={Clock}
+          color={buckets.upcoming.length > 0 ? "amber" : "slate"}
+        />
+        <KpiCard
+          label="ทั้งหมด"
+          value={pos.length}
+          unit="ใบ"
+          icon={PackageOpen}
+          color="primary"
+        />
       </div>
 
-      {/* Sections by urgency */}
+      {/* Result summary */}
+      <div className="text-sm text-muted-foreground">
+        พบ <strong className="text-foreground tabular-nums">{pos.length}</strong> ใบรอรับของ —
+        เรียงตามความเร่งด่วน
+      </div>
+
+      {/* Sections by urgency — using PoRow for consistency */}
       {buckets.overdue.length > 0 && (
-        <Section title="🚨 เลยกำหนด" count={buckets.overdue.length} accent="danger">
+        <Section
+          title="🚨 เลยกำหนด"
+          subtitle="ติดตาม supplier โดยด่วน"
+          count={buckets.overdue.length}
+          accent="danger"
+        >
           {buckets.overdue.map((po) => (
-            <PendingCard key={po.id} po={po} bucket="overdue" isAdmin={isAdmin} />
+            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
       {buckets.today.length > 0 && (
-        <Section title="📅 ครบกำหนดวันนี้" count={buckets.today.length} accent="warning">
+        <Section
+          title="📅 ครบกำหนดวันนี้"
+          subtitle="คาดว่าจะได้รับวันนี้"
+          count={buckets.today.length}
+          accent="warning"
+        >
           {buckets.today.map((po) => (
-            <PendingCard key={po.id} po={po} bucket="today" isAdmin={isAdmin} />
+            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
       {buckets.upcoming.length > 0 && (
-        <Section title="⏰ ใน 3 วัน" count={buckets.upcoming.length} accent="warning">
+        <Section
+          title="⏰ ใกล้ครบกำหนด"
+          subtitle="ภายใน 3 วัน"
+          count={buckets.upcoming.length}
+          accent="warning"
+        >
           {buckets.upcoming.map((po) => (
-            <PendingCard key={po.id} po={po} bucket="upcoming" isAdmin={isAdmin} />
+            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
       {buckets.later.length > 0 && (
-        <Section title="📦 มากกว่า 3 วัน" count={buckets.later.length}>
+        <Section
+          title="📦 ยังไม่ใกล้ครบกำหนด"
+          subtitle="มากกว่า 3 วัน"
+          count={buckets.later.length}
+        >
           {buckets.later.map((po) => (
-            <PendingCard key={po.id} po={po} bucket="later" isAdmin={isAdmin} />
+            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
       {buckets.noDate.length > 0 && (
-        <Section title="❓ ไม่ระบุวันที่" count={buckets.noDate.length}>
+        <Section
+          title="❓ ไม่ระบุกำหนด"
+          subtitle="ยังไม่กรอกวันที่คาดว่าจะได้รับ"
+          count={buckets.noDate.length}
+        >
           {buckets.noDate.map((po) => (
-            <PendingCard key={po.id} po={po} bucket="noDate" isAdmin={isAdmin} />
+            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -94,180 +148,100 @@ export default async function PendingReceiptPage() {
   );
 }
 
-function Header({ total }: { total: number }) {
+function PageHeader() {
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-slate-900">รอรับของ</h1>
-      <p className="text-sm text-slate-500">
-        {total} ใบที่กำลังจะมาถึง • ตรวจรับเมื่อของถึง
-      </p>
+    <div className="flex items-end justify-between gap-3 flex-wrap">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+          รอรับของ
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          ติดตามใบสั่งซื้อที่กำลังจะมาถึง — เรียงตามความเร่งด่วน
+        </p>
+      </div>
+      <Link href="/po">
+        <Button variant="outline" size="sm">
+          <ArrowLeft className="size-4" /> PO ทั้งหมด
+        </Button>
+      </Link>
     </div>
   );
 }
 
+const KPI_TONE: Record<string, { bg: string; ring: string; icon: string }> = {
+  primary: { bg: "bg-blue-50", ring: "ring-blue-200/60", icon: "text-blue-600" },
+  amber:   { bg: "bg-amber-50", ring: "ring-amber-200/60", icon: "text-amber-600" },
+  red:     { bg: "bg-red-50", ring: "ring-red-200/60", icon: "text-red-600" },
+  emerald: { bg: "bg-emerald-50", ring: "ring-emerald-200/60", icon: "text-emerald-600" },
+  slate:   { bg: "bg-muted", ring: "ring-border", icon: "text-muted-foreground" },
+};
+
 function KpiCard({
-  label, count, icon, tone,
+  label, value, unit, icon: Icon, color,
 }: {
   label: string;
-  count: number;
-  icon: React.ReactNode;
-  tone?: "danger" | "warning" | "success";
+  value: number;
+  unit: string;
+  icon: typeof AlertTriangle;
+  color: keyof typeof KPI_TONE;
 }) {
-  const toneCls = {
-    danger: count > 0 ? "text-red-600 bg-red-50" : "text-slate-500 bg-slate-50",
-    warning: count > 0 ? "text-amber-600 bg-amber-50" : "text-slate-500 bg-slate-50",
-    success: "text-emerald-600 bg-emerald-50",
-  };
+  const tone = KPI_TONE[color];
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-            tone ? toneCls[tone] : "text-brand-700 bg-brand-50"
-          }`}>
-            {icon}
+    <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-200">
+      <div className="flex items-center justify-center gap-3">
+        <div
+          className={`flex-shrink-0 size-10 rounded-xl flex items-center justify-center ring-1 ${tone.bg} ${tone.icon} ${tone.ring}`}
+        >
+          <Icon className="size-5" strokeWidth={2.25} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold text-muted-foreground">
+            {label}
           </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-900 leading-none">{count}</div>
-            <div className="text-xs text-slate-500 font-medium mt-1">{label}</div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+              {value.toLocaleString("th-TH")}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">{unit}</span>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 function Section({
-  title, count, accent, children,
+  title, subtitle, count, accent, children,
 }: {
   title: string;
+  subtitle?: string;
   count: number;
   accent?: "danger" | "warning";
   children: React.ReactNode;
 }) {
-  const accentCls = accent === "danger" ? "text-red-700"
-    : accent === "warning" ? "text-amber-700"
-      : "text-slate-700";
+  const accentColor =
+    accent === "danger" ? "text-red-700" :
+    accent === "warning" ? "text-amber-700" :
+    "text-muted-foreground";
+  const badgeBg =
+    accent === "danger" ? "bg-red-100 text-red-700 ring-red-200" :
+    accent === "warning" ? "bg-amber-100 text-amber-700 ring-amber-200" :
+    "bg-muted text-muted-foreground ring-border";
+
   return (
     <section>
-      <h2 className={`text-sm font-bold uppercase tracking-wider mb-2 ${accentCls}`}>
-        {title} <span className="text-slate-400">({count})</span>
-      </h2>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <h2 className={`text-sm font-bold ${accentColor}`}>{title}</h2>
+          <span className={`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full ring-1 tabular-nums ${badgeBg}`}>
+            {count}
+          </span>
+        </div>
+        {subtitle && (
+          <span className="text-[11px] text-muted-foreground">{subtitle}</span>
+        )}
+      </div>
       <div className="space-y-2">{children}</div>
     </section>
   );
-}
-
-type Bucket = "overdue" | "today" | "upcoming" | "later" | "noDate";
-
-function PendingCard({
-  po, bucket, isAdmin,
-}: {
-  po: PurchaseOrder;
-  bucket: Bucket;
-  isAdmin: boolean;
-}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const itemsCount = po.items?.length ?? 0;
-  const itemsPreview = (po.items ?? [])
-    .slice(0, 3)
-    .map((it) => `${it.name} × ${(it.qty ?? 0).toLocaleString("th-TH")}`)
-    .join(", ");
-  const moreItems = itemsCount > 3 ? ` และอีก ${itemsCount - 3} รายการ` : "";
-
-  // Badge text
-  let badge: { text: string; cls: string } | null = null;
-  if (po.expected_date) {
-    if (bucket === "overdue") {
-      const days = Math.floor((new Date(today).getTime() - new Date(po.expected_date).getTime()) / 86400_000);
-      badge = { text: `🚨 เลย ${days} วัน`, cls: "bg-red-50 text-red-700 border-red-200" };
-    } else if (bucket === "today") {
-      badge = { text: "📅 วันนี้", cls: "bg-amber-50 text-amber-700 border-amber-200" };
-    } else if (bucket === "upcoming") {
-      const days = Math.ceil((new Date(po.expected_date).getTime() - new Date(today).getTime()) / 86400_000);
-      badge = { text: `⏰ อีก ${days} วัน`, cls: "bg-amber-50 text-amber-700 border-amber-200" };
-    } else if (bucket === "later") {
-      const days = Math.ceil((new Date(po.expected_date).getTime() - new Date(today).getTime()) / 86400_000);
-      badge = { text: `📅 อีก ${days} วัน`, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
-    }
-  }
-
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="grid sm:grid-cols-12 gap-3">
-          {/* Left: identity */}
-          <div className="sm:col-span-3 space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold font-mono text-brand-700">{po.po_number}</span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusPill status={po.status} />
-              {badge && (
-                <span className={`inline-block px-2 py-0.5 text-[11px] font-semibold rounded-full border ${badge.cls}`}>
-                  {badge.text}
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-slate-500">
-              📅 สั่ง: {fmtDate(po.ordered_date)}
-            </div>
-            {po.expected_date && (
-              <div className="text-xs text-slate-500">
-                🎯 คาด: {fmtDate(po.expected_date)}
-              </div>
-            )}
-          </div>
-
-          {/* Middle: details */}
-          <div className="sm:col-span-6 min-w-0 text-sm">
-            {isAdmin && po.supplier_name && (
-              <div className="font-semibold text-slate-900 truncate">
-                <Truck className="inline h-3.5 w-3.5 mr-1" />
-                {po.supplier_name}
-              </div>
-            )}
-            {po.tracking_number && (
-              <div className="text-xs text-slate-500 mt-0.5">
-                📋 Tracking: <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">{po.tracking_number}</code>
-              </div>
-            )}
-            {itemsPreview && (
-              <div className="text-xs text-slate-500 mt-1 line-clamp-2">
-                📦 {itemsPreview}{moreItems}
-              </div>
-            )}
-            <div className="text-xs text-slate-500 mt-1">
-              👤 ผู้สั่ง: {po.created_by_name ?? "—"}
-            </div>
-          </div>
-
-          {/* Right: actions */}
-          <div className="sm:col-span-3 flex sm:flex-col gap-2 justify-end">
-            <Link href={`/po/${po.id}`} className="flex-1 sm:flex-none">
-              <Button variant="primary" size="sm" fullWidth>
-                <PackageOpen className="h-3.5 w-3.5" /> รับของ
-              </Button>
-            </Link>
-            <Link href={`/po/${po.id}`} className="flex-1 sm:flex-none">
-              <Button variant="secondary" size="sm" fullWidth>
-                👁️ ดูรายละเอียด
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function fmtDate(d: string | null | undefined): string {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString("th-TH", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
-  } catch {
-    return String(d);
-  }
 }
