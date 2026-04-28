@@ -11,6 +11,13 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+export type EmailSettingsSource =
+  | "env"               // ใช้ค่าจาก environment variables
+  | "db"                // ใช้ค่าจาก DB
+  | "none"              // ยังไม่ได้ตั้งค่า
+  | "migration-needed"  // DB column ยังไม่ถูกสร้าง (ต้องรัน migration)
+  | "db-error";         // DB error อื่นๆ
+
 export interface EmailSettings {
   host: string;
   port: number;
@@ -19,8 +26,9 @@ export interface EmailSettings {
   fromEmail: string;
   fromName: string;
   secure: boolean;
-  /** มาจาก DB หรือ env */
-  source: "env" | "db" | "none";
+  source: EmailSettingsSource;
+  /** ข้อความ error จาก DB (debug) — ใส่เมื่อ source = migration-needed/db-error */
+  errorDetail?: string;
 }
 
 interface DbRow {
@@ -32,6 +40,11 @@ interface DbRow {
   smtp_from_name?: string;
   smtp_secure?: boolean;
 }
+
+const EMPTY_SETTINGS = {
+  host: "", port: 587, user: "", password: "",
+  fromEmail: "", fromName: "", secure: false,
+} as const;
 
 /**
  * อ่าน SMTP config — รวม env + DB
@@ -60,13 +73,29 @@ export async function getEmailSettings(): Promise<EmailSettings> {
   // 2) DB
   try {
     const sb = getSupabaseAdmin();
-    const { data } = await sb
+    const { data, error } = await sb
       .from("company_settings" as never)
       .select(
         "smtp_host, smtp_port, smtp_user, smtp_password, smtp_from_email, smtp_from_name, smtp_secure",
       )
       .eq("id", 1)
       .maybeSingle();
+
+    if (error) {
+      const msg = error.message || "";
+      // PostgreSQL error code 42703 = column does not exist
+      // หรือ Supabase response มี hint ตรงๆ
+      const isMigrationIssue =
+        error.code === "42703" ||
+        /column .* does not exist/i.test(msg) ||
+        /smtp_host/i.test(msg);
+      console.error("[email-settings] DB read failed:", error);
+      return {
+        ...EMPTY_SETTINGS,
+        source: isMigrationIssue ? "migration-needed" : "db-error",
+        errorDetail: msg,
+      };
+    }
 
     const row = (data ?? {}) as DbRow;
     if (row.smtp_host && row.smtp_user && row.smtp_password) {
@@ -82,15 +111,17 @@ export async function getEmailSettings(): Promise<EmailSettings> {
       };
     }
   } catch (e) {
-    console.error("[email-settings] DB read failed:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[email-settings] DB read exception:", e);
+    return {
+      ...EMPTY_SETTINGS,
+      source: "db-error",
+      errorDetail: msg,
+    };
   }
 
   // 3) None
-  return {
-    host: "", port: 587, user: "", password: "",
-    fromEmail: "", fromName: "", secure: false,
-    source: "none",
-  };
+  return { ...EMPTY_SETTINGS, source: "none" };
 }
 
 /**
@@ -105,7 +136,8 @@ export async function getEmailSettingsForUi(): Promise<{
   fromEmail: string;
   fromName: string;
   secure: boolean;
-  source: "env" | "db" | "none";
+  source: EmailSettingsSource;
+  errorDetail?: string;
   /** ถ้า env ตั้งไว้ → UI ควร readonly */
   managedByEnv: boolean;
 }> {
@@ -119,6 +151,7 @@ export async function getEmailSettingsForUi(): Promise<{
     fromName: s.fromName,
     secure: s.secure,
     source: s.source,
+    errorDetail: s.errorDetail,
     managedByEnv: s.source === "env",
   };
 }

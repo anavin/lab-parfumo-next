@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { invalidateEmailTransporter, sendEmail } from "@/lib/email";
+import {
+  invalidateEmailTransporter, sendEmail, verifyEmail,
+  type SendResult,
+} from "@/lib/email";
 
 interface CompanyUpdateInput {
   name?: string;
@@ -138,9 +141,21 @@ export async function clearEmailSettingsAction(): Promise<{ ok: boolean; error?:
   return { ok: true };
 }
 
+/**
+ * ตรวจสอบการเชื่อมต่อ SMTP โดยไม่ส่งอีเมลจริง (verify only)
+ * — เร็วกว่า test send เพราะแค่ TCP handshake + AUTH
+ */
+export async function verifyEmailAction(): Promise<SendResult> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { ok: false, error: "เฉพาะแอดมิน" };
+  }
+  return verifyEmail();
+}
+
 export async function testEmailAction(
   toEmail: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<SendResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
     return { ok: false, error: "เฉพาะแอดมิน" };

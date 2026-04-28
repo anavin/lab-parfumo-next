@@ -20,20 +20,31 @@ interface CachedTransporter {
 }
 let _cached: CachedTransporter | null = null;
 
-async function getTransporter(): Promise<{
-  transporter: nodemailer.Transporter | null;
-  fromEmail: string;
-  fromName: string;
-}> {
+type ConfigStatus =
+  | { ok: true; transporter: nodemailer.Transporter; fromEmail: string; fromName: string }
+  | { ok: false; reason: "not-configured" | "migration-needed" | "db-error"; detail?: string };
+
+async function getTransporter(): Promise<ConfigStatus> {
   const s = await getEmailSettings();
+  if (s.source === "migration-needed") {
+    return { ok: false, reason: "migration-needed", detail: s.errorDetail };
+  }
+  if (s.source === "db-error") {
+    return { ok: false, reason: "db-error", detail: s.errorDetail };
+  }
   if (s.source === "none") {
-    return { transporter: null, fromEmail: "", fromName: "" };
+    return { ok: false, reason: "not-configured" };
   }
 
   // cache key: ถ้า config เปลี่ยน จะสร้าง transporter ใหม่
   const key = `${s.host}:${s.port}:${s.user}:${s.password}:${s.secure}`;
   if (_cached && _cached.key === key) {
-    return { transporter: _cached.transporter, fromEmail: s.fromEmail, fromName: s.fromName };
+    return {
+      ok: true,
+      transporter: _cached.transporter,
+      fromEmail: s.fromEmail,
+      fromName: s.fromName,
+    };
   }
 
   const transporter = nodemailer.createTransport({
@@ -41,9 +52,13 @@ async function getTransporter(): Promise<{
     port: s.port,
     secure: s.secure,
     auth: { user: s.user, pass: s.password },
+    // timeout เร็วขึ้น เพื่อให้ test send ไม่รอนาน (default 10 นาที)
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
   _cached = { key, transporter };
-  return { transporter, fromEmail: s.fromEmail, fromName: s.fromName };
+  return { ok: true, transporter, fromEmail: s.fromEmail, fromName: s.fromName };
 }
 
 /** ล้าง cache (เรียกเมื่อ admin บันทึก config ใหม่) */
@@ -53,7 +68,117 @@ export function invalidateEmailTransporter() {
 
 export interface SendResult {
   ok: boolean;
+  /** error message ที่ user จะเห็น (translated) */
   error?: string;
+  /** technical detail สำหรับ log */
+  errorDetail?: string;
+  /** category ของ error เพื่อให้ UI แสดง troubleshoot ได้ตรงประเด็น */
+  errorKind?:
+    | "not-configured"
+    | "migration-needed"
+    | "db-error"
+    | "auth"          // login ผิด (Gmail App Password / API Key)
+    | "connect"       // network/host ผิด
+    | "from"          // From email ถูก reject (ปกติของ Gmail)
+    | "send"          // อื่นๆ
+    ;
+}
+
+/**
+ * แปลง error ของ nodemailer เป็น category + ข้อความภาษาไทย
+ */
+function categorizeSmtpError(e: unknown): {
+  kind: NonNullable<SendResult["errorKind"]>;
+  message: string;
+  detail: string;
+} {
+  const detail = e instanceof Error ? e.message : String(e);
+  const code = (e as { code?: string })?.code ?? "";
+  const responseCode = (e as { responseCode?: number })?.responseCode ?? 0;
+  const lower = detail.toLowerCase();
+
+  // Auth failures
+  if (
+    code === "EAUTH" ||
+    responseCode === 535 || responseCode === 534 || responseCode === 530 ||
+    /invalid login|authentication failed|username and password not accepted|535/.test(lower)
+  ) {
+    return {
+      kind: "auth",
+      message: "Username/Password ไม่ถูกต้อง — ตรวจสอบ App Password (Gmail) หรือ API Key",
+      detail,
+    };
+  }
+  // Connection failures
+  if (
+    code === "ECONNECTION" || code === "ETIMEDOUT" || code === "ECONNREFUSED" ||
+    code === "ENOTFOUND" || code === "EDNS" ||
+    /timeout|timed out|connection|getaddrinfo|enotfound/.test(lower)
+  ) {
+    return {
+      kind: "connect",
+      message: "เชื่อมต่อ SMTP server ไม่ได้ — ตรวจ Host/Port หรือ network",
+      detail,
+    };
+  }
+  // From envelope rejected
+  if (
+    /from .*not accepted|sender .*rejected|550|553|554/.test(lower) ||
+    responseCode === 550 || responseCode === 553 || responseCode === 554
+  ) {
+    return {
+      kind: "from",
+      message: "From email ถูก server ปฏิเสธ — ตรวจให้ตรงกับ Username (Gmail บังคับ)",
+      detail,
+    };
+  }
+  return {
+    kind: "send",
+    message: `ส่งไม่สำเร็จ: ${detail}`,
+    detail,
+  };
+}
+
+function reasonToResult(reason: "not-configured" | "migration-needed" | "db-error", detail?: string): SendResult {
+  if (reason === "migration-needed") {
+    return {
+      ok: false,
+      errorKind: "migration-needed",
+      error: "DB ยังไม่พร้อม — ต้องรัน migration `202604_email_settings.sql` ใน Supabase ก่อน",
+      errorDetail: detail,
+    };
+  }
+  if (reason === "db-error") {
+    return {
+      ok: false,
+      errorKind: "db-error",
+      error: "อ่าน config จาก DB ไม่ได้ — ตรวจ Supabase connection",
+      errorDetail: detail,
+    };
+  }
+  return {
+    ok: false,
+    errorKind: "not-configured",
+    error: "ยังไม่ได้ตั้งค่า SMTP — ไปที่หน้าตั้งค่าก่อน",
+  };
+}
+
+/**
+ * ตรวจ SMTP โดยไม่ส่งอีเมลจริง (ใช้ `transporter.verify()`)
+ * เหมาะสำหรับปุ่ม "ตรวจสอบการเชื่อมต่อ" ใน UI
+ */
+export async function verifyEmail(): Promise<SendResult> {
+  const t = await getTransporter();
+  if (!t.ok) return reasonToResult(t.reason, t.detail);
+
+  try {
+    await t.transporter.verify();
+    return { ok: true };
+  } catch (e) {
+    const cat = categorizeSmtpError(e);
+    console.error("[email] verify failed:", cat);
+    return { ok: false, error: cat.message, errorKind: cat.kind, errorDetail: cat.detail };
+  }
 }
 
 export async function sendEmail(opts: {
@@ -62,15 +187,14 @@ export async function sendEmail(opts: {
   html: string;
   text?: string;
 }): Promise<SendResult> {
-  const { transporter, fromEmail, fromName } = await getTransporter();
-  if (!transporter) {
-    return { ok: false, error: "SMTP not configured" };
-  }
-  const finalFrom = fromEmail || "noreply@example.com";
-  const finalName = fromName || "Lab Parfumo PO";
+  const t = await getTransporter();
+  if (!t.ok) return reasonToResult(t.reason, t.detail);
+
+  const finalFrom = t.fromEmail || "noreply@example.com";
+  const finalName = t.fromName || "Lab Parfumo PO";
 
   try {
-    await transporter.sendMail({
+    await t.transporter.sendMail({
       from: `"${finalName}" <${finalFrom}>`,
       to: opts.to,
       subject: opts.subject,
@@ -79,8 +203,9 @@ export async function sendEmail(opts: {
     });
     return { ok: true };
   } catch (e) {
-    console.error("[email] send failed:", e);
-    return { ok: false, error: e instanceof Error ? e.message : "send failed" };
+    const cat = categorizeSmtpError(e);
+    console.error("[email] send failed:", cat);
+    return { ok: false, error: cat.message, errorKind: cat.kind, errorDetail: cat.detail };
   }
 }
 

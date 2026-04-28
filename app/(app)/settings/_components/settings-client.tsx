@@ -18,6 +18,7 @@ import {
   updateEmailSettingsAction,
   clearEmailSettingsAction,
   testEmailAction,
+  verifyEmailAction,
 } from "@/lib/actions/settings";
 
 export interface CompanySettings {
@@ -44,8 +45,17 @@ export interface EmailUiSettings {
   fromEmail: string;
   fromName: string;
   secure: boolean;
-  source: "env" | "db" | "none";
+  source: "env" | "db" | "none" | "migration-needed" | "db-error";
+  errorDetail?: string;
   managedByEnv: boolean;
+}
+
+interface EmailDiagnostic {
+  ok: boolean;
+  message: string;        // ภาษาไทย — สั้น
+  detail?: string;         // technical
+  kind?: "auth" | "connect" | "from" | "send" | "not-configured" | "migration-needed" | "db-error" | "ok";
+  testedAt: number;        // timestamp
 }
 
 type Tab = "company" | "login" | "email";
@@ -408,7 +418,9 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [testing, startTesting] = useTransition();
+  const [verifying, startVerifying] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<EmailDiagnostic | null>(null);
 
   const [host, setHost] = useState(initial.host);
   const [port, setPort] = useState(String(initial.port));
@@ -422,7 +434,9 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
   const [testTo, setTestTo] = useState(adminEmail || "");
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
-  const isConfigured = initial.source !== "none";
+  const isConfigured = initial.source === "env" || initial.source === "db";
+  const isMigrationNeeded = initial.source === "migration-needed";
+  const isDbError = initial.source === "db-error";
   const managedByEnv = initial.managedByEnv;
 
   function applyPreset(p: Preset) {
@@ -476,17 +490,54 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
     });
   }
 
+  function handleVerify() {
+    setDiagnostic(null);
+    startVerifying(async () => {
+      const r = await verifyEmailAction();
+      if (r.ok) {
+        setDiagnostic({
+          ok: true,
+          message: "เชื่อมต่อ SMTP สำเร็จ — Username/Password ถูกต้อง",
+          kind: "ok",
+          testedAt: Date.now(),
+        });
+        toast.success("✅ เชื่อมต่อ SMTP สำเร็จ");
+      } else {
+        setDiagnostic({
+          ok: false,
+          message: r.error ?? "ตรวจสอบไม่สำเร็จ",
+          detail: r.errorDetail,
+          kind: r.errorKind ?? "send",
+          testedAt: Date.now(),
+        });
+      }
+    });
+  }
+
   function handleTest() {
     if (!testTo.trim()) {
       toast.error("กรอกอีเมลที่จะทดสอบ");
       return;
     }
+    setDiagnostic(null);
     startTesting(async () => {
       const r = await testEmailAction(testTo.trim());
       if (r.ok) {
-        toast.success(`📨 ส่งทดสอบไปยัง ${testTo} แล้ว — ตรวจ inbox (รวม Spam)`);
+        setDiagnostic({
+          ok: true,
+          message: `ส่งอีเมลทดสอบไปยัง ${testTo} แล้ว — ตรวจ inbox (รวม Spam)`,
+          kind: "ok",
+          testedAt: Date.now(),
+        });
+        toast.success(`📨 ส่งทดสอบไปยัง ${testTo} แล้ว`);
       } else {
-        toast.error(`ส่งไม่สำเร็จ: ${r.error ?? "unknown"}`, { duration: 8000 });
+        setDiagnostic({
+          ok: false,
+          message: r.error ?? "ส่งไม่สำเร็จ",
+          detail: r.errorDetail,
+          kind: r.errorKind ?? "send",
+          testedAt: Date.now(),
+        });
       }
     });
   }
@@ -508,43 +559,100 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
   return (
     <Card>
       <CardContent className="p-5 space-y-4">
-        {/* Status banner */}
-        <div className={cn(
-          "flex items-start gap-3 p-3.5 rounded-xl border",
-          isConfigured
-            ? "bg-emerald-50 border-emerald-200"
-            : "bg-amber-50 border-amber-200",
-        )}>
+        {/* Status banner — 4 states */}
+        {isMigrationNeeded ? (
+          <div className="flex items-start gap-3 p-3.5 rounded-xl border bg-red-50 border-red-300">
+            <div className="flex-shrink-0 size-9 rounded-lg flex items-center justify-center bg-red-500">
+              <AlertCircle className="size-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-red-900">
+                🔴 ต้องรัน Database Migration ก่อน
+              </div>
+              <div className="text-xs mt-1 text-red-800 leading-relaxed">
+                ตาราง <code className="bg-red-100 px-1 py-0.5 rounded font-mono text-[11px]">company_settings</code> ยังไม่มี column <code className="bg-red-100 px-1 py-0.5 rounded font-mono text-[11px]">smtp_*</code> —
+                เปิด <strong>Supabase Dashboard → SQL Editor</strong> แล้วรันไฟล์
+                <code className="bg-red-100 px-1.5 py-0.5 rounded font-mono text-[11px] mx-1">migrations/202604_email_settings.sql</code>
+              </div>
+              <details className="mt-2">
+                <summary className="text-[11px] text-red-600 cursor-pointer font-semibold">
+                  ดู SQL ที่ต้องรัน
+                </summary>
+                <pre className="mt-2 bg-white border border-red-200 rounded p-2 text-[10px] font-mono overflow-x-auto">
+{`ALTER TABLE company_settings
+  ADD COLUMN IF NOT EXISTS smtp_host TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS smtp_port INT DEFAULT 587,
+  ADD COLUMN IF NOT EXISTS smtp_user TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS smtp_password TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS smtp_from_email TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS smtp_from_name TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS smtp_secure BOOLEAN DEFAULT FALSE;`}
+                </pre>
+                {initial.errorDetail && (
+                  <div className="mt-2 text-[10px] text-red-500 font-mono break-all">
+                    DB error: {initial.errorDetail}
+                  </div>
+                )}
+              </details>
+            </div>
+          </div>
+        ) : isDbError ? (
+          <div className="flex items-start gap-3 p-3.5 rounded-xl border bg-red-50 border-red-300">
+            <div className="flex-shrink-0 size-9 rounded-lg flex items-center justify-center bg-red-500">
+              <AlertCircle className="size-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-red-900">
+                🔴 อ่านค่าจาก Database ไม่ได้
+              </div>
+              <div className="text-xs mt-1 text-red-800">
+                ตรวจการเชื่อมต่อ Supabase + service role key
+              </div>
+              {initial.errorDetail && (
+                <div className="mt-1.5 text-[10px] text-red-600 font-mono break-all bg-white border border-red-200 rounded px-2 py-1">
+                  {initial.errorDetail}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
           <div className={cn(
-            "flex-shrink-0 size-9 rounded-lg flex items-center justify-center",
-            isConfigured ? "bg-emerald-500" : "bg-amber-500",
+            "flex items-start gap-3 p-3.5 rounded-xl border",
+            isConfigured
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-amber-50 border-amber-200",
           )}>
-            {isConfigured
-              ? <CheckCircle2 className="size-5 text-white" />
-              : <AlertCircle className="size-5 text-white" />
-            }
-          </div>
-          <div className="flex-1 min-w-0">
             <div className={cn(
-              "text-sm font-bold",
-              isConfigured ? "text-emerald-900" : "text-amber-900",
+              "flex-shrink-0 size-9 rounded-lg flex items-center justify-center",
+              isConfigured ? "bg-emerald-500" : "bg-amber-500",
             )}>
               {isConfigured
-                ? `🟢 ตั้งค่าแล้ว (${initial.source === "env" ? "จาก Environment Variables" : "จาก Database"})`
-                : "🔴 ยังไม่ตั้งค่า — ระบบจะไม่ส่งอีเมล"
+                ? <CheckCircle2 className="size-5 text-white" />
+                : <AlertCircle className="size-5 text-white" />
               }
             </div>
-            <div className={cn(
-              "text-xs mt-0.5",
-              isConfigured ? "text-emerald-700" : "text-amber-700",
-            )}>
-              {isConfigured
-                ? `${initial.host}:${initial.port} • ${initial.user}`
-                : "อีเมลต้อนรับเมื่อสร้าง user ใหม่ + Daily digest จะไม่ทำงาน"
-              }
+            <div className="flex-1 min-w-0">
+              <div className={cn(
+                "text-sm font-bold",
+                isConfigured ? "text-emerald-900" : "text-amber-900",
+              )}>
+                {isConfigured
+                  ? `🟢 ตั้งค่าแล้ว (${initial.source === "env" ? "จาก Environment Variables" : "จาก Database"})`
+                  : "🟡 ยังไม่ตั้งค่า — ระบบจะไม่ส่งอีเมล"
+                }
+              </div>
+              <div className={cn(
+                "text-xs mt-0.5",
+                isConfigured ? "text-emerald-700" : "text-amber-700",
+              )}>
+                {isConfigured
+                  ? `${initial.host}:${initial.port} • ${initial.user}`
+                  : "อีเมลต้อนรับเมื่อสร้าง user ใหม่ + Daily digest จะไม่ทำงาน"
+                }
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {managedByEnv && (
           <Alert tone="info">
@@ -709,37 +817,69 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
           </div>
         )}
 
-        {/* Test send */}
-        <div className="pt-4 border-t border-slate-200 space-y-2">
-          <h3 className="text-sm font-bold text-slate-900 inline-flex items-center gap-1.5">
-            <Send className="size-4 text-brand-600" />
-            ทดสอบส่งอีเมล
-          </h3>
-          <p className="text-xs text-slate-500">
-            ส่งอีเมลทดสอบเพื่อตรวจสอบว่า SMTP ทำงานถูกต้อง — กรุณาเช็ค Spam folder ด้วย
-          </p>
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              value={testTo}
-              onChange={(e) => setTestTo(e.target.value)}
-              placeholder="you@example.com"
-              disabled={testing || !isConfigured}
-              className="flex-1"
-            />
+        {/* Test & Verify section */}
+        <div className="pt-4 border-t border-slate-200 space-y-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 inline-flex items-center gap-1.5">
+              <Send className="size-4 text-brand-600" />
+              ทดสอบ SMTP
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              <strong>ตรวจสอบ</strong> = test connection อย่างเดียว (ไม่ส่งจริง) •
+              <strong> ส่งทดสอบ</strong> = ส่งอีเมลจริงไปยังที่ระบุ
+            </p>
+          </div>
+
+          {/* Verify button — separate row */}
+          <div>
             <Button
               variant="secondary"
-              onClick={handleTest}
-              loading={testing}
-              disabled={!isConfigured}
+              onClick={handleVerify}
+              loading={verifying}
+              disabled={!isConfigured || pending || testing}
+              className="w-full sm:w-auto"
             >
-              <Send className="h-4 w-4" /> ส่งทดสอบ
+              <CheckCircle2 className="h-4 w-4" /> ตรวจสอบการเชื่อมต่อ
             </Button>
           </div>
-          {!isConfigured && (
+
+          {/* Test send — input + button */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              ส่งอีเมลทดสอบไปยัง:
+            </label>
+            <div className="flex gap-2">
+              <Input
+                type="email"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="you@example.com"
+                disabled={testing || !isConfigured}
+                className="flex-1"
+              />
+              <Button
+                variant="secondary"
+                onClick={handleTest}
+                loading={testing}
+                disabled={!isConfigured || verifying || pending}
+              >
+                <Send className="h-4 w-4" /> ส่งทดสอบ
+              </Button>
+            </div>
+          </div>
+
+          {!isConfigured && !isMigrationNeeded && !isDbError && (
             <p className="text-xs text-amber-600">
               ⚠️ บันทึก SMTP ก่อน ถึงจะทดสอบได้
             </p>
+          )}
+
+          {/* Persistent diagnostic result */}
+          {diagnostic && (
+            <DiagnosticPanel
+              diagnostic={diagnostic}
+              onDismiss={() => setDiagnostic(null)}
+            />
           )}
         </div>
 
@@ -798,5 +938,138 @@ function fmtDateTime(d: string): string {
     });
   } catch {
     return d;
+  }
+}
+
+// ==================================================================
+// Diagnostic panel — แสดงผลการ verify/test แบบ persistent + troubleshoot
+// ==================================================================
+function DiagnosticPanel({
+  diagnostic, onDismiss,
+}: {
+  diagnostic: EmailDiagnostic;
+  onDismiss: () => void;
+}) {
+  const tips = troubleshootTips(diagnostic.kind);
+  const time = new Date(diagnostic.testedAt).toLocaleTimeString("th-TH", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+
+  if (diagnostic.ok) {
+    return (
+      <div className="rounded-xl border bg-emerald-50 border-emerald-200 p-3.5">
+        <div className="flex items-start gap-2.5">
+          <div className="flex-shrink-0 size-7 rounded-lg bg-emerald-500 flex items-center justify-center">
+            <CheckCircle2 className="size-4 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-emerald-900">✅ สำเร็จ</div>
+            <div className="text-xs text-emerald-700 mt-0.5">{diagnostic.message}</div>
+            <div className="text-[10px] text-emerald-600/70 mt-1">{time}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-emerald-600/60 hover:text-emerald-700 text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border bg-red-50 border-red-200 p-3.5">
+      <div className="flex items-start gap-2.5">
+        <div className="flex-shrink-0 size-7 rounded-lg bg-red-500 flex items-center justify-center">
+          <AlertCircle className="size-4 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-red-900">❌ ล้มเหลว</div>
+          <div className="text-xs text-red-800 mt-0.5">{diagnostic.message}</div>
+          <div className="text-[10px] text-red-600/70 mt-1">{time}</div>
+
+          {tips.length > 0 && (
+            <div className="mt-2.5 bg-white border border-red-200 rounded-lg p-2.5">
+              <div className="text-[11px] font-bold text-red-900 mb-1.5">
+                💡 วิธีแก้ที่แนะนำ:
+              </div>
+              <ul className="space-y-1 text-[11px] text-slate-700 list-disc list-inside">
+                {tips.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {diagnostic.detail && (
+            <details className="mt-2">
+              <summary className="text-[10px] text-red-600 cursor-pointer font-semibold">
+                รายละเอียดทาง technical
+              </summary>
+              <pre className="mt-1 bg-white border border-red-200 rounded p-2 text-[10px] font-mono text-red-700 overflow-x-auto whitespace-pre-wrap break-all">
+                {diagnostic.detail}
+              </pre>
+            </details>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-red-600/60 hover:text-red-700 text-xs"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function troubleshootTips(kind?: EmailDiagnostic["kind"]): string[] {
+  switch (kind) {
+    case "auth":
+      return [
+        "ตรวจ Username = email เต็ม (เช่น you@gmail.com — ไม่ใช่แค่ 'you')",
+        "ใช้ App Password 16 หลัก (Gmail) — ไม่ใช่รหัส Gmail ปกติ",
+        "App Password ของ Gmail ห้ามมีเว้นวรรค (paste ตรงๆ)",
+        "ถ้าใช้ Resend → Username = 'resend' / Password = API key (ขึ้นต้น re_)",
+        "ถ้าใช้ SendGrid → Username = 'apikey' (พิมพ์ตามนี้) / Password = API key",
+        "Gmail: ต้องเปิด 2-Step Verification ก่อนสร้าง App Password",
+      ];
+    case "connect":
+      return [
+        "ตรวจ Host สะกดถูกต้อง (เช่น smtp.gmail.com — ไม่มี https://)",
+        "ตรวจ Port: 587 (STARTTLS, ปกติ) หรือ 465 (SSL — ติ๊ก SSL/TLS โดยตรง)",
+        "ถ้า Vercel/cloud อาจ block port 25 — ใช้ 587/465 เท่านั้น",
+        "ลอง preset 'Gmail' หรือ 'Resend' ดูว่าค่าตรงกับ provider หรือไม่",
+      ];
+    case "from":
+      return [
+        "Gmail บังคับ From email ตรงกับ Username",
+        "Resend: From ต้องอยู่ใน domain ที่ verify (หรือใช้ onboarding@resend.dev)",
+        "ลองตั้ง From email = Username เลย",
+      ];
+    case "migration-needed":
+      return [
+        "เปิด Supabase Dashboard → SQL Editor",
+        "Copy SQL จาก migrations/202604_email_settings.sql",
+        "Paste และกด Run",
+        "Refresh หน้านี้ → จะเห็นฟอร์มพร้อมใช้",
+      ];
+    case "db-error":
+      return [
+        "ตรวจ env: NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY",
+        "ดู log ที่ Vercel Dashboard → Logs",
+      ];
+    case "not-configured":
+      return [
+        "กรอกฟอร์มด้านบน → กดบันทึก",
+        "เลือก preset (Gmail/Resend/SendGrid) เพื่อเติม host/port อัตโนมัติ",
+      ];
+    case "send":
+    default:
+      return [
+        "ดูข้อความ error technical ด้านล่าง",
+        "ตรวจ Vercel Logs สำหรับ stack trace",
+      ];
   }
 }
