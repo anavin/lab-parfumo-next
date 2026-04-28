@@ -1,6 +1,14 @@
+"use client";
+
 /**
- * Render รายการสินค้าใน PO
+ * Render รายการสินค้าใน PO — ครบถ้วน + รูป 4/แถว + lightbox
  */
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import {
+  Package as PackageIcon, Pencil, ImageOff,
+  X, ChevronLeft, ChevronRight, MessageSquare,
+} from "lucide-react";
 import type { PoItem } from "@/lib/types/db";
 
 export function ItemsList({
@@ -9,48 +17,236 @@ export function ItemsList({
   items: PoItem[];
   isAdmin: boolean;
 }) {
-  return (
-    <div className="space-y-2">
-      {items.map((it, idx) => (
-        <div
-          key={idx}
-          className="flex items-start gap-3 p-3 border border-slate-200 rounded-xl hover:border-brand-300 transition-colors"
-        >
-          {/* Image / icon */}
-          <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
-            {(it.image_urls && it.image_urls.length > 0)
-              ? <img src={it.image_urls[0]} alt={it.name} loading="lazy"
-                     className="w-full h-full object-cover" />
-              : <span>{it.equipment_id ? "🧴" : "✏️"}</span>}
-          </div>
+  const [preview, setPreview] = useState<{
+    images: string[]; index: number; name: string;
+  } | null>(null);
 
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-slate-900 text-sm">{it.name}</div>
-            <div className="text-xs text-slate-500 mt-0.5">
-              {it.equipment_id
-                ? "📦 จาก catalog"
-                : "✏️ พิมพ์เอง (ไม่ได้อยู่ใน catalog)"}
-            </div>
-            {it.notes && (
-              <div className="text-xs text-slate-600 mt-1">💬 {it.notes}</div>
+  return (
+    <>
+      <div className="space-y-3">
+        {items.map((it, idx) => (
+          <ItemCard
+            key={idx}
+            item={it}
+            isAdmin={isAdmin}
+            onPreview={(images, index) =>
+              setPreview({ images, index, name: it.name })
+            }
+          />
+        ))}
+      </div>
+
+      {preview && (
+        <ImagePreview
+          images={preview.images}
+          index={preview.index}
+          name={preview.name}
+          onClose={() => setPreview(null)}
+          onIndex={(i) => setPreview({ ...preview, index: i })}
+        />
+      )}
+    </>
+  );
+}
+
+function ItemCard({
+  item, isAdmin, onPreview,
+}: {
+  item: PoItem;
+  isAdmin: boolean;
+  onPreview: (images: string[], startIndex: number) => void;
+}) {
+  const images = (item.image_urls ?? []).filter(Boolean);
+  const hasImages = images.length > 0;
+  const isCustom = !item.equipment_id;
+  const showPrice = isAdmin && item.unit_price != null && item.unit_price > 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 hover:border-primary/30 hover:shadow-md transition-all">
+      {/* Top row: name + qty/price */}
+      <div className="flex items-start gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-base text-foreground leading-snug">
+            {item.name}
+          </div>
+          {/* Source pill */}
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+            {isCustom ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded-full px-2 py-0.5">
+                <Pencil className="size-3" /> พิมพ์เอง
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200 rounded-full px-2 py-0.5">
+                <PackageIcon className="size-3" /> จาก catalog
+              </span>
+            )}
+            {hasImages && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5 tabular-nums">
+                {images.length} รูป
+              </span>
             )}
           </div>
-
-          <div className="text-right flex-shrink-0">
-            <div className="text-sm font-bold text-slate-900 tabular-nums">
-              {it.qty.toLocaleString("th-TH")} <span className="text-xs font-normal text-slate-500">{it.unit}</span>
+          {/* Notes */}
+          {item.notes && (
+            <div className="mt-2 text-sm text-muted-foreground inline-flex items-start gap-1.5 leading-relaxed">
+              <MessageSquare className="size-3.5 flex-shrink-0 mt-0.5 text-muted-foreground/60" />
+              <span className="whitespace-pre-line break-words">{item.notes}</span>
             </div>
-            {isAdmin && it.unit_price != null && it.unit_price > 0 && (
-              <div className="text-xs text-slate-500 mt-0.5">
-                @฿{it.unit_price.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                <div className="text-sm font-bold text-brand-700 tabular-nums">
-                  ฿{(it.subtotal ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+          )}
+        </div>
+
+        {/* Right column: qty + price */}
+        <div className="flex-shrink-0 text-right">
+          <div className="text-2xl font-extrabold text-foreground tabular-nums leading-none">
+            {item.qty.toLocaleString("th-TH")}
+          </div>
+          <div className="text-xs font-medium text-muted-foreground mt-1">
+            {item.unit}
+          </div>
+          {showPrice && (
+            <div className="mt-3 pt-3 border-t border-border/50 space-y-0.5">
+              <div className="text-[11px] text-muted-foreground tabular-nums">
+                @ ฿{item.unit_price!.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-base font-extrabold text-primary tabular-nums">
+                ฿{(item.subtotal ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Image grid — 4 per row */}
+      {hasImages ? (
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {images.map((url, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onPreview(images, i)}
+              className="relative aspect-square bg-muted rounded-xl overflow-hidden ring-1 ring-border hover:ring-primary/40 hover:shadow-md cursor-zoom-in group/img transition-all"
+              aria-label={`ดูรูปที่ ${i + 1}`}
+            >
+              <Image
+                src={url}
+                alt={`${item.name} ${i + 1}`}
+                fill
+                sizes="(max-width: 640px) 50vw, 25vw"
+                className="object-cover group-hover/img:scale-110 transition-transform duration-300"
+                unoptimized
+              />
+              {/* Hover zoom hint */}
+              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
+                <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-md">
+                  🔍 ขยาย
                 </div>
               </div>
-            )}
-          </div>
+              {/* Index badge */}
+              <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 tabular-nums backdrop-blur-sm">
+                {i + 1}/{images.length}
+              </div>
+            </button>
+          ))}
         </div>
-      ))}
+      ) : (
+        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+          <ImageOff className="size-3.5" />
+          ไม่มีรูปประกอบ
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================================================================
+// Lightbox preview
+// ==================================================================
+function ImagePreview({
+  images, index, name, onClose, onIndex,
+}: {
+  images: string[];
+  index: number;
+  name: string;
+  onClose: () => void;
+  onIndex: (i: number) => void;
+}) {
+  const current = images[index];
+  const hasNav = images.length > 1;
+
+  function prev(e: React.MouseEvent) {
+    e.stopPropagation();
+    onIndex((index - 1 + images.length) % images.length);
+  }
+  function next(e: React.MouseEvent) {
+    e.stopPropagation();
+    onIndex((index + 1) % images.length);
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && hasNav) onIndex((index - 1 + images.length) % images.length);
+      if (e.key === "ArrowRight" && hasNav) onIndex((index + 1) % images.length);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, images.length, hasNav, onClose, onIndex]);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+        aria-label="ปิด"
+      >
+        <X className="size-5" />
+      </button>
+
+      <div className="absolute top-4 left-4 text-white">
+        <div className="text-sm font-bold">{name}</div>
+        {hasNav && (
+          <div className="text-xs text-white/60 mt-0.5 tabular-nums">
+            {index + 1} / {images.length}
+          </div>
+        )}
+      </div>
+
+      {hasNav && (
+        <button
+          type="button"
+          onClick={prev}
+          className="absolute left-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+          aria-label="ก่อนหน้า"
+        >
+          <ChevronLeft className="size-6" />
+        </button>
+      )}
+
+      <div onClick={(e) => e.stopPropagation()} className="relative max-w-[90vw] max-h-[85vh]">
+        <Image
+          src={current}
+          alt={name}
+          width={1200}
+          height={1200}
+          unoptimized
+          className="rounded-lg object-contain max-w-[90vw] max-h-[85vh] w-auto h-auto"
+        />
+      </div>
+
+      {hasNav && (
+        <button
+          type="button"
+          onClick={next}
+          className="absolute right-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+          aria-label="ถัดไป"
+        >
+          <ChevronRight className="size-6" />
+        </button>
+      )}
     </div>
   );
 }
