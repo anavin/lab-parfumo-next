@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
-import { Sarabun } from "next/font/google";
+import { Sarabun, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const sarabun = Sarabun({
   subsets: ["latin", "thai"],
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-sarabun",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -24,7 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="th" className={sarabun.variable}>
+    <html lang="th" className={`${sarabun.variable} ${jetbrainsMono.variable}`}>
       <body className={sarabun.className}>{children}</body>
     </html>
   );
