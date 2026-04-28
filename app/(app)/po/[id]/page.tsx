@@ -15,6 +15,8 @@ import {
   getPoById, getPoActivities, getPoComments, getPoDeliveries,
   getSupplierHistory,
 } from "@/lib/db/po";
+import { getEquipmentById } from "@/lib/db/equipment";
+import type { Equipment } from "@/lib/types/db";
 import { ItemsList } from "./_components/items-list";
 import { ActionButtons } from "./_components/action-buttons";
 import { CommentForm } from "./_components/comment-form";
@@ -52,12 +54,29 @@ export default async function PoViewPage({
     redirect("/po");
   }
 
-  const [activities, comments, deliveries, suppliers] = await Promise.all([
+  // Collect equipment_ids referenced in items, fetch their full records in parallel
+  // so ItemsList can show real product images + descriptions
+  const eqIds = Array.from(
+    new Set(
+      (po.items ?? [])
+        .map((it) => it.equipment_id)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
+  const [activities, comments, deliveries, suppliers, equipmentList] = await Promise.all([
     getPoActivities(po.id),
     getPoComments(po.id),
     getPoDeliveries(po.id),
     isAdmin ? getSupplierHistory() : Promise.resolve([]),
+    Promise.all(eqIds.map((id) => getEquipmentById(id))),
   ]);
+
+  // Build equipment lookup map (filter nulls)
+  const equipmentMap: Record<string, Equipment> = {};
+  for (const eq of equipmentList) {
+    if (eq) equipmentMap[eq.id] = eq;
+  }
 
   const itemsCount = po.items?.length ?? 0;
   const supplier = po.supplier_name || "(ยังไม่ระบุ supplier)";
@@ -210,7 +229,7 @@ export default async function PoViewPage({
         <CardContent className="p-5">
           <SectionTitle icon={<Package className="h-4 w-4" />}>รายการ ({itemsCount})</SectionTitle>
           {itemsCount > 0 ? (
-            <ItemsList items={po.items} isAdmin={isAdmin} />
+            <ItemsList items={po.items} isAdmin={isAdmin} equipmentMap={equipmentMap} />
           ) : (
             <div className="text-sm text-slate-400 italic">ไม่มีรายการ</div>
           )}

@@ -2,20 +2,26 @@
 
 /**
  * Render รายการสินค้าใน PO — ครบถ้วน + รูป 4/แถว + lightbox
+ *
+ * Image resolution:
+ * - Catalog item (equipment_id set): use Equipment.image_url + image_urls
+ * - Custom item:                      use PoItem.image_urls
  */
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import {
   Package as PackageIcon, Pencil, ImageOff,
   X, ChevronLeft, ChevronRight, MessageSquare,
+  Hash, FolderOpen, Tag,
 } from "lucide-react";
-import type { PoItem } from "@/lib/types/db";
+import type { PoItem, Equipment } from "@/lib/types/db";
 
 export function ItemsList({
-  items, isAdmin,
+  items, isAdmin, equipmentMap,
 }: {
   items: PoItem[];
   isAdmin: boolean;
+  equipmentMap?: Record<string, Equipment>;
 }) {
   const [preview, setPreview] = useState<{
     images: string[]; index: number; name: string;
@@ -29,6 +35,7 @@ export function ItemsList({
             key={idx}
             item={it}
             isAdmin={isAdmin}
+            equipment={it.equipment_id ? equipmentMap?.[it.equipment_id] : undefined}
             onPreview={(images, index) =>
               setPreview({ images, index, name: it.name })
             }
@@ -50,13 +57,25 @@ export function ItemsList({
 }
 
 function ItemCard({
-  item, isAdmin, onPreview,
+  item, isAdmin, equipment, onPreview,
 }: {
   item: PoItem;
   isAdmin: boolean;
+  equipment?: Equipment;
   onPreview: (images: string[], startIndex: number) => void;
 }) {
-  const images = (item.image_urls ?? []).filter(Boolean);
+  // Resolve images: prefer equipment images for catalog items, else item's own
+  const images: string[] = [];
+  if (equipment) {
+    if (equipment.image_url) images.push(equipment.image_url);
+    for (const u of equipment.image_urls ?? []) {
+      if (u && !images.includes(u)) images.push(u);
+    }
+  }
+  // Always include item-level images too (for both catalog + custom)
+  for (const u of item.image_urls ?? []) {
+    if (u && !images.includes(u)) images.push(u);
+  }
   const hasImages = images.length > 0;
   const isCustom = !item.equipment_id;
   const showPrice = isAdmin && item.unit_price != null && item.unit_price > 0;
@@ -86,7 +105,42 @@ function ItemCard({
               </span>
             )}
           </div>
-          {/* Notes */}
+
+          {/* Equipment metadata (only for catalog items) */}
+          {equipment && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              {equipment.sku && (
+                <span className="inline-flex items-center gap-1 font-mono">
+                  <Hash className="size-3" /> {equipment.sku}
+                </span>
+              )}
+              {equipment.category && (
+                <>
+                  {equipment.sku && <span className="text-muted-foreground/40">·</span>}
+                  <span className="inline-flex items-center gap-1">
+                    <FolderOpen className="size-3" /> {equipment.category}
+                  </span>
+                </>
+              )}
+              {equipment.unit && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Tag className="size-3" /> หน่วย {equipment.unit}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Equipment description (catalog only) */}
+          {equipment?.description && (
+            <div className="mt-2 text-xs text-muted-foreground leading-relaxed whitespace-pre-line break-words">
+              {equipment.description}
+            </div>
+          )}
+
+          {/* Item notes */}
           {item.notes && (
             <div className="mt-2 text-sm text-muted-foreground inline-flex items-start gap-1.5 leading-relaxed">
               <MessageSquare className="size-3.5 flex-shrink-0 mt-0.5 text-muted-foreground/60" />
