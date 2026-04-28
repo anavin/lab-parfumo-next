@@ -1,0 +1,89 @@
+/**
+ * Zod schemas for Server Action inputs
+ *
+ * Centralized validation — every Server Action that accepts user input
+ * should validate via .safeParse() before touching the DB.
+ */
+import { z } from "zod";
+
+// ==================================================================
+// Users
+// ==================================================================
+export const createUserSchema = z.object({
+  username: z.string().trim()
+    .min(3, "Username อย่างน้อย 3 ตัว")
+    .max(40, "Username ยาวเกินไป (สูงสุด 40 ตัว)")
+    .regex(/^[a-zA-Z0-9._-]+$/, "Username ใช้ได้เฉพาะ a-z, 0-9, . _ -"),
+  password: z.string().min(8, "รหัสผ่านอย่างน้อย 8 ตัว").max(128),
+  fullName: z.string().trim().min(1, "กรุณากรอกชื่อ").max(100),
+  role: z.enum(["admin", "requester"]),
+  email: z.string().trim().email("อีเมลไม่ถูกต้อง").max(120).optional()
+    .or(z.literal("")),
+  sendEmail: z.boolean().optional(),
+});
+
+export const updateUserSchema = z.object({
+  fullName: z.string().trim().min(1).max(100).optional(),
+  email: z.string().trim().max(120)
+    .refine((v) => !v || z.string().email().safeParse(v).success, "อีเมลไม่ถูกต้อง")
+    .optional(),
+  role: z.enum(["admin", "requester"]).optional(),
+  isActive: z.boolean().optional(),
+  newPassword: z.string().min(8).max(128).optional(),
+});
+
+// ==================================================================
+// PO
+// ==================================================================
+export const poItemSchema = z.object({
+  equipment_id: z.string().uuid().nullable(),
+  name: z.string().trim().min(1, "กรุณากรอกชื่อรายการ").max(200),
+  qty: z.number().int().min(1, "จำนวนต้องมากกว่า 0").max(99999),
+  unit: z.string().trim().max(20).optional(),
+  unit_price: z.number().min(0).max(99999999).optional(),
+  subtotal: z.number().min(0).max(99999999).optional(),
+  notes: z.string().max(500).optional(),
+  image_urls: z.array(z.string().url()).max(10).optional(),
+});
+
+export const createPoSchema = z.object({
+  items: z.array(poItemSchema).min(1, "กรุณาเพิ่มรายการอย่างน้อย 1").max(50),
+  notes: z.string().max(2000).optional(),
+});
+
+export const cancelPoSchema = z.object({
+  poId: z.string().uuid(),
+  reason: z.string().trim().min(1, "กรุณาระบุเหตุผล").max(500),
+});
+
+// ==================================================================
+// Equipment
+// ==================================================================
+export const createEquipmentSchema = z.object({
+  sku: z.string().trim().min(1).max(50),
+  name: z.string().trim().min(1).max(200),
+  category: z.string().trim().max(80).optional(),
+  unit: z.string().trim().max(20).optional(),
+  description: z.string().max(1000).optional(),
+  last_cost: z.number().min(0).max(99999999).optional(),
+  stock: z.number().int().min(0).max(99999999).optional(),
+  reorder_level: z.number().int().min(0).max(99999999).optional(),
+  image_url: z.string().url().nullable().optional(),
+  image_urls: z.array(z.string().url()).max(10).optional(),
+});
+
+// ==================================================================
+// Withdraw
+// ==================================================================
+export const withdrawSchema = z.object({
+  equipment_id: z.string().uuid(),
+  qty: z.number().int().min(1, "จำนวนต้องมากกว่า 0").max(99999),
+  notes: z.string().max(500).optional(),
+});
+
+// ==================================================================
+// Helper: format zod errors as Thai-friendly string
+// ==================================================================
+export function formatZodError(err: z.ZodError): string {
+  return err.errors.map((e) => e.message).join(" • ");
+}

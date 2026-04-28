@@ -18,6 +18,7 @@ import { suggestEquipmentFromPo } from "@/lib/db/equipment";
 import type {
   PoStatus, PoItem, PurchaseOrder, PoAttachment,
 } from "@/lib/types/db";
+import { createPoSchema, cancelPoSchema, formatZodError } from "./schemas";
 
 interface ActionResult {
   ok: boolean;
@@ -150,11 +151,13 @@ export async function closePoAction(poId: string): Promise<ActionResult> {
 export async function cancelPoAction(
   poId: string, reason: string,
 ): Promise<ActionResult> {
-  if (!reason.trim()) {
-    return { ok: false, error: "กรุณากรอกเหตุผลในการยกเลิก" };
-  }
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
+
+  const parsed = cancelPoSchema.safeParse({ poId, reason });
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
+  }
 
   // Permission: requester ยกเลิกได้เฉพาะของตัวเอง
   if (user.role === "requester") {
@@ -398,11 +401,14 @@ export async function generatePoNumber(): Promise<string> {
 export async function createPoAction(
   items: PoItem[], notes: string,
 ): Promise<ActionResult> {
-  if (!items.length) {
-    return { ok: false, error: "กรุณาเพิ่มรายการอย่างน้อย 1 รายการ" };
-  }
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
+
+  // Validate input
+  const parsed = createPoSchema.safeParse({ items, notes });
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
+  }
 
   const sb = getSupabaseAdmin();
 

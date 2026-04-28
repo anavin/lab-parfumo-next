@@ -5,6 +5,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { hashBcrypt, validatePassword } from "@/lib/auth/password";
 import { sendWelcomeEmail } from "@/lib/email";
+import {
+  createUserSchema, updateUserSchema, formatZodError,
+} from "./schemas";
 
 interface ActionResult {
   ok: boolean;
@@ -28,10 +31,15 @@ export async function createUserAction(input: {
   if (!me || me.role !== "admin") {
     return { ok: false, error: "เฉพาะแอดมิน" };
   }
-  const username = input.username.trim();
-  if (!username) return { ok: false, error: "กรุณากรอก username" };
-  if (!input.fullName.trim()) return { ok: false, error: "กรุณากรอกชื่อ-นามสกุล" };
 
+  // Validate input schema first
+  const parsed = createUserSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
+  }
+  const username = parsed.data.username;
+
+  // Stricter password rules (length + complexity vs username)
   const v = validatePassword(input.password, username);
   if (!v.ok) return { ok: false, error: v.message };
 
@@ -104,6 +112,11 @@ export async function updateUserAction(
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
     return { ok: false, error: "เฉพาะแอดมิน" };
+  }
+
+  const parsed = updateUserSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
   }
 
   const sb = getSupabaseAdmin();
