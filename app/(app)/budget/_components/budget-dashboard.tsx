@@ -198,20 +198,20 @@ function KpiCard({
   const tone = KPI_TONE[color];
   return (
     <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         <div className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring}`}>
           <Icon className="size-5" strokeWidth={2.5} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="text-[11px] font-bold text-muted-foreground">{label}</div>
           <div className="flex items-baseline gap-1">
-            <span className="text-lg sm:text-xl font-extrabold tabular-nums text-foreground leading-none truncate">
+            <span className="text-lg sm:text-xl font-extrabold tabular-nums text-foreground leading-none">
               {value}
             </span>
             <span className="text-[11px] font-medium text-muted-foreground flex-shrink-0">{unit}</span>
           </div>
           {subtitle && (
-            <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+            <div className="text-[10px] text-muted-foreground mt-0.5">
               {subtitle}
             </div>
           )}
