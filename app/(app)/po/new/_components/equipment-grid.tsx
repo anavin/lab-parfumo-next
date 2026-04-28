@@ -159,12 +159,9 @@ function EquipmentCard({
           {eq.name}
         </div>
 
-        {/* Description (if exists) */}
+        {/* Description (if exists) — full text, preserves line breaks */}
         {eq.description && (
-          <div
-            className="text-[11px] text-muted-foreground line-clamp-2 leading-snug"
-            title={eq.description}
-          >
+          <div className="text-[11px] text-muted-foreground leading-snug whitespace-pre-line break-words">
             {eq.description}
           </div>
         )}
