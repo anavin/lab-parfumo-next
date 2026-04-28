@@ -13,7 +13,7 @@ import { NavLinks } from "./nav-links";
 import { SearchTrigger } from "./search-trigger";
 
 const ROLE_LABEL: Record<string, string> = {
-  admin: "แอดมิน + จัดซื้อ",
+  admin: "Admin",
   requester: "Staff",
 };
 

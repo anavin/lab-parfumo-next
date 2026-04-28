@@ -23,7 +23,7 @@ import {
   createUserAction, updateUserAction, deleteUserAction,
 } from "@/lib/actions/users";
 
-const ROLE_LABEL = { admin: "แอดมิน + จัดซื้อ", requester: "Staff" } as const;
+const ROLE_LABEL = { admin: "Admin", requester: "Staff" } as const;
 
 export function UsersClient({
   users, myId,
@@ -91,7 +91,7 @@ export function UsersClient({
           />
           <KpiCard
             icon={Crown}
-            label="แอดมิน"
+            label="Admin"
             value={adminCount}
             unit="คน"
             color="amber"
@@ -130,7 +130,7 @@ export function UsersClient({
             >
               {([
                 { v: "all", label: `ทั้งหมด (${totalUsers})` },
-                { v: "admin", label: `แอดมิน (${adminCount})` },
+                { v: "admin", label: `Admin (${adminCount})` },
                 { v: "requester", label: `Staff (${requesterCount})` },
                 { v: "never", label: `ยังไม่ login (${neverLoggedIn})` },
               ] as const).map((p) => (
@@ -497,7 +497,7 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  แอดมิน
+                  Admin
                 </button>
               </div>
             </div>
@@ -631,7 +631,7 @@ function EditUserDialog({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  แอดมิน
+                  Admin
                 </button>
               </div>
             </div>

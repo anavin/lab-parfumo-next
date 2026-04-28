@@ -79,7 +79,7 @@ export function UserAvatar({
             "flex items-center justify-center",
             dim.badge,
           )}
-          title="แอดมิน"
+          title="Admin"
         >
           <Crown
             className={cn("text-white", dim.icon)}

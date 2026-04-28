@@ -303,7 +303,7 @@ function LoginIntroForm({ initial }: { initial: CompanySettings }) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={"admin / admin123     → แอดมิน\nstaff1 / staff123    → Staff"}
+            placeholder={"admin / admin123     → Admin\nstaff1 / staff123    → Staff"}
             rows={5}
             disabled={pending}
             className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm font-mono focus:outline-none focus:border-brand-600 disabled:bg-slate-50"
