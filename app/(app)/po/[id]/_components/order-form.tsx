@@ -88,13 +88,17 @@ export function OrderForm({
   );
   const [supplierContact, setSupplierContact] = useState(initialContact ?? "");
 
-  // Auto-fill contact เมื่อเลือก supplier เก่า
+  // Auto-fill ข้อมูลติดต่อเมื่อเลือก supplier เก่า
+  // (always overwrite — user explicitly picked this supplier from history)
   function handleSupplierChange(v: string) {
     setSupChoice(v);
     if (v !== NEW_SUPPLIER) {
       const found = suppliers.find((s) => s.name === v);
-      if (found && !supplierContact && found.lastContact) {
-        setSupplierContact(found.lastContact);
+      if (found) {
+        setSupplierContact(found.lastContact ?? "");
+        if (found.lastContact) {
+          toast.success(`ดึงข้อมูลติดต่อล่าสุดของ ${found.name}`);
+        }
       }
     }
   }
@@ -199,7 +203,7 @@ export function OrderForm({
       {/* Supplier selector */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          🏭 Supplier <span className="text-slate-400 text-xs">— เลือกจากประวัติ ({supNames.length}) หรือพิมพ์ใหม่</span>
+          🏭 Supplier <span className="text-slate-400 text-xs">— เลือกจากประวัติ ({suppliers.length}) หรือพิมพ์ใหม่</span>
         </label>
         <select
           className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
@@ -208,9 +212,22 @@ export function OrderForm({
           disabled={pending}
         >
           <option value={NEW_SUPPLIER}>{NEW_SUPPLIER}</option>
-          {supNames.map((n) => (
-            <option key={n} value={n}>{n}</option>
-          ))}
+          {suppliers.map((s) => {
+            const meta: string[] = [];
+            if (s.poCount > 0) meta.push(`${s.poCount} ใบ`);
+            if (s.lastUsed) {
+              const d = new Date(s.lastUsed);
+              if (!isNaN(d.getTime())) {
+                meta.push(`ล่าสุด ${d.toLocaleDateString("th-TH", {
+                  day: "2-digit", month: "short", year: "2-digit",
+                })}`);
+              }
+            }
+            const label = meta.length > 0 ? `${s.name} — ${meta.join(" · ")}` : s.name;
+            return (
+              <option key={s.name} value={s.name}>{label}</option>
+            );
+          })}
         </select>
         {supChoice === NEW_SUPPLIER && (
           <Input
@@ -221,6 +238,19 @@ export function OrderForm({
             disabled={pending}
           />
         )}
+        {/* Show preview of pulled-in contact when picking from history */}
+        {supChoice !== NEW_SUPPLIER && (() => {
+          const found = suppliers.find((s) => s.name === supChoice);
+          if (!found) return null;
+          return (
+            <div className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1.5 bg-emerald-50 ring-1 ring-emerald-200 rounded-md px-2 py-1">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              <span>
+                ดึงข้อมูลติดต่อจาก PO ล่าสุด ({found.lastPo || "—"}) แล้ว — แก้ไขได้
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Two-column: contact + dates */}
