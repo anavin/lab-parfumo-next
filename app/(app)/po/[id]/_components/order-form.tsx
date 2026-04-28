@@ -3,14 +3,19 @@
 /**
  * Order form (admin) — กรอก supplier + ราคาแต่ละรายการ + VAT/discount
  */
-import { useState, useTransition, useMemo } from "react";
-import { ShoppingCart, X } from "lucide-react";
+import { useState, useTransition, useMemo, useRef } from "react";
+import {
+  ShoppingCart, X, Paperclip, FileText, Loader2, Trash2, Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
-import { updateProcurementAction } from "@/lib/actions/po";
+import {
+  updateProcurementAction, addPoAttachmentsAction,
+} from "@/lib/actions/po";
+import { uploadSingleAttachmentAction, type UploadedAttachment } from "@/lib/actions/upload";
 import type { PoItem } from "@/lib/types/db";
 import type { SupplierEntry } from "@/lib/types/db";
 
@@ -39,6 +44,38 @@ export function OrderForm({
     actualAfter: number;
     overBy: number;
   } | null>(null);
+
+  // Attachments staged before submit
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFiles, setPendingFiles] = useState<UploadedAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    const uploaded: UploadedAttachment[] = [];
+    for (const file of Array.from(files)) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadSingleAttachmentAction(fd);
+      if (res.ok && res.attachment) {
+        uploaded.push(res.attachment);
+      } else {
+        toast.error(`${file.name}: ${res.error ?? "อัปโหลดไม่สำเร็จ"}`);
+      }
+    }
+    if (uploaded.length > 0) {
+      setPendingFiles((prev) => [...prev, ...uploaded]);
+      toast.success(`อัปโหลด ${uploaded.length} ไฟล์สำเร็จ`);
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeFile(idx: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   // Supplier autocomplete
   const supNames = useMemo(() => suppliers.map((s) => s.name), [suppliers]);
@@ -119,7 +156,27 @@ export function OrderForm({
         setError(res.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
-      toast.success(`✅ ส่งคำสั่งซื้อ ${poNumber} ไปยัง ${supplierName.trim()}`);
+      // Attach pending files (best-effort)
+      if (pendingFiles.length > 0) {
+        const r = await addPoAttachmentsAction(
+          poId,
+          pendingFiles.map((f) => ({
+            url: f.url,
+            name: f.name,
+            size: f.size,
+            type: f.type,
+            uploaded_at: f.uploaded_at,
+          })),
+          "order",
+        );
+        if (!r.ok) {
+          toast.error(`ส่งคำสั่งซื้อสำเร็จ แต่แนบไฟล์ไม่ได้: ${r.error}`);
+        }
+      }
+      toast.success(
+        `✅ ส่งคำสั่งซื้อ ${poNumber} ไปยัง ${supplierName.trim()}` +
+          (pendingFiles.length > 0 ? ` พร้อม ${pendingFiles.length} ไฟล์` : ""),
+      );
       onClose();
     });
   }
@@ -317,6 +374,96 @@ export function OrderForm({
           disabled={pending}
           className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 disabled:bg-slate-100"
         />
+      </div>
+
+      {/* Attachments */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <Paperclip className="inline size-3.5 mr-1" />
+          ไฟล์แนบ (ใบเสนอราคา / สัญญา / อื่นๆ)
+        </label>
+
+        {/* Drop zone / picker */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleFiles(e.dataTransfer.files);
+          }}
+          className="border-2 border-dashed border-border rounded-xl p-4 bg-muted/30 hover:bg-muted/50 hover:border-primary/40 transition-colors text-center"
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+            disabled={pending || uploading}
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip,.rar,.7z"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={pending || uploading}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 disabled:opacity-50"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                กำลังอัปโหลด...
+              </>
+            ) : (
+              <>
+                <Upload className="size-4" />
+                คลิกเพื่อเลือกไฟล์ <span className="text-muted-foreground font-normal">หรือลากมาวาง</span>
+              </>
+            )}
+          </button>
+          <div className="text-[11px] text-muted-foreground mt-1">
+            PDF · Word · Excel · รูปภาพ · ZIP — สูงสุด 10 MB ต่อไฟล์
+          </div>
+        </div>
+
+        {/* Pending files list */}
+        {pendingFiles.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {pendingFiles.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 bg-card border border-border rounded-lg p-2"
+              >
+                <div className="flex-shrink-0 size-9 rounded-md bg-primary/10 text-primary flex items-center justify-center">
+                  <FileText className="size-4" />
+                </div>
+                <a
+                  href={f.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 min-w-0 hover:underline"
+                  title="เปิดไฟล์"
+                >
+                  <div className="text-sm font-semibold text-foreground truncate">
+                    {f.name}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground tabular-nums">
+                    {(f.size / 1024).toFixed(1)} KB · {f.type.toUpperCase()}
+                  </div>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeFile(i)}
+                  disabled={pending}
+                  className="size-8 rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors disabled:opacity-50"
+                  aria-label="ลบ"
+                  title="ลบไฟล์"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && <Alert tone="danger">❌ {error}</Alert>}
