@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/sonner";
 import type { User } from "@/lib/types/db";
 import {
   createUserAction, updateUserAction, deleteUserAction,
@@ -22,11 +24,23 @@ export function UsersClient({
   users: User[];
   myId: string;
 }) {
+  const router = useRouter();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [delTarget, setDelTarget] = useState<User | null>(null);
+  const [delPending, startDelTransition] = useTransition();
 
   const editing = editId ? users.find((u) => u.id === editId) : null;
+
+  function handleDelete() {
+    if (!delTarget) return;
+    startDelTransition(async () => {
+      await deleteUserAction(delTarget.id);
+      toast.success(`✅ ลบ ${delTarget.full_name} สำเร็จ`);
+      setDelTarget(null);
+      router.refresh();
+    });
+  }
 
   return (
     <div className="space-y-3">
@@ -42,40 +56,42 @@ export function UsersClient({
             key={u.id}
             user={u}
             isMe={u.id === myId}
-            confirmDel={confirmDel === u.id}
             onEdit={() => setEditId(u.id)}
-            onDel={() => setConfirmDel(u.id)}
-            onCancelDel={() => setConfirmDel(null)}
+            onDel={() => setDelTarget(u)}
           />
         ))}
       </div>
 
       {showAdd && <AddUserDialog onClose={() => setShowAdd(false)} />}
       {editing && <EditUserDialog user={editing} onClose={() => setEditId(null)} />}
+
+      <ConfirmDialog
+        open={!!delTarget}
+        onOpenChange={(o) => !o && setDelTarget(null)}
+        title={`ลบ ${delTarget?.full_name ?? ""}?`}
+        description={
+          <>
+            ระบบจะปิด user <strong>@{delTarget?.username}</strong> (soft delete) —
+            user จะ login ไม่ได้ แต่ข้อมูลย้อนหลังยังเก็บอยู่
+          </>
+        }
+        confirmText="ลบ"
+        variant="danger"
+        loading={delPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
 
 function UserCard({
-  user: u, isMe, confirmDel, onEdit, onDel, onCancelDel,
+  user: u, isMe, onEdit, onDel,
 }: {
   user: User;
   isMe: boolean;
-  confirmDel: boolean;
   onEdit: () => void;
   onDel: () => void;
-  onCancelDel: () => void;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  function handleDel() {
-    startTransition(async () => {
-      await deleteUserAction(u.id);
-      router.refresh();
-    });
-  }
-
   return (
     <Card className="hover:shadow-md hover:border-primary/30 transition-all">
       <CardContent className="p-4">
@@ -137,25 +153,14 @@ function UserCard({
               <Edit2 className="h-3.5 w-3.5" /> แก้ไข
             </Button>
             {!isMe && (
-              confirmDel ? (
-                <>
-                  <Button size="sm" variant="primary"
-                          loading={pending} onClick={handleDel}
-                          className="!from-red-600 !to-red-700">
-                    ⚠️ ยืนยัน
-                  </Button>
-                  <button
-                    type="button" onClick={onCancelDel}
-                    className="text-xs text-muted-foreground underline">
-                    ยกเลิก
-                  </button>
-                </>
-              ) : (
-                <Button size="sm" variant="secondary" onClick={onDel}
-                        className="!text-red-600 hover:!bg-red-50">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )
+              <Button
+                size="sm" variant="secondary" onClick={onDel}
+                className="!text-red-600 hover:!bg-red-50"
+                title="ลบผู้ใช้"
+                aria-label="ลบผู้ใช้"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
         </div>
@@ -168,7 +173,6 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -178,7 +182,6 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
 
   function handleSubmit() {
     setError(null);
-    setSuccess(null);
     if (sendEmailFlag && !email.trim()) {
       setError('ต้องใส่อีเมลถ้าจะส่งคำแจ้ง — หรือ uncheck "ส่งอีเมล"');
       return;
@@ -192,17 +195,15 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
         setError(res.error ?? "เพิ่มไม่สำเร็จ");
         return;
       }
-      let msg = `✅ เพิ่ม ${fullName} แล้ว`;
+      let msg = `เพิ่ม ${fullName} สำเร็จ`;
       if (sendEmailFlag && email) {
         msg += res.emailSent
-          ? " • 📧 ส่งอีเมลแล้ว"
-          : ` • ⚠️ ส่งอีเมลไม่ได้: ${res.emailError ?? "SMTP ไม่ได้ตั้ง"}`;
+          ? " — ส่งอีเมลแล้ว 📧"
+          : ` — ⚠️ ส่งอีเมลไม่ได้: ${res.emailError ?? "SMTP ไม่ได้ตั้ง"}`;
       }
-      setSuccess(msg);
-      setTimeout(() => {
-        onClose();
-        router.refresh();
-      }, 1500);
+      toast.success(msg);
+      onClose();
+      router.refresh();
     });
   }
 
@@ -252,7 +253,6 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
           </span>
         </label>
         {error && <Alert tone="danger">❌ {error}</Alert>}
-        {success && <Alert tone="success">{success}</Alert>}
       </div>
       <div className="flex gap-2 p-5 pt-3 border-t border-slate-200">
         <Button onClick={handleSubmit} loading={pending}>✅ เพิ่ม</Button>
@@ -288,6 +288,7 @@ function EditUserDialog({
         setError(res.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
+      toast.success(`✅ บันทึกข้อมูล ${fullName} สำเร็จ`);
       onClose();
       router.refresh();
     });
