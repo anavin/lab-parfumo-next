@@ -11,13 +11,6 @@ import type { User } from "@/lib/types/db";
 const LOCKOUT_MIN = 15;
 const MAX_ATTEMPTS = 5;
 
-// Explicit column list — กัน leak ถ้าตาราง users เพิ่ม column sensitive ใหม่
-const USER_COLUMNS = [
-  "id", "username", "password_hash", "full_name", "role",
-  "email", "is_active", "must_change_password",
-  "failed_login_count", "last_login_at", "password_changed_at", "created_at",
-].join(", ");
-
 export interface LoginResult {
   ok: boolean;
   user?: User;
@@ -66,7 +59,7 @@ export async function loginWithPassword(
   const sb = getSupabaseAdmin();
   const { data: user } = await sb
     .from("users")
-    .select(USER_COLUMNS as "*")
+    .select("*")
     .eq("username", username)
     .eq("is_active", true)
     .maybeSingle();
@@ -120,7 +113,7 @@ export async function loginWithPassword(
   if (needsUpgrade) {
     const { data: refreshed } = await sb
       .from("users")
-      .select(USER_COLUMNS as "*")
+      .select("*")
       .eq("id", user.id)
       .maybeSingle();
     if (refreshed) return { ok: true, user: refreshed as User };

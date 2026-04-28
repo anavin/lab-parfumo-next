@@ -139,35 +139,15 @@ async function _updateStatus(
 }
 
 // ==================================================================
-// Close PO — เฉพาะ status ที่รับของแล้ว
+// Close PO
 // ==================================================================
-const CLOSEABLE_STATUSES: PoStatus[] = ["รับของแล้ว", "มีปัญหา"];
-
 export async function closePoAction(poId: string): Promise<ActionResult> {
-  // Workflow gate: ปิดงานได้เฉพาะหลังจากรับของแล้วเท่านั้น
-  const sb = getSupabaseAdmin();
-  const { data: po } = await sb
-    .from("purchase_orders")
-    .select("status")
-    .eq("id", poId)
-    .maybeSingle();
-  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
-  if (!CLOSEABLE_STATUSES.includes(po.status as PoStatus)) {
-    return {
-      ok: false,
-      error: `ปิดงานไม่ได้ — สถานะปัจจุบัน "${po.status}" • ต้องเป็น "รับของแล้ว" หรือ "มีปัญหา" ก่อน`,
-    };
-  }
   return _updateStatus(poId, "เสร็จสมบูรณ์", "ปิดงาน");
 }
 
 // ==================================================================
-// Cancel PO (with reason) — ห้ามยกเลิกสถานะ terminal + rollback stock
+// Cancel PO (with reason)
 // ==================================================================
-const TERMINAL_STATUSES: PoStatus[] = ["เสร็จสมบูรณ์", "ยกเลิก"];
-// สถานะที่อาจมี stock ถูก add ไปแล้ว — ยกเลิกแล้วต้อง rollback
-const RECEIVED_STATUSES: PoStatus[] = ["รับของแล้ว", "มีปัญหา"];
-
 export async function cancelPoAction(
   poId: string, reason: string,
 ): Promise<ActionResult> {
@@ -179,99 +159,20 @@ export async function cancelPoAction(
     return { ok: false, error: formatZodError(parsed.error) };
   }
 
-  const sb = getSupabaseAdmin();
-  const { data: po } = await sb
-    .from("purchase_orders")
-    .select("created_by, status")
-    .eq("id", poId)
-    .maybeSingle();
-  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
-
   // Permission: requester ยกเลิกได้เฉพาะของตัวเอง
-  if (user.role === "requester" && po.created_by !== user.id) {
-    return { ok: false, error: "ไม่มีสิทธิ์ยกเลิก PO นี้" };
-  }
-
-  // Status gate: ห้ามยกเลิก PO ที่อยู่ใน terminal state
-  if (TERMINAL_STATUSES.includes(po.status as PoStatus)) {
-    return {
-      ok: false,
-      error: `ยกเลิกไม่ได้ — สถานะ "${po.status}" เป็น terminal state แล้ว`,
-    };
-  }
-
-  // Stock rollback: ถ้าเคยรับของไปแล้ว → ถอย stock ออก
-  let rollbackNote = "";
-  if (RECEIVED_STATUSES.includes(po.status as PoStatus)) {
-    const rb = await rollbackPoStock(poId);
-    if (rb.totalUnits > 0) {
-      rollbackNote = ` | ถอย stock ${rb.totalUnits} ชิ้น (${rb.itemsAffected} รายการ)`;
+  if (user.role === "requester") {
+    const sb = getSupabaseAdmin();
+    const { data: po } = await sb
+      .from("purchase_orders")
+      .select("created_by")
+      .eq("id", poId)
+      .maybeSingle();
+    if (!po || po.created_by !== user.id) {
+      return { ok: false, error: "ไม่มีสิทธิ์ยกเลิก PO นี้" };
     }
   }
 
-  return _updateStatus(poId, "ยกเลิก", `${reason}${rollbackNote}`);
-}
-
-/**
- * ถอย stock ทั้งหมดที่เคยรับมาจาก deliveries ของ PO นี้
- * ใช้ atomic decrement (pg function) ป้องกัน race
- */
-async function rollbackPoStock(poId: string): Promise<{
-  totalUnits: number;
-  itemsAffected: number;
-}> {
-  const sb = getSupabaseAdmin();
-  const { data: deliveries } = await sb
-    .from("po_deliveries" as never)
-    .select("items_received")
-    .eq("po_id", poId);
-
-  if (!deliveries?.length) return { totalUnits: 0, itemsAffected: 0 };
-
-  // รวมจำนวนต่อ equipment_id (อาจมีหลาย delivery ต่อ equipment)
-  const totals = new Map<string, number>();
-  for (const d of deliveries as Array<{ items_received: DeliveryItem[] }>) {
-    for (const it of d.items_received ?? []) {
-      if (!it.equipment_id) continue;
-      const qty = Math.floor(it.qty_received ?? 0);
-      if (qty <= 0) continue;
-      totals.set(it.equipment_id, (totals.get(it.equipment_id) ?? 0) + qty);
-    }
-  }
-
-  let totalUnits = 0;
-  let itemsAffected = 0;
-  for (const [eqId, qty] of totals) {
-    // atomic decrement ผ่าน RPC (GREATEST(0, ...) กันค่าติดลบ)
-    let useRpc = true;
-    try {
-      const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
-        p_id: eqId, p_qty: -qty,
-      });
-      if (rpcErr) useRpc = false;
-    } catch { useRpc = false; }
-
-    if (!useRpc) {
-      // Fallback (race-prone) — log แจ้ง
-      console.warn(
-        "[rollback] increment_equipment_stock RPC unavailable — using fallback. " +
-        "Please run migration 202604_workflow_atomic.sql.",
-      );
-      const { data: eq } = await sb
-        .from("equipment")
-        .select("stock")
-        .eq("id", eqId)
-        .maybeSingle();
-      const cur = (eq?.stock ?? 0) as number;
-      await sb.from("equipment")
-        .update({ stock: Math.max(0, cur - qty) })
-        .eq("id", eqId);
-    }
-    totalUnits += qty;
-    itemsAffected++;
-  }
-
-  return { totalUnits, itemsAffected };
+  return _updateStatus(poId, "ยกเลิก", reason);
 }
 
 // ==================================================================
@@ -814,90 +715,37 @@ export async function addDeliveryAction(
     };
   }
 
-  // หา delivery_no + insert แบบทนต่อ race condition
-  // - พยายาม atomic ผ่าน RPC ก่อน (ใช้ advisory lock + unique constraint)
-  // - ถ้า RPC ไม่มี (migration ยังไม่รัน) → fallback select-max + retry บน unique violation
-  let newNo = 0;
-  let inserted = false;
-  for (let attempt = 0; attempt < 5 && !inserted; attempt++) {
-    // 1) ลองใช้ RPC (atomic)
-    let candidateNo: number | null = null;
-    try {
-      const { data: rpcData, error: rpcErr } = await sb.rpc(
-        "next_po_delivery_no",
-        { p_po_id: poId },
-      );
-      if (!rpcErr && typeof rpcData === "number") {
-        candidateNo = rpcData;
-      }
-    } catch { /* ignore — fallback */ }
+  // หา delivery_no ใหม่
+  const { data: existingDeliveries } = await sb
+    .from("po_deliveries" as never)
+    .select("delivery_no")
+    .eq("po_id", poId);
+  const maxNo = ((existingDeliveries ?? []) as Array<{ delivery_no: number }>)
+    .reduce((m, d) => Math.max(m, d.delivery_no ?? 0), 0);
+  const newNo = maxNo + 1;
 
-    // 2) Fallback: select-max
-    if (candidateNo === null) {
-      const { data: existingDeliveries } = await sb
-        .from("po_deliveries" as never)
-        .select("delivery_no")
-        .eq("po_id", poId);
-      const maxNo = ((existingDeliveries ?? []) as Array<{ delivery_no: number }>)
-        .reduce((m, d) => Math.max(m, d.delivery_no ?? 0), 0);
-      candidateNo = maxNo + 1 + attempt; // bump ตาม attempt เพื่อ retry
-    }
-
-    const { error: deliveryErr } = await sb
-      .from("po_deliveries" as never)
-      .insert({
-        po_id: poId,
-        delivery_no: candidateNo,
-        received_date: new Date().toISOString().slice(0, 10),
-        received_by_name: user.full_name,
-        items_received: input.itemsReceived,
-        overall_condition: input.overallCondition,
-        issue_description: input.issueDescription,
-        notes: input.notes,
-        image_urls: input.imageUrls,
-      } as never);
-    if (!deliveryErr) {
-      newNo = candidateNo;
-      inserted = true;
-      break;
-    }
-    // unique_violation — retry (cap at 5)
-    const code = (deliveryErr as { code?: string }).code;
-    if (code === "23505") continue;
+  // Insert delivery record
+  const { error: deliveryErr } = await sb
+    .from("po_deliveries" as never)
+    .insert({
+      po_id: poId,
+      delivery_no: newNo,
+      received_date: new Date().toISOString().slice(0, 10),
+      received_by_name: user.full_name,
+      items_received: input.itemsReceived,
+      overall_condition: input.overallCondition,
+      issue_description: input.issueDescription,
+      notes: input.notes,
+      image_urls: input.imageUrls,
+    } as never);
+  if (deliveryErr) {
     console.error("[delivery] insert failed:", deliveryErr);
     return { ok: false, error: "บันทึกการรับของไม่สำเร็จ" };
   }
-  if (!inserted) {
-    return { ok: false, error: "บันทึกการรับของไม่สำเร็จ — ลองอีกครั้ง" };
-  }
 
-  // เพิ่ม stock — ใช้ atomic RPC ป้องกัน race
-  // ถ้า RPC ไม่มี (migration ยังไม่รัน) → fallback non-atomic + log warn
-  let customItemsCount = 0;
-  let stockUpdatedCount = 0;
+  // เพิ่ม stock ของ equipment ที่รับ
   for (const it of input.itemsReceived) {
-    if (!it.equipment_id) {
-      // custom item (ไม่มี equipment_id) → ไม่กระทบ stock
-      if (it.qty_received > 0) customItemsCount++;
-      continue;
-    }
-    if (it.qty_received <= 0) continue;
-    const qty = Math.floor(it.qty_received);
-
-    let useRpc = true;
-    try {
-      const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
-        p_id: it.equipment_id, p_qty: qty,
-      });
-      if (rpcErr) useRpc = false;
-    } catch { useRpc = false; }
-
-    if (!useRpc) {
-      // Fallback (race-prone) — log แจ้งให้ admin รัน migration
-      console.warn(
-        "[delivery] increment_equipment_stock RPC unavailable — using fallback. " +
-        "Please run migration 202604_workflow_atomic.sql for race-safe stock updates.",
-      );
+    if (it.equipment_id && it.qty_received > 0) {
       const { data: eq } = await sb
         .from("equipment")
         .select("stock")
@@ -906,10 +754,9 @@ export async function addDeliveryAction(
       const cur = (eq?.stock ?? 0) as number;
       await sb
         .from("equipment")
-        .update({ stock: cur + qty })
+        .update({ stock: cur + Math.floor(it.qty_received) })
         .eq("id", it.equipment_id);
     }
-    stockUpdatedCount++;
   }
 
   // Update PO status + received_date
@@ -923,14 +770,9 @@ export async function addDeliveryAction(
     })
     .eq("id", poId);
 
-  // Activity log — บันทึก stock + custom items detail
-  const stockNote = stockUpdatedCount > 0
-    ? ` | อัปเดต stock ${stockUpdatedCount} รายการ` : "";
-  const customNote = customItemsCount > 0
-    ? ` | custom item ${customItemsCount} รายการ (ไม่กระทบ stock)` : "";
   await logActivity(
     poId, user.full_name, user.role, "received",
-    `รับของ #${newNo} | สภาพ: ${input.overallCondition}${stockNote}${customNote}`,
+    `รับของ #${newNo} | สภาพ: ${input.overallCondition}`,
   );
 
   // Notify admins

@@ -339,7 +339,7 @@ export async function sendDailyDigest(opts: {
       <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 12px rgba(15,23,42,0.08);">
         <tr><td style="background:linear-gradient(135deg,#3A5A8C,#1E3A5F); padding:28px 24px; text-align:center;">
           <h1 style="color:#fff; margin:0; font-size:20px;">📊 สรุปประจำวัน</h1>
-          <p style="color:#A8C0E0; margin:6px 0 0; font-size:13px;">${escHtml(opts.date)} • ${escHtml(opts.companyName)}</p>
+          <p style="color:#A8C0E0; margin:6px 0 0; font-size:13px;">${opts.date} • ${escHtml(opts.companyName)}</p>
         </td></tr>
         <tr><td style="padding:24px 28px;">
           <p style="margin:0 0 16px; color:#475569; font-size:14px;">สวัสดี ${escHtml(opts.recipientName)},</p>

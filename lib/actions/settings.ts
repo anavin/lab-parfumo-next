@@ -7,7 +7,6 @@ import {
   invalidateEmailTransporter, sendEmail, verifyEmail,
   type SendResult,
 } from "@/lib/email";
-import { encryptSecret } from "@/lib/crypto/secrets";
 
 interface CompanyUpdateInput {
   name?: string;
@@ -98,10 +97,9 @@ export async function updateEmailSettingsAction(
     updated_at: new Date().toISOString(),
     updated_by_name: me.full_name,
   };
-  // อัปเดต password เฉพาะเมื่อ user กรอกใหม่ — encrypt ก่อนเก็บ DB
-  // ถ้าไม่มี ENCRYPTION_KEY ใน env → encryptSecret() return plaintext (degraded)
+  // อัปเดต password เฉพาะเมื่อ user กรอกใหม่
   if (input.smtp_password) {
-    payload.smtp_password = encryptSecret(input.smtp_password);
+    payload.smtp_password = input.smtp_password;
   }
 
   const { error } = await sb
