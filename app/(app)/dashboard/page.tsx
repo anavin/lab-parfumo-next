@@ -14,8 +14,7 @@ import {
   getPos, computeStats, pickActionItems,
   buildMonthlyTrend, topSuppliers,
 } from "@/lib/db/po";
-import { TrendChart } from "./_components/trend-chart";
-import { SuppliersChart } from "./_components/suppliers-chart";
+import { TrendChart, SuppliersChart } from "./_components/lazy-charts";
 import type { PoStatus, PurchaseOrder } from "@/lib/types/db";
 
 export const metadata: Metadata = {

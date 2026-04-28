@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Edit2, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -96,10 +97,16 @@ function EqCard({ eq }: { eq: Equipment }) {
 
   return (
     <>
-      <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 flex items-center justify-center">
+      <div className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden mb-2 flex items-center justify-center">
         {thumb ? (
-          <img src={thumb} alt={eq.name} loading="lazy"
-               className="w-full h-full object-cover" />
+          <Image
+            src={thumb}
+            alt={eq.name}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-cover"
+            unoptimized
+          />
         ) : (
           <span className="text-3xl">🧴</span>
         )}

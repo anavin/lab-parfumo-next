@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireAdmin } from "@/lib/auth/require-user";
 import { getPos } from "@/lib/db/po";
-import { ReportsClient } from "./_components/reports-client";
+import { ReportsClient } from "./_components/reports-lazy";
 
 export const metadata: Metadata = {
   title: "รายงาน — Lab Parfumo PO",
