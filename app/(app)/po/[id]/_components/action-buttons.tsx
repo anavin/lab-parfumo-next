@@ -97,14 +97,19 @@ export function ActionButtons({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="grid gap-2"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        }}
+      >
         {/* PDF download */}
         {po.status !== "รอจัดซื้อดำเนินการ" && (
           <a
             href={`/api/po/${po.id}/pdf`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 h-9 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all"
+            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all"
           >
             <Download className="h-3.5 w-3.5" /> ดาวน์โหลด PDF
           </a>
@@ -113,7 +118,8 @@ export function ActionButtons({
         {/* Order */}
         {canOrder && (
           <Button
-            variant="primary" size="sm"
+            variant="primary" size="sm" fullWidth
+            className="h-10"
             onClick={() => setFormMode(formMode === "order" ? null : "order")}
             disabled={pending}
           >
@@ -124,7 +130,8 @@ export function ActionButtons({
         {/* Ship */}
         {canShip && (
           <Button
-            variant="secondary" size="sm"
+            variant="secondary" size="sm" fullWidth
+            className="h-10"
             onClick={() => setFormMode(formMode === "ship" ? null : "ship")}
             disabled={pending}
           >
@@ -135,7 +142,8 @@ export function ActionButtons({
         {/* Receive */}
         {canReceive && (
           <Button
-            variant="secondary" size="sm"
+            variant="secondary" size="sm" fullWidth
+            className="h-10"
             onClick={() => setFormMode(formMode === "receive" ? null : "receive")}
             disabled={pending}
           >
@@ -146,7 +154,8 @@ export function ActionButtons({
         {/* Close */}
         {canClose && (
           <Button
-            variant="secondary" size="sm"
+            variant="secondary" size="sm" fullWidth
+            className="h-10"
             onClick={() => setConfirmCloseOpen(true)}
             disabled={pending}
           >
@@ -156,7 +165,8 @@ export function ActionButtons({
 
         {/* Clone */}
         <Button
-          variant="secondary" size="sm"
+          variant="secondary" size="sm" fullWidth
+          className="h-10"
           onClick={handleClone}
           loading={pending}
         >
@@ -166,10 +176,10 @@ export function ActionButtons({
         {/* Cancel */}
         {showCancelBtn && (
           <Button
-            variant="secondary" size="sm"
+            variant="secondary" size="sm" fullWidth
             onClick={() => setConfirmCancelOpen(true)}
             disabled={pending}
-            className="!text-red-600 hover:!bg-red-50 hover:!border-red-300"
+            className="h-10 !text-red-600 hover:!bg-red-50 hover:!border-red-300"
           >
             <X className="h-3.5 w-3.5" /> ยกเลิก
           </Button>
