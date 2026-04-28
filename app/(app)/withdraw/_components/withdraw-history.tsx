@@ -8,7 +8,7 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trash2, Search, Calendar, User, Package as PackageIcon,
-  TrendingDown, ClipboardList, FileText, Users,
+  ClipboardList, FileText, Users, Send,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -171,7 +171,7 @@ export function WithdrawHistory({
               color="primary"
             />
             <KpiCard
-              icon={TrendingDown}
+              icon={PackageIcon}
               label="รวมจำนวน"
               value={totalQty}
               unit="ชิ้น"
@@ -264,9 +264,9 @@ function WithdrawalRow({
   return (
     <div className="group bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 transition-all">
       <div className="flex items-start gap-3">
-        {/* Icon */}
+        {/* Icon — Send (เบิกออก) */}
         <div className="flex-shrink-0 size-10 rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200/60 flex items-center justify-center">
-          <TrendingDown className="size-5" strokeWidth={2.25} />
+          <Send className="size-5" strokeWidth={2.25} />
         </div>
 
         {/* Main content */}
@@ -277,7 +277,6 @@ function WithdrawalRow({
               {w.equipment_name}
             </div>
             <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 ring-1 ring-amber-200 rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums">
-              <TrendingDown className="size-3" />
               {w.qty.toLocaleString("th-TH")} {w.unit ?? ""}
             </div>
           </div>
