@@ -349,6 +349,13 @@ function PageHeader() {
 
 function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
   const trendUp = stats.spendGrowth >= 0;
+  // Build "this month" date range for spend filter
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const spendHref = `/po?from=${monthStart}&to=${monthEnd}`;
+  const allHref = "/po";
+  const pendingHref = "/po?status=" + encodeURIComponent("รอจัดซื้อดำเนินการ");
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-primary to-brand-950 text-white p-8 sm:p-10 lg:p-12 shadow-2xl ring-1 ring-white/10">
       {/* Decorative orbs */}
@@ -366,8 +373,13 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
       <div className="absolute -top-px left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
       <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-4 text-center">
-        {/* Spend this month — biggest, with sparkle */}
-        <div className="relative">
+        {/* Spend this month — clickable */}
+        <Link
+          href={spendHref}
+          className="group relative rounded-2xl px-3 py-3 -mx-3 -my-3 hover:bg-white/5 transition-colors"
+          title="ดู PO ของเดือนนี้"
+        >
+          <ArrowRight className="absolute top-3 right-3 size-4 text-white/0 group-hover:text-white/70 group-hover:translate-x-0.5 transition-all" />
           <div className="text-sm text-white/80 font-bold mb-4 flex items-center justify-center gap-2">
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
             ใช้จ่ายเดือนนี้
@@ -390,10 +402,15 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
               </span>
             </div>
           )}
-        </div>
+        </Link>
 
-        {/* PO total */}
-        <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
+        {/* PO total — clickable */}
+        <Link
+          href={allHref}
+          className="group relative rounded-2xl px-3 py-3 -mx-3 -my-3 hover:bg-white/5 transition-colors sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent"
+          title="ดู PO ทั้งหมด"
+        >
+          <ArrowRight className="absolute top-3 right-3 size-4 text-white/0 group-hover:text-white/70 group-hover:translate-x-0.5 transition-all" />
           <div className="text-sm text-white/80 font-bold mb-4">
             PO ทั้งหมด
           </div>
@@ -404,10 +421,15 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
           <div className="text-sm text-white/70 mt-2 font-medium">
             <span className="text-emerald-300 font-bold">+{stats.newThisWeek}</span> ใบใหม่สัปดาห์นี้
           </div>
-        </div>
+        </Link>
 
-        {/* Pending */}
-        <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
+        {/* Pending — clickable */}
+        <Link
+          href={pendingHref}
+          className="group relative rounded-2xl px-3 py-3 -mx-3 -my-3 hover:bg-white/5 transition-colors sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent"
+          title="ดู PO ที่รอจัดซื้อดำเนินการ"
+        >
+          <ArrowRight className="absolute top-3 right-3 size-4 text-white/0 group-hover:text-white/70 group-hover:translate-x-0.5 transition-all" />
           <div className="text-sm text-white/80 font-bold mb-4 flex items-center justify-center gap-2">
             {stats.staleCount > 0 && (
               <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -425,7 +447,7 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
               ⚠️ {stats.staleCount} ใบค้างเกิน 3 วัน
             </div>
           )}
-        </div>
+        </Link>
       </div>
     </div>
   );
