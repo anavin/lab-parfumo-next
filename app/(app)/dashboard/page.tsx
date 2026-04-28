@@ -557,14 +557,14 @@ function InsightCards({
             {/* Decorative orb */}
             <div className="absolute -top-6 -right-6 size-20 rounded-full bg-amber-200/30 blur-2xl" />
 
-            <div className="relative flex items-center gap-3.5">
+            <div className="relative flex items-center justify-center gap-3.5">
               {/* Icon badge — left */}
               <div className="flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm ring-2 ring-amber-100">
                 <Trophy className="size-6" strokeWidth={2.25} />
               </div>
 
               {/* Content — right */}
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 max-w-[180px]">
                 <div className="text-[10px] tracking-wider font-bold text-amber-700 uppercase">
                   Top Supplier
                 </div>
@@ -588,14 +588,14 @@ function InsightCards({
       {stats.longestPendingDays > 0 && (
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-4">
-            <div className="flex items-center gap-3.5">
+            <div className="flex items-center justify-center gap-3.5">
               {/* Icon — left */}
               <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${longTone.bg} ${longTone.text} ${longTone.ring}`}>
                 <Clock className="size-6" strokeWidth={2.25} />
               </div>
 
               {/* Content — right */}
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0">
                 <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
                   PO ค้างนานสุด
                 </div>
@@ -614,7 +614,7 @@ function InsightCards({
 
       <Card className="hover:shadow-md transition-shadow">
         <CardContent className="p-4">
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center justify-center gap-3.5">
             {/* Icon — left */}
             <div className={`flex-shrink-0 inline-flex items-center justify-center size-12 rounded-2xl ring-1 ${
               trendUp
@@ -625,7 +625,7 @@ function InsightCards({
             </div>
 
             {/* Content — right */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0">
               <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase">
                 เทียบเดือนก่อน
               </div>
