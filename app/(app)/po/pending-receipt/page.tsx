@@ -172,12 +172,37 @@ function PageHeader() {
   );
 }
 
-const KPI_TONE: Record<string, { bg: string; ring: string; icon: string }> = {
-  primary: { bg: "bg-blue-50", ring: "ring-blue-200/60", icon: "text-blue-600" },
-  amber:   { bg: "bg-amber-50", ring: "ring-amber-200/60", icon: "text-amber-600" },
-  red:     { bg: "bg-red-50", ring: "ring-red-200/60", icon: "text-red-600" },
-  emerald: { bg: "bg-emerald-50", ring: "ring-emerald-200/60", icon: "text-emerald-600" },
-  slate:   { bg: "bg-muted", ring: "ring-border", icon: "text-muted-foreground" },
+// Vivid gradient icon backgrounds + white icon — center aligned
+const KPI_TONE: Record<string, {
+  gradient: string;
+  ring: string;
+  shadow: string;
+}> = {
+  primary: {
+    gradient: "bg-gradient-to-br from-blue-500 to-blue-700",
+    ring: "ring-blue-200",
+    shadow: "shadow-blue-500/20",
+  },
+  amber: {
+    gradient: "bg-gradient-to-br from-amber-400 to-orange-500",
+    ring: "ring-amber-200",
+    shadow: "shadow-amber-500/20",
+  },
+  red: {
+    gradient: "bg-gradient-to-br from-red-500 to-rose-600",
+    ring: "ring-red-200",
+    shadow: "shadow-red-500/20",
+  },
+  emerald: {
+    gradient: "bg-gradient-to-br from-emerald-500 to-emerald-700",
+    ring: "ring-emerald-200",
+    shadow: "shadow-emerald-500/20",
+  },
+  slate: {
+    gradient: "bg-gradient-to-br from-slate-300 to-slate-400",
+    ring: "ring-slate-200",
+    shadow: "shadow-slate-400/15",
+  },
 };
 
 function KpiCard({
@@ -191,30 +216,36 @@ function KpiCard({
   color: keyof typeof KPI_TONE;
 }) {
   const tone = KPI_TONE[color];
+  const isMuted = color === "slate";
   return (
     <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-200">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-center text-center gap-2">
+        {/* Icon — vivid gradient + white icon + ring + soft shadow */}
         <div
-          className={`flex-shrink-0 size-10 rounded-xl flex items-center justify-center ring-1 ${tone.bg} ${tone.icon} ${tone.ring}`}
+          className={`size-12 rounded-2xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring} ${tone.shadow} ${isMuted ? "opacity-70" : ""}`}
         >
-          <Icon className="size-5" strokeWidth={2.25} />
+          <Icon className="size-6" strokeWidth={2.5} />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-semibold text-muted-foreground">
-            {label}
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
-              {value.toLocaleString("th-TH")}
-            </span>
-            <span className="text-xs font-medium text-muted-foreground">{unit}</span>
-          </div>
-          {subtitle && (
-            <div className="text-[10px] text-muted-foreground/80 mt-0.5 truncate">
-              {subtitle}
-            </div>
-          )}
+
+        {/* Label */}
+        <div className="text-xs font-bold text-foreground">
+          {label}
         </div>
+
+        {/* Value + unit */}
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-2xl font-extrabold tabular-nums text-foreground leading-none">
+            {value.toLocaleString("th-TH")}
+          </span>
+          <span className="text-xs font-medium text-muted-foreground">{unit}</span>
+        </div>
+
+        {/* Subtitle */}
+        {subtitle && (
+          <div className="text-[10px] text-muted-foreground">
+            {subtitle}
+          </div>
+        )}
       </div>
     </div>
   );
