@@ -64,7 +64,11 @@ function EquipmentCard({
     images.unshift(eq.image_url);
   }
   const primary = images[0];
-  const thumbs = images.slice(1, 4); // up to 3 thumbnails
+  // Show exactly 3 thumbnail slots: indexes 1, 2, 3
+  // If there are more than 4 images total, the LAST visible thumb (index 3)
+  // gets a "+N" overlay showing how many additional images exist (4, 5, 6, ...).
+  const thumbs = images.slice(1, 4);
+  const extraCount = Math.max(0, images.length - 4);
 
   // Stock badge
   const stock = eq.stock ?? 0;
@@ -122,6 +126,13 @@ function EquipmentCard({
                 🔍 คลิกดูรูปขยาย
               </div>
             </div>
+            {/* Image count badge (top-right, when multiple) */}
+            {images.length > 1 && (
+              <div className="absolute top-2 right-2 inline-flex items-center gap-1 bg-black/60 text-white text-[10px] font-semibold rounded-full px-2 py-0.5 backdrop-blur-sm">
+                <span className="size-1 rounded-full bg-white" />
+                <span className="tabular-nums">{images.length} รูป</span>
+              </div>
+            )}
           </>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-5xl">🧴</div>
@@ -131,24 +142,47 @@ function EquipmentCard({
       {/* Thumbnail strip — 3 small images */}
       {thumbs.length > 0 && (
         <div className="grid grid-cols-3 gap-1 mb-2">
-          {thumbs.map((url, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={(e) => handlePreviewThumb(e, i)}
-              className="relative aspect-square bg-muted rounded-md overflow-hidden hover:ring-2 hover:ring-primary/40 transition-all cursor-zoom-in"
-              aria-label={`รูปที่ ${i + 2}`}
-            >
-              <Image
-                src={url}
-                alt={`${eq.name} ${i + 2}`}
-                fill
-                sizes="80px"
-                className="object-cover hover:scale-110 transition-transform duration-200"
-                unoptimized
-              />
-            </button>
-          ))}
+          {thumbs.map((url, i) => {
+            // Last visible thumb gets "+N" overlay if more images exist
+            const isLastWithExtras = i === thumbs.length - 1 && extraCount > 0;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={(e) => handlePreviewThumb(e, i)}
+                className="relative aspect-square bg-muted rounded-md overflow-hidden hover:ring-2 hover:ring-primary/40 transition-all cursor-zoom-in group/thumb"
+                aria-label={
+                  isLastWithExtras
+                    ? `ดูรูปทั้งหมด ${images.length} รูป`
+                    : `รูปที่ ${i + 2}`
+                }
+                title={
+                  isLastWithExtras
+                    ? `ดูรูปทั้งหมด ${images.length} รูป`
+                    : undefined
+                }
+              >
+                <Image
+                  src={url}
+                  alt={`${eq.name} ${i + 2}`}
+                  fill
+                  sizes="80px"
+                  className="object-cover group-hover/thumb:scale-110 transition-transform duration-200"
+                  unoptimized
+                />
+                {isLastWithExtras && (
+                  <div className="absolute inset-0 bg-black/55 group-hover/thumb:bg-black/45 backdrop-blur-[2px] flex flex-col items-center justify-center text-white transition-colors">
+                    <span className="text-base font-extrabold leading-none tabular-nums drop-shadow-md">
+                      +{extraCount}
+                    </span>
+                    <span className="text-[9px] font-medium opacity-90 mt-0.5 drop-shadow">
+                      รูปเพิ่ม
+                    </span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
