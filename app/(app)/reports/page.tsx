@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-user";
 import { getPos } from "@/lib/db/po";
 import { ReportsClient } from "./_components/reports-client";
 
@@ -13,9 +11,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const user = (await getCurrentUser())!;
-  if (user.role !== "admin") redirect("/dashboard");
-
+  await requireAdmin();
   const allPos = await getPos({ role: "admin" });
 
   if (!allPos.length) {

@@ -5,18 +5,10 @@
  */
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import type { Budget, BudgetStatus } from "@/lib/types/db";
 
-export interface Budget {
-  id: string;
-  period_type: "monthly" | "quarterly" | "yearly";
-  period_year: number;
-  period_month: number | null;   // 1-12 monthly, 1/4/7/10 quarterly, null yearly
-  category: string | null;       // null = รวมทุกหมวด
-  amount: number;
-  notes: string | null;
-  created_by_name: string | null;
-  created_at: string;
-}
+// Re-export for backwards compat (callers can still use lib/db/budget paths)
+export type { Budget, BudgetStatus };
 
 export const listBudgets = cache(async (year?: number): Promise<Budget[]> => {
   const sb = getSupabaseAdmin();
@@ -86,13 +78,6 @@ export const calculateActualSpending = cache(async (
   }
   return total;
 });
-
-export interface BudgetStatus extends Budget {
-  actual: number;
-  remaining: number;
-  percent: number;
-  status: "ok" | "warning" | "critical" | "over";
-}
 
 export const getBudgetStatusForMonth = cache(async (
   year: number, month: number,

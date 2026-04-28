@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/cn";
-import type { BudgetStatus } from "@/lib/db/budget";
+import type { BudgetStatus } from "@/lib/types/db";
 
 const STATUS_LABEL: Record<BudgetStatus["status"], string> = {
   ok: "✅ ปกติ",

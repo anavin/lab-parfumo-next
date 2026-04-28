@@ -89,10 +89,7 @@ export function ReceiveForm({
           return;
         }
         imageUrls = upRes.urls;
-        if (upRes.failed > 0) {
-          // log but don't block
-          console.warn(`${upRes.failed} รูปอัปไม่สำเร็จ — ดำเนินการต่อ`);
-        }
+        // failed uploads — silent (not blocking, user already sees URLs that succeeded)
       }
 
       // 2) Submit delivery
@@ -163,10 +160,14 @@ export function ReceiveForm({
                     </div>
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-medium text-slate-700 mb-0.5">
+                    <label
+                      htmlFor={`item-${i}-received`}
+                      className="block text-[11px] font-medium text-slate-700 mb-0.5"
+                    >
                       ได้รับ
                     </label>
                     <input
+                      id={`item-${i}-received`}
                       type="number" min="0"
                       value={received}
                       onChange={(e) => updateItem(i, {
@@ -177,10 +178,14 @@ export function ReceiveForm({
                     />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-medium text-slate-700 mb-0.5">
+                    <label
+                      htmlFor={`item-${i}-damaged`}
+                      className="block text-[11px] font-medium text-slate-700 mb-0.5"
+                    >
                       เสียหาย
                     </label>
                     <input
+                      id={`item-${i}-damaged`}
                       type="number" min="0" max={received}
                       value={damaged}
                       onChange={(e) => updateItem(i, {

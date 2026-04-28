@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PoRow } from "@/components/po/po-row";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import {
   getPos, applyPoFilters, type PoFilters, type PoSortKey,
 } from "@/lib/db/po";
@@ -37,7 +37,7 @@ export default async function PoListPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const isAdmin = user.role === "admin";
   const sp = await searchParams;
 

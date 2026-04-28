@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import { getEquipmentList, getCategories } from "@/lib/db/equipment";
 import { getWithdrawals } from "@/lib/db/withdraw";
 import { WithdrawClient } from "./_components/withdraw-client";
@@ -19,7 +19,7 @@ export default async function WithdrawPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const sp = await searchParams;
   const tab = sp.tab === "history" ? "history" : "form";
 

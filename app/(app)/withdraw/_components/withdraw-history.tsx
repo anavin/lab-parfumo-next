@@ -99,7 +99,7 @@ export function WithdrawHistory({
 
       {/* Summary */}
       {filtered.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <SummaryCard label="ครั้ง" value={filtered.length.toLocaleString("th-TH")} />
           <SummaryCard label="รวมจำนวน" value={totalQty.toLocaleString("th-TH")} />
           <SummaryCard label="สินค้าที่เบิก" value={uniqueEq.toLocaleString("th-TH")} />

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import { getNotificationsForUser } from "@/lib/db/users";
 import { NotificationsList } from "./_components/notifications-list";
 
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const notifs = await getNotificationsForUser(user.id);
 
   const unread = notifs.filter((n) => !n.is_read);

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, BarChart3, Settings } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { Budget, BudgetStatus } from "@/lib/db/budget";
+import type { Budget, BudgetStatus } from "@/lib/types/db";
 import { BudgetDashboard } from "./budget-dashboard";
 import { BudgetSettings } from "./budget-settings";
 

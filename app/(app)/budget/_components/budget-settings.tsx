@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
-import type { Budget } from "@/lib/db/budget";
+import type { Budget } from "@/lib/types/db";
 import { upsertBudgetAction, deleteBudgetAction } from "@/lib/actions/budget";
 
 const MONTH_NAMES = [

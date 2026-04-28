@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { StatusPill } from "@/components/ui/status-pill";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import {
   getPos, computeStats, pickActionItems,
   buildMonthlyTrend, topSuppliers,
@@ -55,7 +55,7 @@ function daysAgo(iso: string): string {
 }
 
 export default async function DashboardPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const isAdmin = user.role === "admin";
   const pos = await getPos({ userId: user.id, role: user.role });
 

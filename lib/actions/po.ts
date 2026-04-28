@@ -354,11 +354,17 @@ export async function removePoAttachmentAction(
 
 // ==================================================================
 // PO number generator — ใช้ RPC ถ้ามี (atomic), fallback ถ้าไม่มี
+//
+// ⚠️ RPC คือ source of truth — Postgres `next_po_number()` atomic
+// Fallback (read-modify-write) มี race condition:
+//   user A read 5 → user B read 5 → ทั้งคู่ +1 = 6 → ออก PO ซ้ำ!
+// แก้โดยใช้ MAX(po_number) บน table จริง (last-resort, ยังไม่ atomic
+// แต่กันชน RPC fail ได้ปกติ + ตรวจซ้ำหลังสร้างแล้ว throw ถ้า dup)
 // ==================================================================
 export async function generatePoNumber(): Promise<string> {
   const sb = getSupabaseAdmin();
   const year = new Date().getFullYear();
-  // Try RPC (atomic via Postgres function จาก migration_atomic_counter.sql)
+  // Primary: RPC (atomic via Postgres function จาก migration_atomic_counter.sql)
   try {
     const { data, error } = await sb.rpc("next_po_number", { year_int: year });
     if (!error && data) return String(data);
@@ -366,22 +372,24 @@ export async function generatePoNumber(): Promise<string> {
     // fallthrough
   }
 
-  // Fallback (non-atomic, ใช้ระหว่าง migrate)
-  const counterId = `po_${year}`;
-  const { data: cur } = await sb
-    .from("counters" as never)
-    .select("value")
-    .eq("id", counterId)
-    .maybeSingle();
-  let next: number;
-  if (cur) {
-    next = ((cur as { value: number }).value ?? 0) + 1;
-    await sb.from("counters" as never).update({ value: next } as never).eq("id", counterId);
-  } else {
-    next = 1;
-    await sb.from("counters" as never).insert({ id: counterId, value: next } as never);
+  // Fallback: read MAX(po_number) จาก table จริง (มี race condition แต่ดีกว่า counter row)
+  const prefix = `PO-${year}-`;
+  const { data: rows, error: maxErr } = await sb
+    .from("purchase_orders")
+    .select("po_number")
+    .like("po_number", `${prefix}%`)
+    .order("po_number", { ascending: false })
+    .limit(1);
+  if (maxErr) {
+    throw new Error(`ไม่สามารถสร้างเลข PO: ${maxErr.message}`);
   }
-  return `PO-${year}-${String(next).padStart(4, "0")}`;
+  let next = 1;
+  if (rows?.length) {
+    const last = rows[0].po_number as string;
+    const match = last.match(/PO-\d{4}-(\d+)/);
+    if (match) next = parseInt(match[1], 10) + 1;
+  }
+  return `${prefix}${String(next).padStart(4, "0")}`;
 }
 
 // ==================================================================
@@ -397,7 +405,6 @@ export async function createPoAction(
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
   const sb = getSupabaseAdmin();
-  const poNumber = await generatePoNumber();
 
   // Sanitize items
   const cleanItems: PoItem[] = items.map((it) => ({
@@ -411,21 +418,37 @@ export async function createPoAction(
     image_urls: it.image_urls ?? [],
   }));
 
-  const { data: newPo, error: insertErr } = await sb
-    .from("purchase_orders")
-    .insert({
-      po_number: poNumber,
-      items: cleanItems,
-      purpose: "",
-      notes,
-      status: "รอจัดซื้อดำเนินการ",
-      created_by: user.id,
-      created_by_name: user.full_name,
-    })
-    .select()
-    .maybeSingle();
-  if (insertErr || !newPo) {
-    return { ok: false, error: "สร้าง PO ไม่สำเร็จ — ลองใหม่อีกครั้ง" };
+  // Retry on duplicate po_number — กัน race ตอน RPC fallback ใช้
+  let newPo: { id: string; po_number: string } | null = null;
+  let lastErr: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const poNumber = await generatePoNumber();
+    const { data, error } = await sb
+      .from("purchase_orders")
+      .insert({
+        po_number: poNumber,
+        items: cleanItems,
+        purpose: "",
+        notes,
+        status: "รอจัดซื้อดำเนินการ",
+        created_by: user.id,
+        created_by_name: user.full_name,
+      })
+      .select()
+      .maybeSingle();
+    if (data) {
+      newPo = data as { id: string; po_number: string };
+      break;
+    }
+    lastErr = error ?? null;
+    // 23505 = unique_violation — เลข PO ซ้ำ → ลอง gen ใหม่
+    if (error?.code !== "23505") break;
+  }
+  if (!newPo) {
+    return {
+      ok: false,
+      error: `สร้าง PO ไม่สำเร็จ — ${lastErr?.message ?? "ลองใหม่อีกครั้ง"}`,
+    };
   }
 
   await logActivity(
@@ -463,7 +486,7 @@ export async function createPoAction(
   // Notify admins
   try {
     const nCustom = items.filter((it) => !it.equipment_id).length;
-    const msg = `${poNumber} • ${items.length} รายการ${
+    const msg = `${newPo.po_number} • ${items.length} รายการ${
       nCustom > 0 ? ` (มี ${nCustom} รายการใหม่ที่รออนุมัติ)` : ""
     }`;
     await notifyAdmins(newPo.id, `📥 PO ใหม่จาก ${user.full_name}`, msg);

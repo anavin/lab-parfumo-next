@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { searchAction } from "@/lib/actions/search";
 import { StatusPill } from "@/components/ui/status-pill";
-import type { SearchResult } from "@/lib/db/search";
+import type { SearchResult } from "@/lib/types/db";
 
 export function SearchModal({
   open, onClose,

@@ -5,13 +5,10 @@
  */
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import type { PurchaseOrder, Equipment } from "@/lib/types/db";
+import type { PurchaseOrder, Equipment, SearchResult } from "@/lib/types/db";
 
-export interface SearchResult {
-  pos: PurchaseOrder[];
-  equipment: Equipment[];
-  suppliers: Array<{ name: string; poCount: number }>;
-}
+// Re-export for backwards compat
+export type { SearchResult };
 
 export const globalSearch = cache(async (
   query: string, opts: { userId?: string; isAdmin?: boolean } = {},

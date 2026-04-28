@@ -45,10 +45,13 @@ export function PoRow({
 
         {/* Supplier + items */}
         <div className="col-span-12 sm:col-span-4 min-w-0">
-          <div className="font-semibold text-sm text-slate-800 truncate">
+          <div className="font-semibold text-sm text-slate-800 truncate" title={supplier}>
             {supplier}
           </div>
-          <div className="text-xs text-slate-500 truncate">
+          <div
+            className="text-xs text-slate-500 truncate"
+            title={itemsPreview ? `${items.length} รายการ • ${itemsPreview}${moreItems}` : `${items.length} รายการ`}
+          >
             📦 {items.length} รายการ
             {itemsPreview && ` • ${itemsPreview}${moreItems}`}
           </div>

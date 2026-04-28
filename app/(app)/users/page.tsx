@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-user";
 import { getActiveUsers } from "@/lib/db/users";
 import { UsersClient } from "./_components/users-client";
 
@@ -11,9 +10,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
-  const me = (await getCurrentUser())!;
-  if (me.role !== "admin") redirect("/dashboard");
-
+  const me = await requireAdmin();
   const users = await getActiveUsers();
 
   return (

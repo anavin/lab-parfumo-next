@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-user";
 import {
   getEquipmentList, getCategories, getPendingEquipment,
 } from "@/lib/db/equipment";
@@ -13,10 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function EquipmentPage() {
-  const user = (await getCurrentUser())!;
-  if (user.role !== "admin") {
-    redirect("/dashboard");
-  }
+  await requireAdmin();
 
   const [equipment, categories, pending] = await Promise.all([
     getEquipmentList({ activeOnly: false }),

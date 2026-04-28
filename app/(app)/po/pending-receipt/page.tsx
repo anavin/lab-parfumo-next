@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusPill } from "@/components/ui/status-pill";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import { getPosPendingReceipt, bucketByUrgency } from "@/lib/db/po";
 import type { PurchaseOrder } from "@/lib/types/db";
 
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function PendingReceiptPage() {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const isAdmin = user.role === "admin";
 
   // staff เห็นเฉพาะของตัวเอง? ไม่ — รอรับของเป็นของทุกคน (เห็นได้ทั้งทีม)

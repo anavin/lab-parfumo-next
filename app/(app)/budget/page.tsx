@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/require-user";
 import { getCategories } from "@/lib/db/equipment";
 import { getBudgetStatusForMonth, listBudgets } from "@/lib/db/budget";
 import { BudgetClient } from "./_components/budget-client";
@@ -12,8 +11,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function BudgetPage() {
-  const user = (await getCurrentUser())!;
-  if (user.role !== "admin") redirect("/dashboard");
+  await requireAdmin();
 
   const today = new Date();
   const currentYear = today.getFullYear();

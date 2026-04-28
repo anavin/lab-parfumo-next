@@ -2,7 +2,7 @@
 
 /**
  * Action buttons + form mounting
- * รองรับ: ดาวน์โหลด PDF (TODO), สั่งซื้อ, อัปเดตขนส่ง, รับของ, ปิดงาน, คัดลอก, ยกเลิก
+ * รองรับ: ดาวน์โหลด PDF, สั่งซื้อ, อัปเดตขนส่ง, รับของ, ปิดงาน, คัดลอก, ยกเลิก
  */
 import { useState, useTransition } from "react";
 import {

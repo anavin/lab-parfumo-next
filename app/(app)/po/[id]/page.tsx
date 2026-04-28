@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { StatusPill } from "@/components/ui/status-pill";
 import { WorkflowTimeline } from "@/components/po/workflow-timeline";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/require-user";
 import {
   getPoById, getPoActivities, getPoComments, getPoDeliveries,
   getSupplierHistory,
@@ -39,7 +39,7 @@ export default async function PoViewPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = (await getCurrentUser())!;
+  const user = await requireUser();
   const isAdmin = user.role === "admin";
   const { id } = await params;
 

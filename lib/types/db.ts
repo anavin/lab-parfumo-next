@@ -227,3 +227,31 @@ export interface Database {
     CompositeTypes: Record<string, never>;
   };
 }
+
+// ==================================================================
+// Budget + Search shared types (used by client components)
+// ==================================================================
+export interface Budget {
+  id: string;
+  period_type: "monthly" | "quarterly" | "yearly";
+  period_year: number;
+  period_month: number | null;
+  category: string | null;
+  amount: number;
+  notes: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface BudgetStatus extends Budget {
+  actual: number;
+  remaining: number;
+  percent: number;
+  status: "ok" | "warning" | "critical" | "over";
+}
+
+export interface SearchResult {
+  pos: PurchaseOrder[];
+  equipment: Equipment[];
+  suppliers: Array<{ name: string; poCount: number }>;
+}
