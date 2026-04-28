@@ -283,16 +283,16 @@ function KpiCard({
       href={href}
       className="group block bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-200"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         <div className={`flex-shrink-0 size-10 rounded-xl flex items-center justify-center ring-1 ${tone.bg} ${tone.icon} ${tone.ring}`}>
           <Icon className="size-5" strokeWidth={2.25} />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-semibold text-muted-foreground truncate">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold text-muted-foreground">
             {label}
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none truncate">
+            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
               {formatted}
             </span>
             <span className="text-xs font-medium text-muted-foreground">{unit}</span>
