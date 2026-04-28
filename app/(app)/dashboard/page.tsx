@@ -541,57 +541,90 @@ function InsightCards({
     .reduce((s, p) => s + (p.total ?? 0), 0);
   const supPct = sup && totalSpend ? (sup.spend / totalSpend) * 100 : 0;
 
+  const trendUp = stats.spendGrowth >= 0;
+  const diff = stats.thisMonthSpend - stats.lastMonthSpend;
+  const longTone = stats.longestPendingDays > 14
+    ? { bg: "bg-red-50", text: "text-red-600", ring: "ring-red-200/60" }
+    : stats.longestPendingDays > 7
+      ? { bg: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-200/60" }
+      : { bg: "bg-blue-50", text: "text-blue-600", ring: "ring-blue-200/60" };
+
   return (
     <>
       {sup && (
-        <Card className="bg-gradient-to-br from-amber-50/50 to-amber-100/30 border-amber-200/50">
-          <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-wide font-bold text-amber-800 mb-2 flex items-center gap-1.5">
-              <Trophy className="size-3.5" /> Top Supplier
-            </div>
-            <div className="text-base font-bold text-foreground truncate" title={sup.name}>
-              {sup.name}
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-              {fmtMoney(sup.spend)} • {supPct.toFixed(0)}% ของยอดรวม
+        <Card className="overflow-hidden border-amber-200/50 bg-gradient-to-br from-amber-50/70 via-amber-50/40 to-orange-50/30 shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-5 text-center relative">
+            {/* Decorative orb */}
+            <div className="absolute -top-6 -right-6 size-20 rounded-full bg-amber-200/30 blur-2xl" />
+
+            <div className="relative">
+              {/* Icon badge */}
+              <div className="inline-flex items-center justify-center size-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-sm ring-2 ring-amber-100 mb-3">
+                <Trophy className="size-5" strokeWidth={2.25} />
+              </div>
+              <div className="text-[10px] tracking-wider font-bold text-amber-700 uppercase mb-1">
+                Top Supplier
+              </div>
+              <div className="text-lg font-extrabold text-foreground truncate" title={sup.name}>
+                {sup.name}
+              </div>
+              <div className="flex items-center justify-center gap-2 mt-2 text-xs">
+                <span className="font-semibold tabular-nums text-foreground">
+                  {fmtMoney(sup.spend)}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold tabular-nums">
+                  {supPct.toFixed(0)}%
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
       {stats.longestPendingDays > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
-              <Clock className="size-3.5" /> PO ค้างนานสุด
+        <Card className="hover:shadow-md transition-shadow">
+          <CardContent className="p-5 text-center">
+            <div className={`inline-flex items-center justify-center size-10 rounded-2xl ring-1 ${longTone.bg} ${longTone.text} ${longTone.ring} mb-3`}>
+              <Clock className="size-5" strokeWidth={2.25} />
             </div>
-            <div
-              className={`text-2xl font-bold tabular-nums ${
-                stats.longestPendingDays > 14
-                  ? "text-destructive"
-                  : stats.longestPendingDays > 7
-                    ? "[color:hsl(var(--warning))]"
-                    : "text-primary"
-              }`}
-            >
-              {stats.longestPendingDays} <span className="text-sm font-medium opacity-70">วัน</span>
+            <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase mb-1">
+              PO ค้างนานสุด
             </div>
-            <div className="text-xs text-muted-foreground mt-0.5">รอดำเนินการ</div>
+            <div className="flex items-baseline justify-center gap-1.5">
+              <span className={`text-3xl font-extrabold tabular-nums leading-none ${longTone.text}`}>
+                {stats.longestPendingDays}
+              </span>
+              <span className="text-sm font-semibold text-muted-foreground">วัน</span>
+            </div>
+            <div className="text-xs text-muted-foreground mt-2">รอดำเนินการ</div>
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardContent className="p-4">
-          <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
-            <TrendingUp className="size-3.5" /> เทียบเดือนก่อน
+      <Card className="hover:shadow-md transition-shadow">
+        <CardContent className="p-5 text-center">
+          <div className={`inline-flex items-center justify-center size-10 rounded-2xl ring-1 mb-3 ${
+            trendUp
+              ? "bg-emerald-50 text-emerald-600 ring-emerald-200/60"
+              : "bg-rose-50 text-rose-600 ring-rose-200/60"
+          }`}>
+            {trendUp ? <TrendingUp className="size-5" strokeWidth={2.25} /> : <TrendingDown className="size-5" strokeWidth={2.25} />}
           </div>
-          <div className="text-base font-bold text-foreground tabular-nums">
-            {fmtMoney(stats.thisMonthSpend - stats.lastMonthSpend)}
+          <div className="text-[10px] tracking-wider font-bold text-muted-foreground uppercase mb-1">
+            เทียบเดือนก่อน
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {stats.spendGrowth >= 0 ? "เพิ่มขึ้น" : "ลดลง"}{" "}
-            {Math.abs(stats.spendGrowth).toFixed(1)}%
+          <div className="flex items-baseline justify-center gap-1">
+            <span className={`text-2xl font-extrabold tabular-nums leading-none ${
+              trendUp ? "text-emerald-700" : "text-rose-700"
+            }`}>
+              {trendUp ? "+" : ""}{fmtMoney(diff)}
+            </span>
+          </div>
+          <div className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-xs font-semibold tabular-nums ${
+            trendUp ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+          }`}>
+            {trendUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+            {trendUp ? "+" : ""}{stats.spendGrowth.toFixed(1)}%
           </div>
         </CardContent>
       </Card>
