@@ -78,7 +78,7 @@ export function UsersClient({
   return (
     <>
       <div className="space-y-5">
-        {/* KPI cards */}
+        {/* KPI cards — clickable as filters */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             icon={UsersIcon}
@@ -86,6 +86,8 @@ export function UsersClient({
             value={totalUsers}
             unit="คน"
             color="primary"
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
           />
           <KpiCard
             icon={Crown}
@@ -93,6 +95,8 @@ export function UsersClient({
             value={adminCount}
             unit="คน"
             color="amber"
+            active={filter === "admin"}
+            onClick={() => setFilter("admin")}
           />
           <KpiCard
             icon={UserCheck}
@@ -100,6 +104,8 @@ export function UsersClient({
             value={requesterCount}
             unit="คน"
             color="emerald"
+            active={filter === "requester"}
+            onClick={() => setFilter("requester")}
           />
           <KpiCard
             icon={UserX}
@@ -108,6 +114,8 @@ export function UsersClient({
             unit="คน"
             color={neverLoggedIn > 0 ? "red" : "slate"}
             subtitle={inactiveCount > 0 ? `${inactiveCount} ปิดใช้งาน` : undefined}
+            active={filter === "never"}
+            onClick={() => setFilter("never")}
           />
         </div>
 
@@ -223,7 +231,7 @@ const KPI_TONE: Record<string, { gradient: string; ring: string }> = {
 };
 
 function KpiCard({
-  icon: Icon, label, value, unit, color, subtitle,
+  icon: Icon, label, value, unit, color, subtitle, active, onClick,
 }: {
   icon: typeof UsersIcon;
   label: string;
@@ -231,31 +239,47 @@ function KpiCard({
   unit: string;
   color: keyof typeof KPI_TONE;
   subtitle?: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const tone = KPI_TONE[color];
-  return (
-    <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all">
-      <div className="flex items-center justify-center gap-3">
-        <div className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring}`}>
-          <Icon className="size-5" strokeWidth={2.5} />
+  const interactive = !!onClick;
+  const baseCls = `bg-card border rounded-2xl p-4 transition-all w-full text-left ${
+    active
+      ? "border-primary ring-2 ring-primary/30 shadow-md"
+      : "border-border hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40"
+  } ${interactive ? "cursor-pointer" : ""}`;
+
+  const inner = (
+    <div className="flex items-center justify-center gap-3">
+      <div className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring}`}>
+        <Icon className="size-5" strokeWidth={2.5} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold text-muted-foreground">{label}</div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+            {value.toLocaleString("th-TH")}
+          </span>
+          <span className="text-xs font-medium text-muted-foreground">{unit}</span>
         </div>
-        <div className="min-w-0">
-          <div className="text-[11px] font-bold text-muted-foreground">{label}</div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
-              {value.toLocaleString("th-TH")}
-            </span>
-            <span className="text-xs font-medium text-muted-foreground">{unit}</span>
+        {subtitle && (
+          <div className="text-[10px] text-amber-600 mt-0.5">
+            {subtitle}
           </div>
-          {subtitle && (
-            <div className="text-[10px] text-amber-600 mt-0.5">
-              {subtitle}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
+
+  if (interactive) {
+    return (
+      <button type="button" onClick={onClick} className={baseCls} aria-pressed={active}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={baseCls}>{inner}</div>;
 }
 
 // ==================================================================
