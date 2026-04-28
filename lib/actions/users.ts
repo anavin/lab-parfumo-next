@@ -17,7 +17,7 @@ interface ActionResult {
   emailError?: string;
 }
 
-const ROLE_LABEL = { admin: "แอดมิน + จัดซื้อ", requester: "ผู้สั่ง" } as const;
+const ROLE_LABEL = { admin: "แอดมิน + จัดซื้อ", requester: "Staff" } as const;
 
 export async function createUserAction(input: {
   username: string;

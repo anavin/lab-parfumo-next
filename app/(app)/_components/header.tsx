@@ -14,7 +14,7 @@ import { SearchTrigger } from "./search-trigger";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "แอดมิน + จัดซื้อ",
-  requester: "ผู้สั่ง",
+  requester: "Staff",
 };
 
 export function AppHeader({ user }: { user: User }) {
