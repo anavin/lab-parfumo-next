@@ -29,8 +29,15 @@ function fmtDateLong(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("th-TH", {
-    weekday: "short", day: "2-digit", month: "long", year: "numeric",
+    weekday: "long", day: "2-digit", month: "long", year: "numeric",
   });
+}
+
+/** ชื่อเต็มวันในสัปดาห์ภาษาไทย เช่น "วันอาทิตย์" */
+function fmtWeekday(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("th-TH", { weekday: "long" });
 }
 
 interface UrgencyState {
@@ -255,7 +262,7 @@ export function PendingRow({
                 {u.bigText}
               </div>
               <div className="text-[10px] text-muted-foreground" title={fmtDateLong(po.expected_date)}>
-                {fmtDateLong(po.expected_date).split(" ").slice(0, 1).join("")}
+                {fmtWeekday(po.expected_date)}
               </div>
             </>
           ) : (
