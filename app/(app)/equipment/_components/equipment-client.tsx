@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Bell, Plus, Search } from "lucide-react";
+import {
+  Plus, Search, ChevronDown, ChevronRight, FolderOpen,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +67,55 @@ export function EquipmentClient({
     return m;
   }, [equipment]);
 
+  // Group filtered items by category — for category-grouped display
+  const groupedByCategory = useMemo(() => {
+    const groups = new Map<string, Equipment[]>();
+    // Preserve category order from `categories` prop
+    for (const c of categories) groups.set(c, []);
+    const noCategory: Equipment[] = [];
+
+    for (const eq of filtered) {
+      const c = (eq.category ?? "").trim();
+      if (c && groups.has(c)) {
+        groups.get(c)!.push(eq);
+      } else if (c) {
+        // Category exists on item but not in categories list (rare)
+        if (!groups.has(c)) groups.set(c, []);
+        groups.get(c)!.push(eq);
+      } else {
+        noCategory.push(eq);
+      }
+    }
+    // Strip empty categories, append "ไม่ระบุหมวดหมู่" if any
+    const result: Array<{ name: string; items: Equipment[] }> = [];
+    for (const [name, items] of groups) {
+      if (items.length > 0) result.push({ name, items });
+    }
+    if (noCategory.length > 0) {
+      result.push({ name: "ไม่ระบุหมวดหมู่", items: noCategory });
+    }
+    return result;
+  }, [filtered, categories]);
+
+  // Collapsed state per category (default: all expanded)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const allCollapsed = collapsed.size > 0 && collapsed.size === groupedByCategory.length;
+  function toggleCategory(name: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+  function toggleAll() {
+    if (allCollapsed) {
+      setCollapsed(new Set());
+    } else {
+      setCollapsed(new Set(groupedByCategory.map((g) => g.name)));
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Pending approval */}
@@ -121,8 +172,17 @@ export function EquipmentClient({
               🔴 แสดงเฉพาะที่ stock ≤ reorder level
             </label>
             <span className="ml-auto text-slate-600">
-              พบ <strong>{filtered.length}</strong> รายการ
+              พบ <strong>{filtered.length}</strong> รายการ ใน <strong>{groupedByCategory.length}</strong> หมวด
             </span>
+            {groupedByCategory.length > 1 && (
+              <Button size="sm" variant="outline" onClick={toggleAll}>
+                {allCollapsed ? (
+                  <><ChevronDown className="size-3.5" /> ขยายทั้งหมด</>
+                ) : (
+                  <><ChevronRight className="size-3.5" /> ย่อทั้งหมด</>
+                )}
+              </Button>
+            )}
             <Button size="sm" onClick={() => setShowAdd(true)}>
               <Plus className="h-3.5 w-3.5" /> เพิ่มสินค้าใหม่
             </Button>
@@ -130,7 +190,7 @@ export function EquipmentClient({
         </CardContent>
       </Card>
 
-      {/* Equipment list */}
+      {/* Equipment list — grouped by category, collapsible */}
       {filtered.length === 0 ? (
         <EmptyState
           icon="🧴"
@@ -143,7 +203,50 @@ export function EquipmentClient({
           }
         />
       ) : (
-        <EquipmentGrid items={filtered} categories={categories} />
+        <div className="space-y-4">
+          {groupedByCategory.map((group) => {
+            const isCollapsed = collapsed.has(group.name);
+            return (
+              <section
+                key={group.name}
+                className="bg-card border border-border rounded-2xl overflow-hidden"
+              >
+                {/* Category header — clickable to toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(group.name)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition-colors text-left"
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                    <FolderOpen className="size-4.5" strokeWidth={2.25} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-base text-foreground">
+                      {group.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {group.items.length} รายการ
+                    </div>
+                  </div>
+                  <span
+                    className={`size-7 rounded-md text-muted-foreground flex items-center justify-center transition-transform ${isCollapsed ? "" : "rotate-180"}`}
+                    aria-hidden
+                  >
+                    <ChevronDown className="size-4" />
+                  </span>
+                </button>
+
+                {/* Items */}
+                {!isCollapsed && (
+                  <div className="px-4 pb-4 pt-1 border-t border-border/40">
+                    <EquipmentGrid items={group.items} categories={categories} />
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {/* Add dialog */}
