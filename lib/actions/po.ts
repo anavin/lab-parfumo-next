@@ -163,9 +163,62 @@ export async function closePoAction(poId: string): Promise<ActionResult> {
 }
 
 // ==================================================================
-// Cancel PO (with reason) — ห้ามยกเลิก terminal state
+// Cancel PO (with reason) — ห้ามยกเลิก terminal state + stock rollback
 // ==================================================================
 const TERMINAL_STATUSES: PoStatus[] = ["เสร็จสมบูรณ์", "ยกเลิก"];
+// สถานะที่อาจมี stock ถูก add ไปแล้ว — ยกเลิกแล้วต้อง rollback
+const RECEIVED_STATUSES: PoStatus[] = ["รับของแล้ว", "มีปัญหา"];
+
+interface DeliveryItemRow {
+  equipment_id: string | null;
+  qty_received: number;
+}
+
+/**
+ * ถอย stock ทั้งหมดที่เคยรับมาจาก deliveries ของ PO นี้
+ * ใช้ select+update (non-atomic) — ในอนาคตจะใช้ atomic RPC เมื่อรัน migration
+ * ป้องกันค่าติดลบด้วย Math.max(0, ...)
+ */
+async function rollbackPoStock(poId: string): Promise<{
+  totalUnits: number;
+  itemsAffected: number;
+}> {
+  const sb = getSupabaseAdmin();
+  const { data: deliveries } = await sb
+    .from("po_deliveries" as never)
+    .select("items_received")
+    .eq("po_id", poId);
+
+  if (!deliveries?.length) return { totalUnits: 0, itemsAffected: 0 };
+
+  // รวมจำนวนต่อ equipment_id (อาจมีหลาย delivery ต่อ equipment)
+  const totals = new Map<string, number>();
+  for (const d of deliveries as Array<{ items_received: DeliveryItemRow[] }>) {
+    for (const it of d.items_received ?? []) {
+      if (!it.equipment_id) continue;
+      const qty = Math.floor(it.qty_received ?? 0);
+      if (qty <= 0) continue;
+      totals.set(it.equipment_id, (totals.get(it.equipment_id) ?? 0) + qty);
+    }
+  }
+
+  let totalUnits = 0;
+  let itemsAffected = 0;
+  for (const [eqId, qty] of totals) {
+    const { data: eq } = await sb
+      .from("equipment")
+      .select("stock")
+      .eq("id", eqId)
+      .maybeSingle();
+    const cur = (eq?.stock ?? 0) as number;
+    const next = Math.max(0, cur - qty); // ป้องกันค่าติดลบ
+    await sb.from("equipment").update({ stock: next }).eq("id", eqId);
+    totalUnits += qty;
+    itemsAffected++;
+  }
+
+  return { totalUnits, itemsAffected };
+}
 
 export async function cancelPoAction(
   poId: string, reason: string,
@@ -192,7 +245,6 @@ export async function cancelPoAction(
   }
 
   // Status gate: ห้ามยกเลิก PO ที่อยู่ใน terminal state
-  // ก่อนหน้า: ยกเลิก "เสร็จสมบูรณ์" หรือ "ยกเลิก" ซ้ำได้ → audit log สับสน
   if (TERMINAL_STATUSES.includes(po.status as PoStatus)) {
     return {
       ok: false,
@@ -200,7 +252,23 @@ export async function cancelPoAction(
     };
   }
 
-  return _updateStatus(poId, "ยกเลิก", reason);
+  // Stock rollback: ถ้าเคยรับของไปแล้ว → ถอย stock ออก
+  let rollbackNote = "";
+  if (RECEIVED_STATUSES.includes(po.status as PoStatus)) {
+    try {
+      const rb = await rollbackPoStock(poId);
+      if (rb.totalUnits > 0) {
+        rollbackNote = ` | ถอย stock ${rb.totalUnits} ชิ้น (${rb.itemsAffected} รายการ)`;
+      }
+    } catch (e) {
+      // ถ้า rollback fail — log แต่ไม่ block การ cancel
+      // (สำคัญกว่าคือ PO เปลี่ยนเป็น cancelled — stock fix manual ทีหลังได้)
+      console.error("[cancel] stock rollback failed:", e);
+      rollbackNote = " | ⚠️ rollback stock ไม่สำเร็จ — ตรวจ manual";
+    }
+  }
+
+  return _updateStatus(poId, "ยกเลิก", `${reason}${rollbackNote}`);
 }
 
 // ==================================================================
