@@ -4,7 +4,7 @@ import "./globals.css";
 
 const sarabun = Sarabun({
   subsets: ["latin", "thai"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-sarabun",
   display: "swap",
 });

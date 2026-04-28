@@ -306,14 +306,14 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
       <div className="relative grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-4 text-center">
         {/* Spend this month — biggest, with sparkle */}
         <div className="relative">
-          <div className="text-sm uppercase tracking-[0.25em] text-white/80 font-black mb-4 flex items-center justify-center gap-2">
+          <div className="text-sm text-white/80 font-bold mb-4 flex items-center justify-center gap-2">
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
             ใช้จ่ายเดือนนี้
           </div>
-          <div className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)] leading-none">
+          <div className="text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight bg-gradient-to-br from-white via-white to-cyan-100 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(255,255,255,0.15)] leading-none">
             {fmtNumber(stats.thisMonthSpend)}
           </div>
-          <div className="text-sm font-semibold text-white/70 tracking-[0.2em] uppercase mt-2">บาท</div>
+          <div className="text-sm font-semibold text-white/70 mt-2">บาท</div>
           {stats.lastMonthSpend > 0 && (
             <div className="flex justify-center mt-3">
               <span
@@ -332,13 +332,13 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
 
         {/* PO total */}
         <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
-          <div className="text-sm uppercase tracking-[0.25em] text-white/80 font-black mb-4">
+          <div className="text-sm text-white/80 font-bold mb-4">
             PO ทั้งหมด
           </div>
-          <div className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none">
+          <div className="text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight text-white drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none">
             {stats.total}
           </div>
-          <div className="text-sm font-semibold text-white/70 tracking-[0.2em] uppercase mt-2">ใบ</div>
+          <div className="text-sm font-semibold text-white/70 mt-2">ใบ</div>
           <div className="text-sm text-white/70 mt-2 font-medium">
             <span className="text-emerald-300 font-bold">+{stats.newThisWeek}</span> ใบใหม่สัปดาห์นี้
           </div>
@@ -346,24 +346,22 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
 
         {/* Pending */}
         <div className="relative sm:before:content-[''] sm:before:absolute sm:before:top-4 sm:before:bottom-4 sm:before:left-0 sm:before:w-px sm:before:bg-gradient-to-b sm:before:from-transparent sm:before:via-white/20 sm:before:to-transparent">
-          <div className="text-sm uppercase tracking-[0.25em] text-white/80 font-black mb-4 flex items-center justify-center gap-2">
+          <div className="text-sm text-white/80 font-bold mb-4 flex items-center justify-center gap-2">
             {stats.staleCount > 0 && (
               <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
             )}
             รอดำเนินการ
           </div>
-          <div className={`text-3xl sm:text-4xl font-black tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none ${
+          <div className={`text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none ${
             stats.staleCount > 0 ? "bg-gradient-to-br from-white via-amber-100 to-amber-200 bg-clip-text text-transparent" : "text-white"
           }`}>
             {stats.pending}
           </div>
-          <div className="text-sm font-semibold text-white/70 tracking-[0.2em] uppercase mt-2">ใบ</div>
-          {stats.staleCount > 0 ? (
+          <div className="text-sm font-semibold text-white/70 mt-2">ใบ</div>
+          {stats.staleCount > 0 && (
             <div className="text-sm text-amber-200 mt-2 font-semibold">
               ⚠️ {stats.staleCount} ใบค้างเกิน 3 วัน
             </div>
-          ) : (
-            <div className="text-sm text-white/60 mt-2">ไม่มีค้าง</div>
           )}
         </div>
       </div>
