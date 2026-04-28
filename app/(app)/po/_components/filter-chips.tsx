@@ -32,7 +32,12 @@ export function FilterChips({
   }
 
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
+    <div
+      className="grid gap-2 py-0.5"
+      style={{
+        gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`,
+      }}
+    >
       {options.map((opt) => {
         const isActive = active === opt.value;
         return (
@@ -41,16 +46,16 @@ export function FilterChips({
             type="button"
             onClick={() => setStatus(opt.value)}
             className={cn(
-              "flex-shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-colors",
+              "inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg text-xs font-semibold transition-all",
               isActive
                 ? "bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm"
-                : "bg-white text-slate-700 border border-slate-300 hover:bg-brand-50 hover:border-brand-600",
+                : "bg-white text-slate-700 border border-slate-300 hover:bg-brand-50 hover:border-brand-600 hover:-translate-y-0.5 hover:shadow-sm",
             )}
           >
-            <span>{opt.label}</span>
+            <span className="truncate">{opt.label}</span>
             <span
               className={cn(
-                "px-1.5 py-0.5 text-[10px] font-bold rounded-full",
+                "flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded-full tabular-nums",
                 isActive ? "bg-white/20" : "bg-slate-100 text-slate-600",
               )}
             >
