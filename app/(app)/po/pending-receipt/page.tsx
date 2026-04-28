@@ -219,33 +219,31 @@ function KpiCard({
   const isMuted = color === "slate";
   return (
     <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-200">
-      <div className="flex flex-col items-center text-center gap-2">
+      <div className="flex items-center justify-center gap-3">
         {/* Icon — vivid gradient + white icon + ring + soft shadow */}
         <div
-          className={`size-12 rounded-2xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring} ${tone.shadow} ${isMuted ? "opacity-70" : ""}`}
+          className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring} ${tone.shadow} ${isMuted ? "opacity-70" : ""}`}
         >
-          <Icon className="size-6" strokeWidth={2.5} />
+          <Icon className="size-5" strokeWidth={2.5} />
         </div>
 
-        {/* Label */}
-        <div className="text-xs font-bold text-foreground">
-          {label}
-        </div>
-
-        {/* Value + unit */}
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-2xl font-extrabold tabular-nums text-foreground leading-none">
-            {value.toLocaleString("th-TH")}
-          </span>
-          <span className="text-xs font-medium text-muted-foreground">{unit}</span>
-        </div>
-
-        {/* Subtitle */}
-        {subtitle && (
-          <div className="text-[10px] text-muted-foreground">
-            {subtitle}
+        {/* Text block — beside icon */}
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold text-foreground">
+            {label}
           </div>
-        )}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+              {value.toLocaleString("th-TH")}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">{unit}</span>
+          </div>
+          {subtitle && (
+            <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+              {subtitle}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
