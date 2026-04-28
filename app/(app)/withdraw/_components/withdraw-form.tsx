@@ -475,8 +475,12 @@ function SelectedItemForm({
 
   function handleSubmit() {
     setError(null);
-    if (qty < 1 || qty > stock) {
-      setError(`จำนวนต้องอยู่ระหว่าง 1-${stock}`);
+    if (qty < 1) {
+      setError("กรุณากรอกจำนวนอย่างน้อย 1");
+      return;
+    }
+    if (qty > stock) {
+      setError(`จำนวนเกินสต็อก — สูงสุด ${stock} ${eq.unit ?? "ชิ้น"}`);
       return;
     }
     if (!purpose.trim()) {
@@ -516,12 +520,18 @@ function SelectedItemForm({
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">จำนวน *</label>
+              <label className="block text-xs font-medium text-foreground mb-1">
+                จำนวน * <span className="text-muted-foreground/70 font-normal">(สูงสุด {stock})</span>
+              </label>
               <input
-                type="number" min="1" max={stock}
-                value={qty}
-                onChange={(e) => setQty(Math.max(1, Math.min(stock, parseInt(e.target.value, 10) || 1)))}
+                type="number" min="0" max={stock}
+                value={qty === 0 ? "" : qty}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setQty(Number.isFinite(v) && v >= 0 ? v : 0);
+                }}
                 onFocus={(e) => e.currentTarget.select()}
+                placeholder="0"
                 disabled={pending}
                 autoFocus
                 className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm tabular-nums focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
