@@ -226,8 +226,10 @@ function AddBudgetDialog({
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">งบประมาณ (฿)</label>
             <input type="number" min="0" step="1000"
-                   value={amount}
+                   value={amount === 0 ? "" : amount}
                    onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                   onFocus={(e) => e.currentTarget.select()}
+                   placeholder="0"
                    disabled={pending}
                    className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-base font-bold tabular-nums" />
           </div>

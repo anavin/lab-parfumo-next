@@ -279,9 +279,10 @@ export function OrderForm({
                     type="number"
                     min="0"
                     step="0.01"
-                    value={prices[i] ?? 0}
+                    value={(prices[i] ?? 0) === 0 ? "" : prices[i]}
                     onChange={(e) => updatePrice(i, parseFloat(e.target.value) || 0)}
-                    placeholder="ราคา/หน่วย"
+                    onFocus={(e) => e.currentTarget.select()}
+                    placeholder="0.00"
                     disabled={pending}
                     className="h-9 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 text-right tabular-nums"
                   />
@@ -301,8 +302,10 @@ export function OrderForm({
           <label className="block text-xs font-medium text-slate-700 mb-1">ส่วนลด (฿)</label>
           <input
             type="number" min="0" step="10"
-            value={discount}
+            value={discount === 0 ? "" : discount}
             onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+            onFocus={(e) => e.currentTarget.select()}
+            placeholder="0"
             disabled={pending}
             className="h-10 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm tabular-nums"
           />
@@ -311,8 +314,10 @@ export function OrderForm({
           <label className="block text-xs font-medium text-slate-700 mb-1">ค่าส่ง (฿)</label>
           <input
             type="number" min="0" step="10"
-            value={shippingFee}
+            value={shippingFee === 0 ? "" : shippingFee}
             onChange={(e) => setShippingFee(parseFloat(e.target.value) || 0)}
+            onFocus={(e) => e.currentTarget.select()}
+            placeholder="0"
             disabled={pending}
             className="h-10 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm tabular-nums"
           />
