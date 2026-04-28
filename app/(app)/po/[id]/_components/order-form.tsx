@@ -243,7 +243,7 @@ export function OrderForm({
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">
-            🎯 วันที่คาดว่าได้รับ *
+            🎯 วันที่คาดว่าจะได้รับ *
           </label>
           <input
             type="date"

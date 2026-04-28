@@ -70,13 +70,13 @@ export default async function PoViewPage({
       const days = Math.floor(
         (new Date(today).getTime() - new Date(po.expected_date).getTime()) / 86400_000,
       );
-      return { tone: "danger" as const, msg: `🚨 เลยกำหนด ${days} วัน — คาดว่าได้รับ: ${fmtDate(po.expected_date)}` };
+      return { tone: "danger" as const, msg: `🚨 เลยกำหนด ${days} วัน — คาดว่าจะได้รับ: ${fmtDate(po.expected_date)}` };
     }
     const daysToGo = Math.ceil(
       (new Date(po.expected_date).getTime() - new Date(today).getTime()) / 86400_000,
     );
     if (daysToGo <= 3) {
-      return { tone: "warning" as const, msg: `⏰ ใกล้ครบกำหนด — คาดว่าได้รับ: ${fmtDate(po.expected_date)}` };
+      return { tone: "warning" as const, msg: `⏰ ใกล้ครบกำหนด — คาดว่าจะได้รับ: ${fmtDate(po.expected_date)}` };
     }
     return null;
   })();
@@ -181,7 +181,7 @@ export default async function PoViewPage({
               {po.ordered_date && <DateRow label="สั่ง supplier" value={fmtDate(po.ordered_date)} />}
               {po.expected_date && (
                 <DateRow
-                  label="คาดว่าได้รับ"
+                  label="คาดว่าจะได้รับ"
                   value={fmtDate(po.expected_date)}
                   highlight={expectedWarning?.tone}
                 />

@@ -544,7 +544,7 @@ export async function updateProcurementAction(
     return { ok: false, error: "กรุณากรอกชื่อ supplier" };
   }
   if (!input.expectedDate) {
-    return { ok: false, error: "กรุณาเลือกวันที่คาดว่าได้รับ" };
+    return { ok: false, error: "กรุณาเลือกวันที่คาดว่าจะได้รับ" };
   }
 
   const sb = getSupabaseAdmin();
@@ -654,7 +654,7 @@ export async function updateProcurementAction(
       await notifyUser(
         po.created_by, poId,
         `✅ ${po.po_number} สั่งซื้อแล้ว`,
-        `แอดมินสั่งกับ ${input.supplierName} • คาดว่าได้รับ ${input.expectedDate}`,
+        `แอดมินสั่งกับ ${input.supplierName} • คาดว่าจะได้รับ ${input.expectedDate}`,
       );
     } catch { /* ok */ }
   }
