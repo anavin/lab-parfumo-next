@@ -1,6 +1,8 @@
 "use client";
 
-import { Check, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import { Check, Plus, X, ChevronLeft, ChevronRight, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Equipment } from "@/lib/types/db";
 
@@ -11,116 +13,291 @@ export function EquipmentGrid({
   selectedIds: Set<string>;
   onToggle: (eq: Equipment) => void;
 }) {
+  // Lightbox state
+  const [preview, setPreview] = useState<{
+    images: string[]; index: number; name: string;
+  } | null>(null);
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {items.map((eq) => (
-        <EquipmentCard
-          key={eq.id}
-          eq={eq}
-          isSelected={selectedIds.has(eq.id)}
-          onClick={() => onToggle(eq)}
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {items.map((eq) => (
+          <EquipmentCard
+            key={eq.id}
+            eq={eq}
+            isSelected={selectedIds.has(eq.id)}
+            onClick={() => onToggle(eq)}
+            onPreview={(images, index) =>
+              setPreview({ images, index, name: eq.name })
+            }
+          />
+        ))}
+      </div>
+
+      {/* Lightbox modal */}
+      {preview && (
+        <ImagePreview
+          images={preview.images}
+          index={preview.index}
+          name={preview.name}
+          onClose={() => setPreview(null)}
+          onIndex={(i) => setPreview({ ...preview, index: i })}
         />
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
 function EquipmentCard({
-  eq, isSelected, onClick,
+  eq, isSelected, onClick, onPreview,
 }: {
   eq: Equipment;
   isSelected: boolean;
   onClick: () => void;
+  onPreview: (images: string[], startIndex: number) => void;
 }) {
-  // รวมรูป
   const images = [...(eq.image_urls ?? [])];
   if (eq.image_url && !images.includes(eq.image_url)) {
     images.unshift(eq.image_url);
   }
   const primary = images[0];
+  const thumbs = images.slice(1, 4); // up to 3 thumbnails
 
   // Stock badge
   const stock = eq.stock ?? 0;
   const rl = eq.reorder_level ?? 0;
   let stockChip: { bg: string; color: string; text: string };
   if (stock === 0) {
-    stockChip = { bg: "bg-red-50 border-red-200", color: "text-red-700", text: `⚠️ หมด` };
+    stockChip = { bg: "bg-red-50 border-red-200", color: "text-red-700", text: "หมด" };
   } else if (rl > 0 && stock <= rl) {
-    stockChip = { bg: "bg-red-50 border-red-200", color: "text-red-700", text: `🔴 ต้องสั่ง! เหลือ ${stock}` };
+    stockChip = { bg: "bg-red-50 border-red-200", color: "text-red-700", text: `ต้องสั่ง · ${stock}` };
   } else if (stock < 10) {
-    stockChip = { bg: "bg-amber-50 border-amber-200", color: "text-amber-700", text: `⚠️ ${stock} ${eq.unit ?? ""} (ต่ำ)` };
+    stockChip = { bg: "bg-amber-50 border-amber-200", color: "text-amber-700", text: `${stock} ${eq.unit ?? ""}` };
   } else {
-    stockChip = { bg: "bg-emerald-50 border-emerald-200", color: "text-emerald-700", text: `📦 ${stock} ${eq.unit ?? ""}` };
+    stockChip = { bg: "bg-emerald-50 border-emerald-200", color: "text-emerald-700", text: `${stock} ${eq.unit ?? ""}` };
+  }
+
+  function handlePreviewPrimary(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (primary) onPreview(images, 0);
+  }
+  function handlePreviewThumb(e: React.MouseEvent, i: number) {
+    e.stopPropagation();
+    onPreview(images, i + 1);
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "group text-left bg-white border rounded-xl p-3 transition-all",
-        "hover:border-brand-300 hover:shadow-sm",
+        "group bg-card border rounded-2xl p-3 transition-all flex flex-col",
+        "hover:shadow-md hover:-translate-y-0.5",
         isSelected
-          ? "border-brand-600 ring-2 ring-brand-100"
-          : "border-slate-200",
+          ? "border-primary ring-2 ring-primary/20"
+          : "border-border hover:border-primary/40",
       )}
     >
-      {/* Image */}
-      <div className="aspect-square bg-slate-100 rounded-lg overflow-hidden border border-slate-200 mb-2 flex items-center justify-center">
+      {/* Primary image — clickable to preview */}
+      <button
+        type="button"
+        onClick={handlePreviewPrimary}
+        className="relative aspect-square w-full bg-muted rounded-xl overflow-hidden mb-2 group/img cursor-zoom-in"
+        aria-label={primary ? "ดูรูปขยาย" : "ไม่มีรูป"}
+      >
         {primary ? (
-          <img
-            src={primary}
-            alt={eq.name}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
+          <>
+            <Image
+              src={primary}
+              alt={eq.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              className="object-cover transition-transform duration-300 group-hover/img:scale-110"
+              unoptimized
+            />
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center">
+              <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 text-xs font-semibold text-foreground shadow-lg">
+                🔍 คลิกดูรูปขยาย
+              </div>
+            </div>
+          </>
         ) : (
-          <span className="text-4xl">🧴</span>
+          <div className="w-full h-full flex items-center justify-center text-5xl">🧴</div>
         )}
+      </button>
+
+      {/* Thumbnail strip — 3 small images */}
+      {thumbs.length > 0 && (
+        <div className="grid grid-cols-3 gap-1 mb-2">
+          {thumbs.map((url, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={(e) => handlePreviewThumb(e, i)}
+              className="relative aspect-square bg-muted rounded-md overflow-hidden hover:ring-2 hover:ring-primary/40 transition-all cursor-zoom-in"
+              aria-label={`รูปที่ ${i + 2}`}
+            >
+              <Image
+                src={url}
+                alt={`${eq.name} ${i + 2}`}
+                fill
+                sizes="80px"
+                className="object-cover hover:scale-110 transition-transform duration-200"
+                unoptimized
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Details */}
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-sm text-foreground line-clamp-2 leading-tight" title={eq.name}>
+          {eq.name}
+        </div>
+        <div className="text-xs text-muted-foreground mt-1.5 font-mono">
+          SKU: {eq.sku || "-"}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+          <FolderOpen className="size-3" />
+          <span className="truncate">{eq.category || "-"}</span>
+        </div>
+
+        {/* Stock chip */}
+        <div className="mt-2">
+          <span
+            className={cn(
+              "inline-block px-2 py-0.5 text-[11px] font-semibold rounded-md border",
+              stockChip.bg, stockChip.color,
+            )}
+          >
+            {stockChip.text}
+          </span>
+        </div>
       </div>
 
-      {/* Name */}
-      <div className="font-semibold text-sm text-slate-900 truncate" title={eq.name}>
-        {eq.name}
-      </div>
-      <div className="text-[11px] text-slate-500 truncate">
-        SKU: {eq.sku || "-"}
-      </div>
-      <div className="text-[11px] text-slate-500 truncate">
-        📂 {eq.category || "-"}
-      </div>
-
-      {/* Stock chip */}
-      <div className="mt-2">
-        <span
-          className={cn(
-            "inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full border",
-            stockChip.bg, stockChip.color,
-          )}
-        >
-          {stockChip.text}
-        </span>
-      </div>
-
-      {/* Action */}
-      <div
+      {/* Add/Selected button */}
+      <button
+        type="button"
+        onClick={onClick}
         className={cn(
-          "mt-3 flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-semibold transition-colors",
+          "mt-3 flex items-center justify-center gap-1.5 h-10 rounded-lg text-sm font-bold transition-all",
           isSelected
-            ? "bg-gradient-to-br from-brand-600 to-brand-800 text-white"
-            : "bg-slate-50 text-slate-700 group-hover:bg-brand-100 group-hover:text-brand-700",
+            ? "bg-gradient-to-br from-primary to-brand-900 text-white shadow-sm hover:shadow-brand"
+            : "bg-muted text-foreground hover:bg-primary hover:text-primary-foreground",
         )}
       >
         {isSelected ? (
           <>
-            <Check className="h-3.5 w-3.5" /> เลือกแล้ว
+            <Check className="size-4" /> เลือกแล้ว
           </>
         ) : (
           <>
-            <Plus className="h-3.5 w-3.5" /> เพิ่ม
+            <Plus className="size-4" /> เพิ่ม
           </>
         )}
+      </button>
+    </div>
+  );
+}
+
+// ==================================================================
+// Lightbox preview modal
+// ==================================================================
+function ImagePreview({
+  images, index, name, onClose, onIndex,
+}: {
+  images: string[];
+  index: number;
+  name: string;
+  onClose: () => void;
+  onIndex: (i: number) => void;
+}) {
+  const current = images[index];
+  const hasNav = images.length > 1;
+
+  function prev(e: React.MouseEvent) {
+    e.stopPropagation();
+    onIndex((index - 1 + images.length) % images.length);
+  }
+  function next(e: React.MouseEvent) {
+    e.stopPropagation();
+    onIndex((index + 1) % images.length);
+  }
+
+  // ESC + arrow keys (proper effect with cleanup)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && hasNav) onIndex((index - 1 + images.length) % images.length);
+      if (e.key === "ArrowRight" && hasNav) onIndex((index + 1) % images.length);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, images.length, hasNav, onClose, onIndex]);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+    >
+      {/* Close */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+        aria-label="ปิด"
+      >
+        <X className="size-5" />
+      </button>
+
+      {/* Title + counter */}
+      <div className="absolute top-4 left-4 text-white">
+        <div className="text-sm font-bold">{name}</div>
+        {hasNav && (
+          <div className="text-xs text-white/60 mt-0.5 tabular-nums">
+            {index + 1} / {images.length}
+          </div>
+        )}
       </div>
-    </button>
+
+      {/* Prev */}
+      {hasNav && (
+        <button
+          type="button"
+          onClick={prev}
+          className="absolute left-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+          aria-label="ก่อนหน้า"
+        >
+          <ChevronLeft className="size-6" />
+        </button>
+      )}
+
+      {/* Image */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-w-[90vw] max-h-[85vh]"
+      >
+        <Image
+          src={current}
+          alt={name}
+          width={1200}
+          height={1200}
+          unoptimized
+          className="rounded-lg object-contain max-w-[90vw] max-h-[85vh] w-auto h-auto"
+        />
+      </div>
+
+      {/* Next */}
+      {hasNav && (
+        <button
+          type="button"
+          onClick={next}
+          className="absolute right-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+          aria-label="ถัดไป"
+        >
+          <ChevronRight className="size-6" />
+        </button>
+      )}
+    </div>
   );
 }
