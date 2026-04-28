@@ -275,17 +275,17 @@ export function PendingRow({
         </div>
       </div>
 
-      {/* Action footer */}
-      <div className="flex items-center gap-2 px-4 pb-3 pt-1 border-t border-border/40">
-        <Link href={`/po/${po.id}`} className="flex-1">
-          <Button size="sm" fullWidth variant="primary" className="h-9">
-            <PackageOpen className="size-3.5" /> รับของ
+      {/* Action footer — compact */}
+      <div className="flex items-center gap-1.5 px-4 pb-3 pt-1 border-t border-border/40">
+        <Link href={`/po/${po.id}`}>
+          <Button size="xs" variant="primary">
+            <PackageOpen className="size-3" /> รับของ
           </Button>
         </Link>
         <Link href={`/po/${po.id}`}>
-          <Button size="sm" variant="outline" className="h-9">
+          <Button size="xs" variant="outline">
             ดูรายละเอียด
-            <ChevronRight className="size-3.5" />
+            <ChevronRight className="size-3" />
           </Button>
         </Link>
       </div>
