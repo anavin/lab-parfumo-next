@@ -90,7 +90,34 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Thai script has tone marks above/below — needs breathing room */
+    line-height: 1.55;
   }
+
+  /*
+   * Thai font tuning — Lab Parfumo is Thai-first.
+   * Sarabun has tone marks (สระ/วรรณยุกต์) above/below base chars.
+   * Wide letter-spacing breaks the visual word-shape because tone
+   * marks visually separate from their base char.
+   *
+   * Strategy:
+   * - Cap excessive Tailwind tracking values for Thai content
+   * - Disable text-transform: uppercase on Thai (it's a no-op visually
+   *   since Thai has no case, but some browsers fake it with weird
+   *   ligature substitution)
+   *
+   * `:lang(th)` matches any element under html[lang="th"] — which is
+   * the whole app. English text in code is unaffected by these rules
+   * because text-transform on already-uppercase text is a no-op,
+   * and we only cap tracking, not eliminate it.
+   */
+  :lang(th) {
+    text-transform: none;
+  }
+  /* Cap wide-tracking utilities to Thai-friendly amounts */
+  :lang(th).tracking-widest { letter-spacing: 0.06em; }
+  :lang(th).tracking-wider { letter-spacing: 0.04em; }
+  :lang(th).tracking-wide { letter-spacing: 0.02em; }
 
   /* Number input — minimal */
   input[type="number"]::-webkit-inner-spin-button,

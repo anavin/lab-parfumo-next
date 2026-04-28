@@ -68,7 +68,7 @@ export function AppHeader({ user }: { user: User }) {
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="h-px w-3 bg-gradient-to-r from-primary to-transparent" />
-                <span className="text-[9px] font-black tracking-[0.25em] text-primary">
+                <span className="text-[9px] font-extrabold tracking-[0.25em] text-primary">
                   PO·PRO
                 </span>
                 <span className="h-px flex-1 max-w-[12px] bg-gradient-to-l from-primary/40 to-transparent" />

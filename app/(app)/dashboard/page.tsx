@@ -167,7 +167,7 @@ export default async function DashboardPage() {
 
       {/* Status grid (clickable filters) */}
       <section>
-        <h2 className="text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground mb-3">
+        <h2 className="text-[11px] uppercase tracking-wide font-bold text-muted-foreground mb-3">
           ภาพรวมสถานะ
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
@@ -205,7 +205,7 @@ export default async function DashboardPage() {
         <Card className={isAdmin ? "lg:col-span-3" : "lg:col-span-5"}>
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-4">
-              <div className="text-[11px] uppercase tracking-[0.15em] font-bold text-foreground">
+              <div className="text-[11px] uppercase tracking-wide font-bold text-foreground">
                 ที่ต้องดำเนินการ
               </div>
               {actionItems.length > 0 && (
@@ -242,7 +242,7 @@ export default async function DashboardPage() {
         <div className="grid lg:grid-cols-5 gap-5">
           <Card className="lg:col-span-3">
             <CardContent className="p-5">
-              <div className="text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground mb-4">
+              <div className="text-[11px] uppercase tracking-wide font-bold text-muted-foreground mb-4">
                 ยอดสั่งซื้อ 6 เดือนล่าสุด
               </div>
               <TrendChart data={trendData} />
@@ -250,7 +250,7 @@ export default async function DashboardPage() {
           </Card>
           <Card className="lg:col-span-2">
             <CardContent className="p-5">
-              <div className="text-[11px] uppercase tracking-[0.15em] font-bold text-muted-foreground mb-4">
+              <div className="text-[11px] uppercase tracking-wide font-bold text-muted-foreground mb-4">
                 Top 5 Suppliers
               </div>
               <SuppliersChart data={supplierData} />
@@ -421,7 +421,7 @@ function InsightCards({
       {sup && (
         <Card className="bg-gradient-to-br from-amber-50/50 to-amber-100/30 border-amber-200/50">
           <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-amber-800 mb-2 flex items-center gap-1.5">
+            <div className="text-[10px] uppercase tracking-wide font-bold text-amber-800 mb-2 flex items-center gap-1.5">
               <Trophy className="size-3.5" /> Top Supplier
             </div>
             <div className="text-base font-bold text-foreground truncate" title={sup.name}>
@@ -437,7 +437,7 @@ function InsightCards({
       {stats.longestPendingDays > 0 && (
         <Card>
           <CardContent className="p-4">
-            <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
+            <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
               <Clock className="size-3.5" /> PO ค้างนานสุด
             </div>
             <div
@@ -458,7 +458,7 @@ function InsightCards({
 
       <Card>
         <CardContent className="p-4">
-          <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
+          <div className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
             <TrendingUp className="size-3.5" /> เทียบเดือนก่อน
           </div>
           <div className="text-base font-bold text-foreground tabular-nums">
