@@ -23,8 +23,11 @@ export async function verifyBcrypt(password: string, hash: string): Promise<bool
   }
 }
 
+// Cost factor 14 = ~1s/hash (2024 best practice — แข็งกว่า 12 ~4 เท่า)
+const BCRYPT_ROUNDS = 14;
+
 export async function hashBcrypt(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
 export interface PasswordValidation {

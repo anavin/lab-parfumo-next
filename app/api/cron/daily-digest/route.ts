@@ -16,15 +16,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function authorize(req: Request): boolean {
-  // Vercel Cron sets this header automatically
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) return true; // dev — allow without secret
+  // Production-safe: ถ้าไม่มี secret → ปฏิเสธทุกคำขอ
+  // (เดิม return true ใน dev → ความเสี่ยง — endpoint เปิดให้ใครก็ trigger)
+  if (!cronSecret) {
+    console.warn(
+      "[cron/daily-digest] CRON_SECRET not set — rejecting all requests for safety. " +
+      "Set CRON_SECRET in env to enable.",
+    );
+    return false;
+  }
+  // ใช้เฉพาะ Authorization header เท่านั้น (ไม่รับ ?token= เพื่อกัน leak ใน log/referer)
   const auth = req.headers.get("authorization");
-  if (auth === `Bearer ${cronSecret}`) return true;
-  // Allow manual trigger via ?token=
-  const url = new URL(req.url);
-  if (url.searchParams.get("token") === cronSecret) return true;
-  return false;
+  return auth === `Bearer ${cronSecret}`;
 }
 
 export async function GET(req: Request) {

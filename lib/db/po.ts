@@ -22,6 +22,16 @@ const COUNTED_FOR_SPEND: PoStatus[] = [
   "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์",
 ];
 
+// Explicit column list — กัน leak ถ้าตารางเพิ่ม column sensitive ใหม่
+const PO_COLUMNS = [
+  "id", "po_number", "status", "items", "purpose", "notes",
+  "supplier_name", "supplier_contact",
+  "subtotal", "discount", "shipping_fee", "vat", "total",
+  "ordered_date", "expected_date", "received_date",
+  "tracking_number", "procurement_notes", "attachment_urls",
+  "created_by", "created_by_name", "created_at", "updated_at",
+].join(", ");
+
 interface GetPosOpts {
   userId?: string;
   role?: Role;
@@ -36,7 +46,7 @@ export const getPos = cache(async ({
   userId, role = "requester", status, limit = 500,
 }: GetPosOpts = {}): Promise<PurchaseOrder[]> => {
   const sb = getSupabaseAdmin();
-  let q = sb.from("purchase_orders").select("*");
+  let q = sb.from("purchase_orders").select(PO_COLUMNS as "*");
   if (role === "requester" && userId) {
     q = q.eq("created_by", userId);
   }
@@ -245,10 +255,10 @@ export const getPoById = cache(
     const sb = getSupabaseAdmin();
     const { data } = await sb
       .from("purchase_orders")
-      .select("*")
+      .select(PO_COLUMNS as "*")
       .eq("id", id)
       .maybeSingle();
-    return (data as PurchaseOrder) ?? null;
+    return (data as PurchaseOrder | null) ?? null;
   },
 );
 
@@ -382,7 +392,7 @@ export async function getPosPendingReceipt(): Promise<PurchaseOrder[]> {
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("purchase_orders")
-    .select("*")
+    .select(PO_COLUMNS as "*")
     .in("status", PENDING_RECEIPT as readonly string[])
     .order("expected_date", { ascending: true })
     .limit(500);
