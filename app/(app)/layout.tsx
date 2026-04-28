@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "./_components/header";
+import { KeyboardShortcuts } from "./_components/keyboard-shortcuts";
 
 export default async function AppLayout({
   children,
@@ -23,6 +24,7 @@ export default async function AppLayout({
         {children}
       </main>
       <Toaster />
+      <KeyboardShortcuts />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { FilterChips } from "./_components/filter-chips";
 import { buildChipOptions } from "./_components/chip-options";
 import { ListControls } from "./_components/list-controls";
 import { Pagination } from "./_components/pagination";
+import { SavedFilters } from "./_components/saved-filters";
 
 export const metadata: Metadata = {
   title: "ใบสั่งซื้อ — Lab Parfumo PO",
@@ -107,6 +108,8 @@ export default async function PoListPage({
         active={status ?? "ทั้งหมด"}
         options={chipOptions}
       />
+
+      <SavedFilters />
 
       <div className="text-sm text-slate-600">
         พบ <strong>{filtered.length}</strong> ใบ
