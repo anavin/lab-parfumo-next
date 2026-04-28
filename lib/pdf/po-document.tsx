@@ -100,26 +100,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     marginBottom: 24,
   },
-  brandRow: { flexDirection: "row", alignItems: "flex-start" },
-  logoBox: {
-    width: 48, height: 48,
-    backgroundColor: C.brand,
-    borderRadius: 10,
-    marginRight: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoText: {
-    color: "white",
-    fontSize: 20,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-  },
+  brandRow: { flexDirection: "column" },
   companyName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "bold",
     color: C.ink,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   companyMeta: {
     fontSize: 9,
@@ -134,19 +120,21 @@ const styles = StyleSheet.create({
     color: C.muted,
     fontWeight: "bold",
     letterSpacing: 1.5,
-    marginBottom: 2,
+    marginBottom: 10,
+    paddingBottom: 2,
   },
   docTitle: {
     fontSize: 22,
     fontWeight: "bold",
     color: C.brand,
-    marginBottom: 4,
+    lineHeight: 1.3,
+    marginBottom: 8,
   },
   docNumber: {
     fontSize: 13,
     fontWeight: "bold",
     color: C.body,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   statusBadge: {
     paddingHorizontal: 10,
@@ -176,12 +164,20 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     borderRadius: 6,
   },
+  // English-only eyebrow (uppercase, with tracking)
   infoEyebrow: {
     fontSize: 8,
     color: C.muted,
     fontWeight: "bold",
-    letterSpacing: 1,
-    marginBottom: 5,
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  // Thai eyebrow — NO letter spacing (would break tone marks)
+  infoEyebrowTh: {
+    fontSize: 9,
+    color: C.muted,
+    fontWeight: "bold",
+    marginBottom: 6,
   },
   infoStrong: {
     fontSize: 11,
@@ -203,15 +199,17 @@ const styles = StyleSheet.create({
   dateRow: {
     flexDirection: "row",
     fontSize: 9,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   dateLabel: {
-    width: 40,
+    width: 56,
     color: C.muted,
+    fontSize: 9,
   },
   dateValue: {
     color: C.body,
     fontWeight: "bold",
+    fontSize: 9,
     flex: 1,
   },
 
@@ -294,34 +292,25 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
-  // ===== Notes box =====
+  // ===== Notes box (neutral, clean) =====
   notesBox: {
-    flexDirection: "row",
-    backgroundColor: C.amberPale,
-    borderLeftWidth: 3,
-    borderLeftColor: C.amber,
-    borderRadius: 4,
-    padding: 10,
-    marginBottom: 16,
-  },
-  notesIcon: {
-    color: C.amber,
-    fontWeight: "bold",
-    fontSize: 11,
-    marginRight: 6,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 14,
   },
   notesContent: { flex: 1 },
   notesLabel: {
     fontSize: 9,
     fontWeight: "bold",
-    color: "#78350F",
-    marginBottom: 2,
-    letterSpacing: 0.3,
+    color: C.muted,
+    marginBottom: 4,
   },
   notesText: {
     fontSize: 10,
-    color: "#451A03",
-    lineHeight: 1.45,
+    color: C.body,
+    lineHeight: 1.5,
   },
 
   // ===== Signatures =====
@@ -394,14 +383,6 @@ export interface PoDocumentProps {
   showPrices: boolean;
 }
 
-function logoLetter(name: string): string {
-  const trimmed = (name || "LP").trim();
-  // Try first letter of each word; fallback to first 2 chars
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return trimmed.slice(0, 2).toUpperCase();
-}
-
 export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
   registerFontOnce();
   const items = po.items ?? [];
@@ -424,30 +405,25 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {/* Top accent bar */}
         <View style={styles.topBar} fixed />
 
-        {/* Header — brand left, doc info right */}
+        {/* Header — company info left, doc info right */}
         <View style={styles.header}>
           <View style={styles.brandRow}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>{logoLetter(company.name || "LP")}</Text>
-            </View>
-            <View>
-              <Text style={styles.companyName}>{company.name || "Lab Parfumo"}</Text>
-              {company.name_th && (
-                <Text style={styles.companyMeta}>{company.name_th}</Text>
-              )}
-              {company.address && (
-                <Text style={styles.companyMeta}>{company.address}</Text>
-              )}
-              {company.phone && (
-                <Text style={styles.companyMeta}>โทร {company.phone}</Text>
-              )}
-              {company.email && (
-                <Text style={styles.companyMeta}>{company.email}</Text>
-              )}
-              {company.tax_id && (
-                <Text style={styles.companyMeta}>เลขผู้เสียภาษี {company.tax_id}</Text>
-              )}
-            </View>
+            <Text style={styles.companyName}>{company.name || "Lab Parfumo"}</Text>
+            {company.name_th && (
+              <Text style={styles.companyMeta}>{company.name_th}</Text>
+            )}
+            {company.address && (
+              <Text style={styles.companyMeta}>{company.address}</Text>
+            )}
+            {company.phone && (
+              <Text style={styles.companyMeta}>โทร {company.phone}</Text>
+            )}
+            {company.email && (
+              <Text style={styles.companyMeta}>{company.email}</Text>
+            )}
+            {company.tax_id && (
+              <Text style={styles.companyMeta}>เลขผู้เสียภาษี {company.tax_id}</Text>
+            )}
           </View>
 
           <View style={styles.docTitleBlock}>
@@ -484,7 +460,7 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
           </View>
 
           <View style={styles.infoCard}>
-            <Text style={styles.infoEyebrow}>วันที่</Text>
+            <Text style={styles.infoEyebrowTh}>วันที่</Text>
             <View style={styles.dateRow}>
               <Text style={styles.dateLabel}>สร้าง</Text>
               <Text style={styles.dateValue}>{fmtDate(po.created_at)}</Text>
@@ -510,7 +486,7 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
           </View>
 
           <View style={styles.infoCard}>
-            <Text style={styles.infoEyebrow}>ผู้สั่ง</Text>
+            <Text style={styles.infoEyebrowTh}>ผู้สั่ง</Text>
             <Text style={styles.infoStrong}>{po.created_by_name || "—"}</Text>
             {po.tracking_number && (
               <Text style={styles.infoText}>Tracking: {po.tracking_number}</Text>
@@ -608,21 +584,15 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {/* Notes */}
         {po.notes && (
           <View style={styles.notesBox} wrap={false}>
-            <Text style={styles.notesIcon}>!</Text>
-            <View style={styles.notesContent}>
-              <Text style={styles.notesLabel}>หมายเหตุ</Text>
-              <Text style={styles.notesText}>{po.notes}</Text>
-            </View>
+            <Text style={styles.notesLabel}>หมายเหตุ</Text>
+            <Text style={styles.notesText}>{po.notes}</Text>
           </View>
         )}
 
         {po.procurement_notes && showPrices && (
           <View style={styles.notesBox} wrap={false}>
-            <Text style={styles.notesIcon}>!</Text>
-            <View style={styles.notesContent}>
-              <Text style={styles.notesLabel}>หมายเหตุจัดซื้อ</Text>
-              <Text style={styles.notesText}>{po.procurement_notes}</Text>
-            </View>
+            <Text style={styles.notesLabel}>หมายเหตุจัดซื้อ</Text>
+            <Text style={styles.notesText}>{po.procurement_notes}</Text>
           </View>
         )}
 
