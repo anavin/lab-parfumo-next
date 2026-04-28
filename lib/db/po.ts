@@ -409,8 +409,8 @@ export async function getPosPendingReceipt(): Promise<PurchaseOrder[]> {
   return (data ?? []) as PurchaseOrder[];
 }
 
-/** Supplier ที่เคยใช้ — interface ย้ายไป lib/types/db.ts */
-export async function getSupplierHistory(): Promise<SupplierEntry[]> {
+/** Supplier ที่เคยใช้ — interface ย้ายไป lib/types/db.ts (cached per-request) */
+export const getSupplierHistory = cache(async (): Promise<SupplierEntry[]> => {
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("purchase_orders")
@@ -445,7 +445,7 @@ export async function getSupplierHistory(): Promise<SupplierEntry[]> {
     }
   }
   return Array.from(map.values()).sort((a, b) => b.poCount - a.poCount);
-}
+});
 
 /** จัดกลุ่ม PO ตามความเร่งด่วน (สำหรับหน้า pending-receipt) */
 export interface UrgencyBuckets {

@@ -8,6 +8,8 @@ import { ShoppingCart, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/sonner";
 import { updateProcurementAction } from "@/lib/actions/po";
 import type { PoItem } from "@/lib/types/db";
 import type { SupplierEntry } from "@/lib/types/db";
@@ -29,6 +31,14 @@ export function OrderForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [budgetWarning, setBudgetWarning] = useState<{
+    budgetName: string;
+    budgetAmount: number;
+    actualBefore: number;
+    poTotal: number;
+    actualAfter: number;
+    overBy: number;
+  } | null>(null);
 
   // Supplier autocomplete
   const supNames = useMemo(() => suppliers.map((s) => s.name), [suppliers]);
@@ -82,7 +92,7 @@ export function OrderForm({
   const vat = subtotal * vatRate;
   const total = subtotal - discount + shippingFee + vat;
 
-  function handleSubmit() {
+  function handleSubmit(acknowledgeOverBudget = false) {
     setError(null);
     if (!supplierName.trim()) {
       setError("กรุณากรอกชื่อ supplier");
@@ -98,11 +108,18 @@ export function OrderForm({
         vatRate,
         expectedDate,
         procurementNotes: procNotes,
+        acknowledgeOverBudget,
       });
       if (!res.ok) {
+        // Budget warning — show modal asking for confirmation
+        if (res.budgetWarning) {
+          setBudgetWarning(res.budgetWarning);
+          return;
+        }
         setError(res.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
+      toast.success(`✅ ส่งคำสั่งซื้อ ${poNumber} ไปยัง ${supplierName.trim()}`);
       onClose();
     });
   }
@@ -305,16 +322,57 @@ export function OrderForm({
       {error && <Alert tone="danger">❌ {error}</Alert>}
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleSubmit} loading={pending}>
+        <Button onClick={() => handleSubmit(false)} loading={pending}>
           ✅ ยืนยันสั่งซื้อ
         </Button>
         <Button variant="secondary" onClick={onClose} disabled={pending}>
           <X className="h-4 w-4" /> ยกเลิก
         </Button>
-        <p className="text-[11px] text-slate-400 italic flex items-center px-2">
-          💡 แนบไฟล์ใบเสนอราคา — มาใน Phase 6
-        </p>
       </div>
+
+      {/* Over-budget confirmation */}
+      <ConfirmDialog
+        open={!!budgetWarning}
+        onOpenChange={(o) => !o && setBudgetWarning(null)}
+        title="⚠️ ยอดสั่งซื้อเกินงบประมาณ"
+        description={budgetWarning ? (
+          <div className="space-y-2 text-sm">
+            <div>
+              การสั่งซื้อนี้จะทำให้ <strong>{budgetWarning.budgetName}</strong> เกินวงเงิน
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">วงเงิน</span>
+                <span className="font-mono">฿{budgetWarning.budgetAmount.toLocaleString("th-TH")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ใช้จริงปัจจุบัน</span>
+                <span className="font-mono">฿{budgetWarning.actualBefore.toLocaleString("th-TH")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ยอด PO นี้</span>
+                <span className="font-mono">+฿{budgetWarning.poTotal.toLocaleString("th-TH")}</span>
+              </div>
+              <div className="flex justify-between border-t border-amber-300 pt-1.5">
+                <span className="font-semibold">เกินวงเงิน</span>
+                <span className="font-mono font-bold text-red-600">
+                  ฿{budgetWarning.overBy.toLocaleString("th-TH")}
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              ต้องการดำเนินการต่อ? (ระบบจะ log ว่าคุณยืนยันแล้ว)
+            </div>
+          </div>
+        ) : null}
+        confirmText="ยืนยันสั่งซื้อแม้เกินงบ"
+        variant="warning"
+        loading={pending}
+        onConfirm={() => {
+          setBudgetWarning(null);
+          handleSubmit(true);
+        }}
+      />
     </div>
   );
 }

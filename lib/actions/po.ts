@@ -517,11 +517,25 @@ export interface ProcurementInput {
   vatRate: number;          // 0 หรือ 0.07
   expectedDate: string;     // YYYY-MM-DD
   procurementNotes: string;
+  /** Set to true when admin acknowledged a budget warning */
+  acknowledgeOverBudget?: boolean;
+}
+
+export interface ProcurementResult extends ActionResult {
+  /** When set, server is asking for budget confirmation */
+  budgetWarning?: {
+    budgetName: string;
+    budgetAmount: number;
+    actualBefore: number;
+    poTotal: number;
+    actualAfter: number;
+    overBy: number;
+  };
 }
 
 export async function updateProcurementAction(
   poId: string, input: ProcurementInput,
-): Promise<ActionResult> {
+): Promise<ProcurementResult> {
   const user = await getCurrentUser();
   if (!user || user.role !== "admin") {
     return { ok: false, error: "เฉพาะแอดมิน" };
@@ -559,6 +573,43 @@ export async function updateProcurementAction(
   const subtotal = newItems.reduce((s, it) => s + (it.subtotal ?? 0), 0);
   const vat = subtotal * input.vatRate;
   const total = subtotal - input.discount + input.shippingFee + vat;
+
+  // Budget check — warn if this PO pushes spending over any active budget
+  if (!input.acknowledgeOverBudget) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + 1;
+    try {
+      const { getBudgetStatusForMonth } = await import("@/lib/db/budget");
+      const statuses = await getBudgetStatusForMonth(year, month);
+      // Find any active budget that would go over after this PO
+      for (const b of statuses) {
+        // Skip category-specific budgets (would need category match)
+        if (b.category) continue;
+        const newActual = b.actual + total;
+        if (newActual > b.amount && b.actual <= b.amount) {
+          // Crossing the threshold
+          return {
+            ok: false,
+            budgetWarning: {
+              budgetName: b.period_type === "monthly"
+                ? `งบเดือน ${month}/${year}`
+                : b.period_type === "yearly"
+                  ? `งบปี ${year}`
+                  : `งบไตรมาส ${year}`,
+              budgetAmount: b.amount,
+              actualBefore: b.actual,
+              poTotal: total,
+              actualAfter: newActual,
+              overBy: newActual - b.amount,
+            },
+          };
+        }
+      }
+    } catch {
+      // budget check ล้มเหลว — ปล่อยให้ทำงานต่อ (don't block)
+    }
+  }
 
   const { error } = await sb
     .from("purchase_orders")
