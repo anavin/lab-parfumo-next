@@ -743,20 +743,27 @@ export async function addDeliveryAction(
     return { ok: false, error: "บันทึกการรับของไม่สำเร็จ" };
   }
 
-  // เพิ่ม stock ของ equipment ที่รับ
+  // เพิ่ม stock ของ equipment ที่รับ + นับ custom items (ไม่กระทบ stock)
+  let customItemsCount = 0;
+  let stockUpdatedCount = 0;
   for (const it of input.itemsReceived) {
-    if (it.equipment_id && it.qty_received > 0) {
-      const { data: eq } = await sb
-        .from("equipment")
-        .select("stock")
-        .eq("id", it.equipment_id)
-        .maybeSingle();
-      const cur = (eq?.stock ?? 0) as number;
-      await sb
-        .from("equipment")
-        .update({ stock: cur + Math.floor(it.qty_received) })
-        .eq("id", it.equipment_id);
+    if (!it.equipment_id) {
+      // custom item — บันทึกเพื่อ trace แต่ไม่กระทบ stock
+      if (it.qty_received > 0) customItemsCount++;
+      continue;
     }
+    if (it.qty_received <= 0) continue;
+    const { data: eq } = await sb
+      .from("equipment")
+      .select("stock")
+      .eq("id", it.equipment_id)
+      .maybeSingle();
+    const cur = (eq?.stock ?? 0) as number;
+    await sb
+      .from("equipment")
+      .update({ stock: cur + Math.floor(it.qty_received) })
+      .eq("id", it.equipment_id);
+    stockUpdatedCount++;
   }
 
   // Update PO status + received_date
@@ -770,9 +777,14 @@ export async function addDeliveryAction(
     })
     .eq("id", poId);
 
+  // Activity log — บันทึก stock + custom items detail
+  const stockNote = stockUpdatedCount > 0
+    ? ` | อัปเดต stock ${stockUpdatedCount} รายการ` : "";
+  const customNote = customItemsCount > 0
+    ? ` | custom item ${customItemsCount} รายการ (ไม่กระทบ stock)` : "";
   await logActivity(
     poId, user.full_name, user.role, "received",
-    `รับของ #${newNo} | สภาพ: ${input.overallCondition}`,
+    `รับของ #${newNo} | สภาพ: ${input.overallCondition}${stockNote}${customNote}`,
   );
 
   // Notify admins

@@ -60,16 +60,22 @@ export async function getUserFromToken(
   const last = data.last_activity_at ? new Date(data.last_activity_at).getTime() : 0;
   const idleMin = (Date.now() - last) / 60_000;
   if (idleMin > SESSION_IDLE_MIN) {
-    // fire-and-forget delete (ไม่รอ)
-    sb.from("user_sessions").delete().eq("token", token).then(() => {}, () => {});
+    // fire-and-forget delete — log error เพื่อ debug ถ้า DB hiccup
+    sb.from("user_sessions").delete().eq("token", token).then(
+      () => {},
+      (err) => console.error("[session] expired-cleanup failed:", err),
+    );
     return null;
   }
 
-  // Touch session (fire-and-forget — ไม่ block)
+  // Touch session — fire-and-forget แต่ log error
   sb.from("user_sessions")
     .update({ last_activity_at: new Date().toISOString() })
     .eq("token", token)
-    .then(() => {}, () => {});
+    .then(
+      () => {},
+      (err) => console.error("[session] touch failed:", err),
+    );
 
   // Supabase nested return — users เป็น array หรือ object ขึ้นกับ relationship
   const user = Array.isArray(data.users) ? data.users[0] : data.users;
