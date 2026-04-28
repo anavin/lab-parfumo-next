@@ -48,6 +48,8 @@ export interface EmailUiSettings {
   source: "env" | "db" | "none" | "migration-needed" | "db-error";
   errorDetail?: string;
   managedByEnv: boolean;
+  encryptionAvailable: boolean;
+  passwordEncrypted: boolean;
 }
 
 interface EmailDiagnostic {
@@ -662,6 +664,36 @@ function EmailForm({ initial, adminEmail }: { initial: EmailUiSettings; adminEma
               ถ้าจะแก้ผ่าน UI ให้ลบ env: <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> ใน Vercel
             </div>
           </Alert>
+        )}
+
+        {/* Password encryption status — เฉพาะกรณี source=db (DB-stored) */}
+        {!managedByEnv && initial.source === "db" && initial.hasPassword && (
+          initial.passwordEncrypted ? (
+            <Alert tone="success">
+              🔐 <strong>Password ถูก encrypt แล้ว</strong> (AES-256-GCM)
+              — ปลอดภัยจากการเข้าถึง DB โดยตรง
+            </Alert>
+          ) : (
+            <Alert tone="warning">
+              ⚠️ <strong>Password ยังเก็บแบบ plaintext ใน DB</strong>
+              {initial.encryptionAvailable ? (
+                <div className="text-xs mt-1 text-slate-600">
+                  ENCRYPTION_KEY พร้อมใช้แล้ว — กดบันทึก SMTP ฟอร์มอีกครั้ง (กรอก password ซ้ำ)
+                  เพื่อ encrypt password ที่เก็บอยู่
+                </div>
+              ) : (
+                <div className="text-xs mt-1 text-slate-600">
+                  ตั้ง env <code className="bg-amber-100 px-1 rounded">ENCRYPTION_KEY</code> ใน Vercel:
+                  <br />
+                  1. Generate: <code className="bg-amber-100 px-1 rounded">openssl rand -hex 32</code>
+                  <br />
+                  2. Vercel → Settings → Environment Variables → Add <code>ENCRYPTION_KEY</code>
+                  <br />
+                  3. Redeploy → กดบันทึก SMTP ฟอร์มอีกครั้ง
+                </div>
+              )}
+            </Alert>
+          )
         )}
 
         {/* Presets */}

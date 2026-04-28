@@ -205,14 +205,30 @@ async function rollbackPoStock(poId: string): Promise<{
   let totalUnits = 0;
   let itemsAffected = 0;
   for (const [eqId, qty] of totals) {
-    const { data: eq } = await sb
-      .from("equipment")
-      .select("stock")
-      .eq("id", eqId)
-      .maybeSingle();
-    const cur = (eq?.stock ?? 0) as number;
-    const next = Math.max(0, cur - qty); // ป้องกันค่าติดลบ
-    await sb.from("equipment").update({ stock: next }).eq("id", eqId);
+    // Atomic decrement ผ่าน RPC (GREATEST(0, ...) กันค่าติดลบ)
+    let useRpc = true;
+    try {
+      const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
+        p_id: eqId, p_qty: -qty,
+      });
+      if (rpcErr) useRpc = false;
+    } catch { useRpc = false; }
+
+    if (!useRpc) {
+      console.warn(
+        "[rollback] increment_equipment_stock RPC unavailable — using fallback. " +
+        "Please run migration 202604_workflow_atomic.sql.",
+      );
+      const { data: eq } = await sb
+        .from("equipment")
+        .select("stock")
+        .eq("id", eqId)
+        .maybeSingle();
+      const cur = (eq?.stock ?? 0) as number;
+      await sb.from("equipment")
+        .update({ stock: Math.max(0, cur - qty) })
+        .eq("id", eqId);
+    }
     totalUnits += qty;
     itemsAffected++;
   }
@@ -811,35 +827,64 @@ export async function addDeliveryAction(
     };
   }
 
-  // หา delivery_no ใหม่
-  const { data: existingDeliveries } = await sb
-    .from("po_deliveries" as never)
-    .select("delivery_no")
-    .eq("po_id", poId);
-  const maxNo = ((existingDeliveries ?? []) as Array<{ delivery_no: number }>)
-    .reduce((m, d) => Math.max(m, d.delivery_no ?? 0), 0);
-  const newNo = maxNo + 1;
+  // หา delivery_no + insert แบบทนต่อ race condition
+  // - พยายาม atomic ผ่าน RPC ก่อน (advisory lock + unique constraint)
+  // - ถ้า RPC ไม่มี (migration ยังไม่รัน) → fallback select-max + retry
+  let newNo = 0;
+  let inserted = false;
+  for (let attempt = 0; attempt < 5 && !inserted; attempt++) {
+    let candidateNo: number | null = null;
+    // 1) ลองใช้ RPC (atomic — รัน migration แล้วจะ work)
+    try {
+      const { data: rpcData, error: rpcErr } = await sb.rpc(
+        "next_po_delivery_no",
+        { p_po_id: poId },
+      );
+      if (!rpcErr && typeof rpcData === "number") {
+        candidateNo = rpcData;
+      }
+    } catch { /* ignore — fallback */ }
 
-  // Insert delivery record
-  const { error: deliveryErr } = await sb
-    .from("po_deliveries" as never)
-    .insert({
-      po_id: poId,
-      delivery_no: newNo,
-      received_date: new Date().toISOString().slice(0, 10),
-      received_by_name: user.full_name,
-      items_received: input.itemsReceived,
-      overall_condition: input.overallCondition,
-      issue_description: input.issueDescription,
-      notes: input.notes,
-      image_urls: input.imageUrls,
-    } as never);
-  if (deliveryErr) {
+    // 2) Fallback: select-max (race-prone แต่ retry ใน loop)
+    if (candidateNo === null) {
+      const { data: existingDeliveries } = await sb
+        .from("po_deliveries" as never)
+        .select("delivery_no")
+        .eq("po_id", poId);
+      const maxNo = ((existingDeliveries ?? []) as Array<{ delivery_no: number }>)
+        .reduce((m, d) => Math.max(m, d.delivery_no ?? 0), 0);
+      candidateNo = maxNo + 1 + attempt; // bump ตาม attempt เพื่อ retry
+    }
+
+    const { error: deliveryErr } = await sb
+      .from("po_deliveries" as never)
+      .insert({
+        po_id: poId,
+        delivery_no: candidateNo,
+        received_date: new Date().toISOString().slice(0, 10),
+        received_by_name: user.full_name,
+        items_received: input.itemsReceived,
+        overall_condition: input.overallCondition,
+        issue_description: input.issueDescription,
+        notes: input.notes,
+        image_urls: input.imageUrls,
+      } as never);
+    if (!deliveryErr) {
+      newNo = candidateNo;
+      inserted = true;
+      break;
+    }
+    // unique_violation (Postgres 23505) — retry
+    const code = (deliveryErr as { code?: string }).code;
+    if (code === "23505") continue;
     console.error("[delivery] insert failed:", deliveryErr);
     return { ok: false, error: "บันทึกการรับของไม่สำเร็จ" };
   }
+  if (!inserted) {
+    return { ok: false, error: "บันทึกการรับของไม่สำเร็จ — ลองอีกครั้ง" };
+  }
 
-  // เพิ่ม stock ของ equipment ที่รับ + นับ custom items (ไม่กระทบ stock)
+  // เพิ่ม stock — atomic RPC + fallback (เหมือน delivery_no)
   let customItemsCount = 0;
   let stockUpdatedCount = 0;
   for (const it of input.itemsReceived) {
@@ -849,16 +894,33 @@ export async function addDeliveryAction(
       continue;
     }
     if (it.qty_received <= 0) continue;
-    const { data: eq } = await sb
-      .from("equipment")
-      .select("stock")
-      .eq("id", it.equipment_id)
-      .maybeSingle();
-    const cur = (eq?.stock ?? 0) as number;
-    await sb
-      .from("equipment")
-      .update({ stock: cur + Math.floor(it.qty_received) })
-      .eq("id", it.equipment_id);
+    const qty = Math.floor(it.qty_received);
+
+    let useRpc = true;
+    try {
+      const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
+        p_id: it.equipment_id, p_qty: qty,
+      });
+      if (rpcErr) useRpc = false;
+    } catch { useRpc = false; }
+
+    if (!useRpc) {
+      // Fallback non-atomic — log แจ้งให้ admin รัน migration
+      console.warn(
+        "[delivery] increment_equipment_stock RPC unavailable — using fallback. " +
+        "Please run migration 202604_workflow_atomic.sql for race-safe stock updates.",
+      );
+      const { data: eq } = await sb
+        .from("equipment")
+        .select("stock")
+        .eq("id", it.equipment_id)
+        .maybeSingle();
+      const cur = (eq?.stock ?? 0) as number;
+      await sb
+        .from("equipment")
+        .update({ stock: cur + qty })
+        .eq("id", it.equipment_id);
+    }
     stockUpdatedCount++;
   }
 

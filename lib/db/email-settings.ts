@@ -10,6 +10,7 @@
  */
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { decryptSecret, hasEncryptionKey, isEncrypted } from "@/lib/crypto/secrets";
 
 export type EmailSettingsSource =
   | "env"               // ใช้ค่าจาก environment variables
@@ -99,11 +100,14 @@ export async function getEmailSettings(): Promise<EmailSettings> {
 
     const row = (data ?? {}) as DbRow;
     if (row.smtp_host && row.smtp_user && row.smtp_password) {
+      // Auto-decrypt: ถ้า encrypted (enc:v1:...) → decrypt
+      // ถ้า plaintext (legacy) → ใช้ตรงๆ
+      const password = decryptSecret(row.smtp_password);
       return {
         host: row.smtp_host,
         port: row.smtp_port ?? 587,
         user: row.smtp_user,
-        password: row.smtp_password,
+        password,
         fromEmail: row.smtp_from_email || row.smtp_user,
         fromName: row.smtp_from_name || "Lab Parfumo PO",
         secure: !!row.smtp_secure,
@@ -124,6 +128,22 @@ export async function getEmailSettings(): Promise<EmailSettings> {
   return { ...EMPTY_SETTINGS, source: "none" };
 }
 
+/** ตรวจ password ใน DB ว่า encrypted แล้วหรือยัง — ใช้ใน UI banner */
+async function isPasswordEncrypted(): Promise<boolean> {
+  try {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("company_settings" as never)
+      .select("smtp_password")
+      .eq("id", 1)
+      .maybeSingle();
+    const pw = ((data ?? {}) as DbRow).smtp_password ?? "";
+    return isEncrypted(pw);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * อ่านเฉพาะที่ปลอดภัยพอ render UI ได้
  * (ซ่อน password — แค่บอกว่ามีหรือไม่)
@@ -140,8 +160,17 @@ export async function getEmailSettingsForUi(): Promise<{
   errorDetail?: string;
   /** ถ้า env ตั้งไว้ → UI ควร readonly */
   managedByEnv: boolean;
+  /** ENCRYPTION_KEY ถูกตั้งและ valid */
+  encryptionAvailable: boolean;
+  /** Password ที่เก็บใน DB ถูก encrypt แล้ว (ไม่ใช่ plaintext) */
+  passwordEncrypted: boolean;
 }> {
   const s = await getEmailSettings();
+  const encAvail = hasEncryptionKey();
+  // ตรวจเฉพาะกรณี source เป็น db และมี password
+  const pwEnc = s.source === "db" && s.password
+    ? await isPasswordEncrypted()
+    : false;
   return {
     host: s.host,
     port: s.port,
@@ -153,5 +182,7 @@ export async function getEmailSettingsForUi(): Promise<{
     source: s.source,
     errorDetail: s.errorDetail,
     managedByEnv: s.source === "env",
+    encryptionAvailable: encAvail,
+    passwordEncrypted: pwEnc,
   };
 }
