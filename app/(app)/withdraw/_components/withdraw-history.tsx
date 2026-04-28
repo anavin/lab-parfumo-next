@@ -1,14 +1,32 @@
 "use client";
 
+/**
+ * Withdraw history — premium B2B redesign
+ * Period pills + colored KPIs + rich row + ConfirmDialog for destructive
+ */
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Search, Calendar } from "lucide-react";
+import {
+  Trash2, Search, Calendar, User, Package as PackageIcon,
+  TrendingDown, ClipboardList, FileText, Users,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/sonner";
 import type { Withdrawal } from "@/lib/types/db";
 import { deleteWithdrawalAction } from "@/lib/actions/withdraw";
+
+type Period = "7" | "30" | "90" | "all";
+
+const PERIOD_LABEL: Record<Period, string> = {
+  "7": "7 วันล่าสุด",
+  "30": "30 วันล่าสุด",
+  "90": "90 วันล่าสุด",
+  "all": "ทั้งหมด",
+};
 
 export function WithdrawHistory({
   withdrawals, isAdmin, currentUserId,
@@ -20,9 +38,9 @@ export function WithdrawHistory({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
-  const [period, setPeriod] = useState<"7" | "30" | "90" | "all">("30");
+  const [period, setPeriod] = useState<Period>("30");
   const [scope, setScope] = useState<"mine" | "all">("mine");
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [delTarget, setDelTarget] = useState<Withdrawal | null>(null);
 
   const filtered = useMemo(() => {
     let out = withdrawals;
@@ -45,143 +63,311 @@ export function WithdrawHistory({
     return out;
   }, [withdrawals, period, scope, search, currentUserId]);
 
-  // Summary
+  // KPIs
+  const totalCount = filtered.length;
   const totalQty = filtered.reduce((s, w) => s + (w.qty ?? 0), 0);
   const uniqueEq = new Set(filtered.map((w) => w.equipment_id)).size;
+  const uniqueUsers = new Set(filtered.map((w) => w.withdrawn_by)).size;
 
-  function handleDelete(id: string) {
+  function handleDelete() {
+    if (!delTarget) return;
     startTransition(async () => {
-      const res = await deleteWithdrawalAction(id, true);
+      const res = await deleteWithdrawalAction(delTarget.id, true);
       if (res.ok) {
-        setConfirmDel(null);
+        toast.success(`✅ ลบ ${delTarget.equipment_name} (คืนสต็อก ${delTarget.qty} ${delTarget.unit ?? ""}) แล้ว`);
+        setDelTarget(null);
         router.refresh();
+      } else {
+        toast.error(res.error ?? "ลบไม่สำเร็จ");
       }
     });
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filter bar */}
-      <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-2">
-          {isAdmin && (
-            <select
-              className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm"
-              value={scope}
-              onChange={(e) => setScope(e.target.value as typeof scope)}
-            >
-              <option value="mine">👤 ของฉัน</option>
-              <option value="all">👥 ทุกคน</option>
-            </select>
-          )}
-          <select
-            className="h-11 px-3 rounded-lg border border-slate-300 bg-white text-sm"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as typeof period)}
-          >
-            <option value="7">📅 7 วันล่าสุด</option>
-            <option value="30">📅 30 วันล่าสุด</option>
-            <option value="90">📅 90 วันล่าสุด</option>
-            <option value="all">📅 ทั้งหมด</option>
-          </select>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              type="search"
-              placeholder="ค้นหาชื่อสินค้า / วัตถุประสงค์ / ผู้เบิก"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary */}
-      {filtered.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <SummaryCard label="ครั้ง" value={filtered.length.toLocaleString("th-TH")} />
-          <SummaryCard label="รวมจำนวน" value={totalQty.toLocaleString("th-TH")} />
-          <SummaryCard label="สินค้าที่เบิก" value={uniqueEq.toLocaleString("th-TH")} />
-        </div>
-      )}
-
-      {/* List */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon="📦"
-          title="ยังไม่มีประวัติการเบิก"
-          text="ลองเปลี่ยนช่วงเวลา หรือเริ่มเบิกของจาก tab 'เบิกใหม่'"
-        />
-      ) : (
-        <div className="space-y-2">
-          <div className="text-sm text-slate-600">พบ <strong>{filtered.length}</strong> รายการ</div>
-          {filtered.map((w) => (
-            <Card key={w.id}>
-              <CardContent className="p-3">
-                <div className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-12 sm:col-span-4">
-                    <div className="font-semibold text-sm text-slate-900">📦 {w.equipment_name}</div>
-                    {w.purpose && (
-                      <div className="text-xs text-slate-500 mt-0.5">📝 {w.purpose}</div>
-                    )}
-                  </div>
-                  <div className="col-span-4 sm:col-span-2 text-right text-brand-700 font-semibold tabular-nums">
-                    ➖ {w.qty.toLocaleString("th-TH")} {w.unit}
-                  </div>
-                  <div className="col-span-4 sm:col-span-2 text-xs text-slate-500">
-                    <Calendar className="inline h-3 w-3 mr-1" />
-                    {fmtDate(w.withdrawn_at)}
-                  </div>
-                  <div className="col-span-3 sm:col-span-3 text-xs text-slate-500 truncate">
-                    👤 {w.withdrawn_by_name}
-                  </div>
-                  <div className="col-span-1 flex justify-end">
-                    {isAdmin && (
-                      confirmDel === w.id ? (
-                        <Button
-                          variant="primary" size="sm"
-                          loading={pending}
-                          onClick={() => handleDelete(w.id)}
-                          className="!from-red-600 !to-red-700"
-                          title="ยืนยันลบ + คืนสต็อก"
-                        >
-                          ⚠️
-                        </Button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDel(w.id)}
-                          className="h-8 w-8 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 inline-flex items-center justify-center"
-                          aria-label="ลบ"
-                          title="ลบ + คืนสต็อก"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )
-                    )}
-                  </div>
+    <>
+      <div className="space-y-4">
+        {/* Filter card — pill period + scope + search */}
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-xs font-bold text-muted-foreground inline-flex items-center gap-1.5">
+                <Calendar className="size-3.5" />
+                ช่วงเวลา
+              </div>
+              {isAdmin && (
+                <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setScope("mine")}
+                    className={`inline-flex items-center gap-1 h-7 px-3 rounded-md text-xs font-semibold transition-all ${
+                      scope === "mine"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <User className="size-3" /> ของฉัน
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope("all")}
+                    className={`inline-flex items-center gap-1 h-7 px-3 rounded-md text-xs font-semibold transition-all ${
+                      scope === "all"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Users className="size-3" /> ทุกคน
+                  </button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              )}
+            </div>
+
+            {/* Period pills (equal width) */}
+            <div
+              className="grid gap-1.5"
+              style={{
+                gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+              }}
+            >
+              {(["7", "30", "90", "all"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={`inline-flex items-center justify-center h-9 px-3 rounded-lg text-xs font-semibold transition-all ${
+                    period === p
+                      ? "bg-gradient-to-br from-primary to-brand-900 text-white shadow-sm"
+                      : "bg-card border border-border text-foreground hover:bg-accent hover:-translate-y-0.5 hover:shadow-sm"
+                  }`}
+                >
+                  {PERIOD_LABEL[p]}
+                </button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="ค้นหาชื่อสินค้า / วัตถุประสงค์ / ผู้เบิก"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* KPI cards (consistent with reports) */}
+        {filtered.length > 0 && (
+          <div className={`grid grid-cols-2 ${isAdmin ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-3`}>
+            <KpiCard
+              icon={ClipboardList}
+              label="ครั้งที่เบิก"
+              value={totalCount}
+              unit="ครั้ง"
+              color="primary"
+            />
+            <KpiCard
+              icon={TrendingDown}
+              label="รวมจำนวน"
+              value={totalQty}
+              unit="ชิ้น"
+              color="amber"
+            />
+            <KpiCard
+              icon={PackageIcon}
+              label="สินค้าที่เบิก"
+              value={uniqueEq}
+              unit="รายการ"
+              color="emerald"
+            />
+            {isAdmin && (
+              <KpiCard
+                icon={Users}
+                label="ผู้เบิก"
+                value={uniqueUsers}
+                unit="คน"
+                color="indigo"
+              />
+            )}
+          </div>
+        )}
+
+        {/* Result line */}
+        {filtered.length > 0 && (
+          <div className="text-sm text-muted-foreground">
+            พบ <strong className="text-foreground tabular-nums">{filtered.length}</strong> รายการ
+            {scope === "mine" ? " ของคุณ" : " ทุกคน"}
+          </div>
+        )}
+
+        {/* List */}
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon="📦"
+            title="ยังไม่มีประวัติการเบิก"
+            text={'ลองเปลี่ยนช่วงเวลา หรือเริ่มเบิกของจาก tab "เบิกใหม่"'}
+          />
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((w) => (
+              <WithdrawalRow
+                key={w.id}
+                w={w}
+                isAdmin={isAdmin}
+                onDelete={() => setDelTarget(w)}
+                disabled={pending}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={!!delTarget}
+        onOpenChange={(o) => !o && setDelTarget(null)}
+        title={`ลบรายการเบิก ${delTarget?.equipment_name ?? ""}?`}
+        description={
+          delTarget ? (
+            <>
+              ระบบจะ <strong>คืนสต็อก {delTarget.qty} {delTarget.unit ?? "ชิ้น"}</strong> กลับเข้าคลังอัตโนมัติ
+              <br />
+              บันทึกการเบิกครั้งนี้จะถูกลบถาวร — ไม่สามารถเรียกคืน
+            </>
+          ) : null
+        }
+        confirmText="ลบ + คืนสต็อก"
+        variant="danger"
+        loading={pending}
+        onConfirm={handleDelete}
+      />
+    </>
+  );
+}
+
+// ==================================================================
+// Withdrawal Row — rich layout
+// ==================================================================
+function WithdrawalRow({
+  w, isAdmin, onDelete, disabled,
+}: {
+  w: Withdrawal;
+  isAdmin: boolean;
+  onDelete: () => void;
+  disabled: boolean;
+}) {
+  const days = ageDays(w.withdrawn_at);
+  return (
+    <div className="group bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 transition-all">
+      <div className="flex items-start gap-3">
+        {/* Icon */}
+        <div className="flex-shrink-0 size-10 rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200/60 flex items-center justify-center">
+          <TrendingDown className="size-5" strokeWidth={2.25} />
         </div>
-      )}
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {/* Row 1: name + qty */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="font-bold text-sm text-foreground">
+              {w.equipment_name}
+            </div>
+            <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 ring-1 ring-amber-200 rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums">
+              <TrendingDown className="size-3" />
+              {w.qty.toLocaleString("th-TH")} {w.unit ?? ""}
+            </div>
+          </div>
+
+          {/* Row 2: purpose */}
+          {w.purpose && (
+            <div className="text-sm text-foreground mt-1.5 inline-flex items-start gap-1.5 leading-relaxed">
+              <FileText className="size-3.5 flex-shrink-0 mt-0.5 text-muted-foreground" />
+              <span className="whitespace-pre-line break-words">{w.purpose}</span>
+            </div>
+          )}
+
+          {/* Row 3: meta */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1" title={fmtDateLong(w.withdrawn_at)}>
+              <Calendar className="size-3" />
+              {fmtDate(w.withdrawn_at)}
+              <span className="text-muted-foreground/60">({ageLabel(days)})</span>
+            </span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="inline-flex items-center gap-1 truncate max-w-[180px]">
+              <User className="size-3" />
+              <span className="truncate">{w.withdrawn_by_name ?? "—"}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Delete (admin) */}
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            className="size-9 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 inline-flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="ลบและคืนสต็อก"
+            title="ลบและคืนสต็อก"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+// ==================================================================
+// KPI card — consistent with reports/pending-receipt
+// ==================================================================
+const KPI_TONE: Record<string, { gradient: string; ring: string }> = {
+  primary: { gradient: "bg-gradient-to-br from-blue-500 to-blue-700", ring: "ring-blue-200" },
+  amber:   { gradient: "bg-gradient-to-br from-amber-400 to-orange-500", ring: "ring-amber-200" },
+  emerald: { gradient: "bg-gradient-to-br from-emerald-500 to-emerald-700", ring: "ring-emerald-200" },
+  indigo:  { gradient: "bg-gradient-to-br from-indigo-500 to-violet-600", ring: "ring-indigo-200" },
+};
+
+function KpiCard({
+  icon: Icon, label, value, unit, color,
+}: {
+  icon: typeof PackageIcon;
+  label: string;
+  value: number;
+  unit: string;
+  color: keyof typeof KPI_TONE;
+}) {
+  const tone = KPI_TONE[color];
   return (
-    <Card>
-      <CardContent className="p-3 text-center">
-        <div className="text-xl font-bold text-slate-900 tabular-nums">{value}</div>
-        <div className="text-xs text-slate-500">{label}</div>
-      </CardContent>
-    </Card>
+    <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all">
+      <div className="flex items-center justify-center gap-3">
+        <div className={`flex-shrink-0 size-11 rounded-xl flex items-center justify-center ring-2 shadow-md text-white ${tone.gradient} ${tone.ring}`}>
+          <Icon className="size-5" strokeWidth={2.5} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold text-foreground">
+            {label}
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-extrabold tabular-nums text-foreground leading-none">
+              {value.toLocaleString("th-TH")}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">{unit}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
+// ==================================================================
+// Helpers
+// ==================================================================
 function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
   try {
@@ -191,4 +377,28 @@ function fmtDate(d: string | null | undefined): string {
   } catch {
     return String(d).slice(0, 10);
   }
+}
+
+function fmtDateLong(d: string | null | undefined): string {
+  if (!d) return "—";
+  try {
+    return new Date(d).toLocaleDateString("th-TH", {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+    });
+  } catch {
+    return String(d);
+  }
+}
+
+function ageDays(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000));
+}
+
+function ageLabel(days: number): string {
+  if (days === 0) return "วันนี้";
+  if (days === 1) return "เมื่อวาน";
+  if (days < 7) return `${days} วันก่อน`;
+  if (days < 30) return `${Math.floor(days / 7)} สัปดาห์ก่อน`;
+  return `${Math.floor(days / 30)} เดือนก่อน`;
 }
