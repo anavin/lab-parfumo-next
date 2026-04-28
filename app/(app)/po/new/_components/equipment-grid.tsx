@@ -20,7 +20,7 @@ export function EquipmentGrid({
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {items.map((eq) => (
           <EquipmentCard
             key={eq.id}
@@ -109,7 +109,7 @@ function EquipmentCard({
               src={primary}
               alt={eq.name}
               fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-cover transition-transform duration-300 group-hover/img:scale-110"
               unoptimized
             />
