@@ -5,9 +5,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PoRow } from "@/components/po/po-row";
 import { requireUser } from "@/lib/auth/require-user";
 import { getPosPendingReceipt, bucketByUrgency } from "@/lib/db/po";
+import { PendingRow } from "./_components/pending-row";
 
 export const metadata: Metadata = {
   title: "รอรับของ — Lab Parfumo PO",
@@ -51,6 +51,7 @@ export default async function PendingReceiptPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
           label="เลยกำหนด"
+          subtitle="เลยวันคาดได้รับ"
           value={buckets.overdue.length}
           unit="ใบ"
           icon={AlertTriangle}
@@ -58,13 +59,15 @@ export default async function PendingReceiptPage() {
         />
         <KpiCard
           label="วันนี้"
+          subtitle="ครบกำหนดวันนี้"
           value={buckets.today.length}
           unit="ใบ"
           icon={Calendar}
           color={buckets.today.length > 0 ? "amber" : "slate"}
         />
         <KpiCard
-          label="ใน 3 วัน"
+          label="อีก 1-3 วัน"
+          subtitle="ใกล้ครบกำหนด"
           value={buckets.upcoming.length}
           unit="ใบ"
           icon={Clock}
@@ -72,6 +75,7 @@ export default async function PendingReceiptPage() {
         />
         <KpiCard
           label="ทั้งหมด"
+          subtitle="กำลังขนส่ง + รอรับ"
           value={pos.length}
           unit="ใบ"
           icon={PackageOpen}
@@ -94,7 +98,7 @@ export default async function PendingReceiptPage() {
           accent="danger"
         >
           {buckets.overdue.map((po) => (
-            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
+            <PendingRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -106,7 +110,7 @@ export default async function PendingReceiptPage() {
           accent="warning"
         >
           {buckets.today.map((po) => (
-            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
+            <PendingRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -118,7 +122,7 @@ export default async function PendingReceiptPage() {
           accent="warning"
         >
           {buckets.upcoming.map((po) => (
-            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
+            <PendingRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -129,7 +133,7 @@ export default async function PendingReceiptPage() {
           count={buckets.later.length}
         >
           {buckets.later.map((po) => (
-            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
+            <PendingRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -140,7 +144,7 @@ export default async function PendingReceiptPage() {
           count={buckets.noDate.length}
         >
           {buckets.noDate.map((po) => (
-            <PoRow key={po.id} po={po} isAdmin={isAdmin} />
+            <PendingRow key={po.id} po={po} isAdmin={isAdmin} />
           ))}
         </Section>
       )}
@@ -177,9 +181,10 @@ const KPI_TONE: Record<string, { bg: string; ring: string; icon: string }> = {
 };
 
 function KpiCard({
-  label, value, unit, icon: Icon, color,
+  label, subtitle, value, unit, icon: Icon, color,
 }: {
   label: string;
+  subtitle?: string;
   value: number;
   unit: string;
   icon: typeof AlertTriangle;
@@ -188,13 +193,13 @@ function KpiCard({
   const tone = KPI_TONE[color];
   return (
     <div className="bg-card border border-border rounded-2xl p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-200">
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center gap-3">
         <div
           className={`flex-shrink-0 size-10 rounded-xl flex items-center justify-center ring-1 ${tone.bg} ${tone.icon} ${tone.ring}`}
         >
           <Icon className="size-5" strokeWidth={2.25} />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold text-muted-foreground">
             {label}
           </div>
@@ -204,6 +209,11 @@ function KpiCard({
             </span>
             <span className="text-xs font-medium text-muted-foreground">{unit}</span>
           </div>
+          {subtitle && (
+            <div className="text-[10px] text-muted-foreground/80 mt-0.5 truncate">
+              {subtitle}
+            </div>
+          )}
         </div>
       </div>
     </div>
