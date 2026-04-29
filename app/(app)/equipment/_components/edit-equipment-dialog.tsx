@@ -7,11 +7,16 @@ import { X, Trash2, Upload, ImageIcon, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import {
+  ImageCompressProgress, ImageCompressSummary,
+  type CompressionProgress,
+} from "@/components/ui/image-compress-progress";
 import type { Equipment } from "@/lib/types/db";
 import {
   updateEquipmentAction, addEquipmentImageAction, removeEquipmentImageAction,
 } from "@/lib/actions/equipment";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
+import { compressImages } from "@/lib/utils/image";
 
 export function EditEquipmentDialog({
   eq, categories, onClose,
@@ -44,6 +49,37 @@ export function EditEquipmentDialog({
   const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [confirmRemoveImg, setConfirmRemoveImg] = useState<string | null>(null);
+  const [progress, setProgress] = useState<CompressionProgress>({
+    active: false, current: 0, total: 0,
+  });
+  const [originalSizeTotal, setOriginalSizeTotal] = useState(0);
+  const [compressedSizeTotal, setCompressedSizeTotal] = useState(0);
+
+  async function handleFilesPicked(picked: File[]) {
+    if (!picked.length) return;
+    setError(null);
+    setProgress({ active: true, current: 0, total: picked.length });
+    setOriginalSizeTotal(0);
+    setCompressedSizeTotal(0);
+
+    const results = await compressImages(
+      picked,
+      { maxWidthOrHeight: 1920, maxSizeMB: 1, initialQuality: 0.85 },
+      (current, total, fileName) => {
+        setProgress({ active: true, current, total, fileName });
+      },
+    );
+
+    setProgress({ active: false, current: 0, total: 0 });
+    const success = results.filter((r) => r.ok && r.file);
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      setError(`บีบ ${failed.length} รูปไม่ได้`);
+    }
+    setOriginalSizeTotal(success.reduce((s, r) => s + r.originalSize, 0));
+    setCompressedSizeTotal(success.reduce((s, r) => s + r.compressedSize, 0));
+    setNewImageFiles(success.map((r) => r.file!));
+  }
 
   const willTriggerLowStock = reorderLevel > 0 && stock <= reorderLevel;
 
@@ -66,6 +102,8 @@ export function EditEquipmentDialog({
       }
       setImages((cur) => [...cur, ...upRes.urls]);
       setNewImageFiles([]);
+      setOriginalSizeTotal(0);
+      setCompressedSizeTotal(0);
       router.refresh();
     } finally {
       setUploadingImages(false);
@@ -179,18 +217,21 @@ export function EditEquipmentDialog({
               </div>
             )}
 
+            {/* Compression progress */}
+            <ImageCompressProgress progress={progress} />
+
             {/* Upload more */}
             <label
               className={`block border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
                 newImageFiles.length > 0
                   ? "bg-brand-50 border-brand-400"
                   : "bg-slate-50 border-slate-300 hover:bg-brand-50 hover:border-brand-400"
-              } ${uploadingImages ? "opacity-60 cursor-not-allowed" : ""}`}
+              } ${uploadingImages || progress.active ? "opacity-60 cursor-not-allowed" : ""}`}
             >
               <input
                 type="file" accept="image/*" multiple
-                onChange={(e) => setNewImageFiles(Array.from(e.target.files ?? []))}
-                disabled={uploadingImages}
+                onChange={(e) => handleFilesPicked(Array.from(e.target.files ?? []))}
+                disabled={uploadingImages || progress.active}
                 className="sr-only"
               />
               <div className="flex items-center gap-2 justify-center text-xs">
@@ -204,11 +245,20 @@ export function EditEquipmentDialog({
                 ) : (
                   <>
                     <Upload className="h-4 w-4 text-slate-400" />
-                    <span className="text-slate-600">คลิกเพื่อเพิ่มรูป (5 MB / ไฟล์)</span>
+                    <span className="text-slate-600">คลิกเพื่อเพิ่มรูป — จะปรับขนาดอัตโนมัติ</span>
                   </>
                 )}
               </div>
             </label>
+
+            {!progress.active && originalSizeTotal > 0 && (
+              <ImageCompressSummary
+                originalTotal={originalSizeTotal}
+                compressedTotal={compressedSizeTotal}
+                count={newImageFiles.length}
+                className="mt-2"
+              />
+            )}
             {newImageFiles.length > 0 && (
               <Button
                 size="sm" onClick={handleUploadImages}

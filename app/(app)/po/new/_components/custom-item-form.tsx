@@ -6,7 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
+import {
+  ImageCompressProgress, ImageCompressSummary,
+  type CompressionProgress,
+} from "@/components/ui/image-compress-progress";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
+import { compressImages } from "@/lib/utils/image";
 
 export function CustomItemForm({
   onAdd,
@@ -24,6 +29,41 @@ export function CustomItemForm({
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Compression state
+  const [progress, setProgress] = useState<CompressionProgress>({
+    active: false, current: 0, total: 0,
+  });
+  const [originalSizeTotal, setOriginalSizeTotal] = useState(0);
+  const [compressedSizeTotal, setCompressedSizeTotal] = useState(0);
+
+  /** บีบรูปทันทีเมื่อ user เลือก — ก่อนกดปุ่มเพิ่ม */
+  async function handleFilesSelected(picked: File[]) {
+    if (!picked.length) return;
+    setError(null);
+    setProgress({ active: true, current: 0, total: picked.length });
+    setOriginalSizeTotal(0);
+    setCompressedSizeTotal(0);
+
+    const results = await compressImages(
+      picked,
+      { maxWidthOrHeight: 1920, maxSizeMB: 1, initialQuality: 0.85 },
+      (current, total, fileName) => {
+        setProgress({ active: true, current, total, fileName });
+      },
+    );
+
+    setProgress({ active: false, current: 0, total: 0 });
+
+    const success = results.filter((r) => r.ok && r.file);
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      setError(`บีบ ${failed.length} รูปไม่ได้ — รูปอาจเสียหายหรือไม่รองรับ`);
+    }
+
+    setOriginalSizeTotal(success.reduce((s, r) => s + r.originalSize, 0));
+    setCompressedSizeTotal(success.reduce((s, r) => s + r.compressedSize, 0));
+    setFiles(success.map((r) => r.file!));
+  }
 
   function handleAdd() {
     setError(null);
@@ -38,7 +78,7 @@ export function CustomItemForm({
     }
 
     startTransition(async () => {
-      // Upload รูปก่อนถ้ามี
+      // Upload รูปก่อนถ้ามี (รูปบีบเสร็จแล้ว)
       let imageUrls: string[] = [];
       if (files.length > 0) {
         const fd = new FormData();
@@ -58,9 +98,13 @@ export function CustomItemForm({
       setUnit("ชิ้น");
       setNotes("");
       setFiles([]);
+      setOriginalSizeTotal(0);
+      setCompressedSizeTotal(0);
       setError(null);
     });
   }
+
+  const compressing = progress.active;
 
   return (
     <Card>
@@ -131,23 +175,27 @@ export function CustomItemForm({
           </div>
 
           {/* Image upload */}
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-slate-700">
               📷 รูปประกอบ (แนะนำ — ให้ admin เห็นว่าจะสั่งอะไร)
             </label>
+
+            {/* Compression in progress */}
+            <ImageCompressProgress progress={progress} />
+
             <label
               className={`block border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
                 files.length > 0
                   ? "bg-brand-50 border-brand-300"
                   : "bg-slate-50 border-slate-300 hover:bg-brand-50 hover:border-brand-300"
-              } ${pending ? "opacity-60 cursor-not-allowed" : ""}`}
+              } ${pending || compressing ? "opacity-60 cursor-not-allowed" : ""}`}
             >
               <input
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-                disabled={pending}
+                onChange={(e) => handleFilesSelected(Array.from(e.target.files ?? []))}
+                disabled={pending || compressing}
                 className="sr-only"
               />
               <div className="flex items-center gap-2 justify-center text-xs">
@@ -162,17 +210,26 @@ export function CustomItemForm({
                   <>
                     <Upload className="h-4 w-4 text-slate-400" />
                     <span className="text-slate-600">
-                      คลิกเพื่อเลือกรูป (5 MB / ไฟล์)
+                      คลิกเพื่อเลือกรูป — จะปรับขนาดอัตโนมัติ (รองรับ HEIC, PNG, JPG)
                     </span>
                   </>
                 )}
               </div>
             </label>
+
+            {/* Summary หลังบีบเสร็จ */}
+            {!compressing && originalSizeTotal > 0 && (
+              <ImageCompressSummary
+                originalTotal={originalSizeTotal}
+                compressedTotal={compressedSizeTotal}
+                count={files.length}
+              />
+            )}
           </div>
 
           {error && <Alert tone="danger">❌ {error}</Alert>}
 
-          <Button onClick={handleAdd} size="sm" loading={pending}>
+          <Button onClick={handleAdd} size="sm" loading={pending} disabled={compressing}>
             <Plus className="h-4 w-4" /> เพิ่มเข้าใบ PO
           </Button>
         </CardContent>

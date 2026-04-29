@@ -8,8 +8,13 @@ import { useState, useTransition } from "react";
 import { PackageOpen, X, Upload, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
+import {
+  ImageCompressProgress, ImageCompressSummary,
+  type CompressionProgress,
+} from "@/components/ui/image-compress-progress";
 import { addDeliveryAction } from "@/lib/actions/po";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
+import { compressImages } from "@/lib/utils/image";
 import type { PoItem } from "@/lib/types/db";
 
 const CONDITIONS = [
@@ -63,11 +68,39 @@ export function ReceiveForm({
   const [issueDescription, setIssueDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState<CompressionProgress>({
+    active: false, current: 0, total: 0,
+  });
+  const [originalSizeTotal, setOriginalSizeTotal] = useState(0);
+  const [compressedSizeTotal, setCompressedSizeTotal] = useState(0);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const list = e.target.files;
-    if (!list) return;
-    setFiles(Array.from(list));
+    if (!list || list.length === 0) return;
+    const picked = Array.from(list);
+    setError(null);
+    setProgress({ active: true, current: 0, total: picked.length });
+    setOriginalSizeTotal(0);
+    setCompressedSizeTotal(0);
+
+    const results = await compressImages(
+      picked,
+      { maxWidthOrHeight: 1920, maxSizeMB: 1, initialQuality: 0.85 },
+      (current, total, fileName) => {
+        setProgress({ active: true, current, total, fileName });
+      },
+    );
+
+    setProgress({ active: false, current: 0, total: 0 });
+    const success = results.filter((r) => r.ok && r.file);
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      setError(`บีบ ${failed.length} รูปไม่ได้ — รูปอาจเสียหาย`);
+    }
+
+    setOriginalSizeTotal(success.reduce((s, r) => s + r.originalSize, 0));
+    setCompressedSizeTotal(success.reduce((s, r) => s + r.compressedSize, 0));
+    setFiles(success.map((r) => r.file!));
   }
 
   function handleSubmit() {
@@ -265,23 +298,26 @@ export function ReceiveForm({
       </div>
 
       {/* Image upload */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">
           📸 รูปประกอบ (ใบส่งของ / รูปสินค้า / รูปความเสียหาย)
         </label>
+
+        <ImageCompressProgress progress={progress} />
+
         <label
           className={`block border-2 border-dashed rounded-xl p-4 cursor-pointer transition-colors ${
             files.length > 0
               ? "bg-brand-50 border-brand-300"
               : "bg-slate-50 border-slate-300 hover:bg-brand-50 hover:border-brand-300"
-          } ${pending ? "opacity-60 cursor-not-allowed" : ""}`}
+          } ${pending || progress.active ? "opacity-60 cursor-not-allowed" : ""}`}
         >
           <input
             type="file"
             accept="image/*"
             multiple
             onChange={handleFileChange}
-            disabled={pending}
+            disabled={pending || progress.active}
             className="sr-only"
           />
           <div className="flex items-center gap-3 justify-center text-sm">
@@ -299,15 +335,20 @@ export function ReceiveForm({
               <>
                 <Upload className="h-5 w-5 text-slate-400" />
                 <span className="text-slate-600">
-                  คลิกเพื่อเลือกรูป (เลือกหลายไฟล์ได้)
+                  คลิกเพื่อเลือกรูป — จะปรับขนาดอัตโนมัติ (รองรับ HEIC, PNG, JPG)
                 </span>
               </>
             )}
           </div>
-          <div className="text-xs text-slate-400 text-center mt-1">
-            รูปสูงสุด 5 MB ต่อไฟล์
-          </div>
         </label>
+
+        {!progress.active && originalSizeTotal > 0 && (
+          <ImageCompressSummary
+            originalTotal={originalSizeTotal}
+            compressedTotal={compressedSizeTotal}
+            count={files.length}
+          />
+        )}
       </div>
 
       {error && <Alert tone="danger">❌ {error}</Alert>}
