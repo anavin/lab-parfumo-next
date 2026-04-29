@@ -41,18 +41,23 @@ async function logActivity(
   } as never);
 }
 
+/**
+ * แจ้งเตือน user ที่มีสิทธิ์ระดับสูง (admin + supervisor)
+ * ใช้ตอน: PO ถูกยกเลิก / มีปัญหา / รับของแล้ว / สร้าง PO ใหม่
+ * (เดิมแจ้งเฉพาะ admin → ปรับให้ supervisor เห็นด้วย เพราะมีสิทธิ์อนุมัติ/ขนส่ง)
+ */
 async function notifyAdmins(
   poId: string, title: string, message: string,
 ) {
   const sb = getSupabaseAdmin();
-  const { data: admins } = await sb
+  const { data: privileged } = await sb
     .from("users")
     .select("id")
-    .eq("role", "admin")
+    .in("role", ["admin", "supervisor"])
     .eq("is_active", true);
-  if (!admins?.length) return;
+  if (!privileged?.length) return;
   await sb.from("notifications").insert(
-    admins.map((a: { id: string }) => ({
+    privileged.map((a: { id: string }) => ({
       user_id: a.id, po_id: poId, title, message,
     })),
   );

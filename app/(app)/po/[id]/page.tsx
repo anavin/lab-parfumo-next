@@ -325,7 +325,7 @@ export default async function PoViewPage({
                 <div key={c.id} className="border border-slate-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-semibold text-slate-900">
-                      {c.user_role === "admin" ? "🔐" : "👤"} {c.user_name}
+                      {c.user_role === "admin" ? "👑" : c.user_role === "supervisor" ? "🛡️" : "👤"} {c.user_name}
                     </span>
                     <span className="text-xs text-slate-400">{fmtDateTime(c.created_at)}</span>
                   </div>
@@ -357,7 +357,7 @@ export default async function PoViewPage({
                   </span>
                   <span>—</span>
                   <span className="font-semibold text-slate-700">
-                    {a.user_role === "admin" ? "🔐" : "👤"} {a.user_name ?? "—"}:
+                    {a.user_role === "admin" ? "👑" : a.user_role === "supervisor" ? "🛡️" : "👤"} {a.user_name ?? "—"}:
                   </span>
                   <span>{a.description ?? "—"}</span>
                 </li>

@@ -8,6 +8,7 @@ export async function searchAction(query: string): Promise<SearchResult> {
   if (!user) return { pos: [], equipment: [], suppliers: [] };
   return globalSearch(query, {
     userId: user.id,
-    isAdmin: user.role === "admin",
+    // Supervisor มีสิทธิ์เห็นเหมือน admin (PO ทั้งระบบ + suppliers)
+    isAdmin: user.role === "admin" || user.role === "supervisor",
   });
 }

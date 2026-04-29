@@ -99,11 +99,12 @@ export async function GET(req: Request) {
     topItems,
   };
 
-  // Get all admins with email
+  // Get all privileged users (admin + supervisor) with email
+  // Supervisor ก็มีสิทธิ์อนุมัติ/จัดการ — ควรได้ digest เหมือน admin
   const { data: admins } = await sb
     .from("users")
     .select("full_name, email")
-    .eq("role", "admin")
+    .in("role", ["admin", "supervisor"])
     .eq("is_active", true)
     .not("email", "is", null);
 
