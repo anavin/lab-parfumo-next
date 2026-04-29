@@ -11,7 +11,7 @@
 "use client";
 
 import Avatar from "boring-avatars";
-import { Crown } from "lucide-react";
+import { Crown, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Brand-aligned color palette — uses Lab Parfumo blues + warm accents
@@ -29,7 +29,7 @@ export interface UserAvatarProps {
   name: string;
   /** Stable seed for the avatar generator (e.g. username/id). Falls back to name. */
   seed?: string;
-  role?: "admin" | "requester" | string;
+  role?: "admin" | "supervisor" | "requester" | string;
   size?: keyof typeof SIZE_MAP;
   className?: string;
   /** Show subtle online dot (e.g. for "current user") */
@@ -43,6 +43,8 @@ export function UserAvatar({
 }: UserAvatarProps) {
   const dim = SIZE_MAP[size];
   const isAdmin = role === "admin";
+  const isSupervisor = role === "supervisor";
+  const hasBadge = isAdmin || isSupervisor;
   const avatarSeed = seed || name || "user";
 
   return (
@@ -69,7 +71,7 @@ export function UserAvatar({
         />
       </div>
 
-      {/* Admin: gold crown badge */}
+      {/* Admin: gold Crown / Supervisor: indigo ShieldCheck */}
       {isAdmin && (
         <span
           className={cn(
@@ -88,9 +90,26 @@ export function UserAvatar({
           />
         </span>
       )}
+      {isSupervisor && (
+        <span
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 rounded-full",
+            "bg-gradient-to-br from-indigo-500 to-violet-600",
+            "ring-2 ring-background shadow-md",
+            "flex items-center justify-center",
+            dim.badge,
+          )}
+          title="Supervisor"
+        >
+          <ShieldCheck
+            className={cn("text-white", dim.icon)}
+            strokeWidth={2.5}
+          />
+        </span>
+      )}
 
-      {/* Online dot (only when online + not admin) */}
-      {online && !isAdmin && (
+      {/* Online dot (only when online + no role badge) */}
+      {online && !hasBadge && (
         <span
           className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background"
           title="กำลังใช้งาน"

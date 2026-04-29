@@ -3,7 +3,7 @@
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Edit2, Trash2, Shield, Mail, Calendar, AlertTriangle,
+  Plus, Edit2, Trash2, Shield, ShieldCheck, Mail, Calendar, AlertTriangle,
   Users as UsersIcon, UserCheck, UserX, Crown, LogIn, Search,
   CircleAlert,
 } from "lucide-react";
@@ -46,13 +46,15 @@ export function UsersClient({
   const [delTarget, setDelTarget] = useState<User | null>(null);
   const [delPending, startDelTransition] = useTransition();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "admin" | "requester" | "never">("all");
+  type Filter = "all" | "admin" | "supervisor" | "requester" | "never";
+  const [filter, setFilter] = useState<Filter>("all");
 
   const editing = editId ? users.find((u) => u.id === editId) : null;
 
   // Stats
   const totalUsers = users.length;
   const adminCount = users.filter((u) => u.role === "admin").length;
+  const supervisorCount = users.filter((u) => u.role === "supervisor").length;
   const requesterCount = users.filter((u) => u.role === "requester").length;
   const neverLoggedIn = users.filter((u) => !u.last_login_at).length;
   const inactiveCount = users.filter((u) => !u.is_active).length;
@@ -61,6 +63,7 @@ export function UsersClient({
   const filtered = useMemo(() => {
     let out = users;
     if (filter === "admin") out = out.filter((u) => u.role === "admin");
+    else if (filter === "supervisor") out = out.filter((u) => u.role === "supervisor");
     else if (filter === "requester") out = out.filter((u) => u.role === "requester");
     else if (filter === "never") out = out.filter((u) => !u.last_login_at);
     if (search) {
@@ -87,8 +90,8 @@ export function UsersClient({
   return (
     <>
       <div className="space-y-5">
-        {/* KPI cards — clickable as filters */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* KPI cards — clickable as filters (5 cards: ทั้งหมด / Admin / Supervisor / Staff / Never) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard
             icon={UsersIcon}
             label="ผู้ใช้ทั้งหมด"
@@ -106,6 +109,15 @@ export function UsersClient({
             color="amber"
             active={filter === "admin"}
             onClick={() => setFilter("admin")}
+          />
+          <KpiCard
+            icon={ShieldCheck}
+            label="Supervisor"
+            value={supervisorCount}
+            unit="คน"
+            color="blue"
+            active={filter === "supervisor"}
+            onClick={() => setFilter("supervisor")}
           />
           <KpiCard
             icon={UserCheck}
@@ -140,6 +152,7 @@ export function UsersClient({
               {([
                 { v: "all", label: `ทั้งหมด (${totalUsers})` },
                 { v: "admin", label: `Admin (${adminCount})` },
+                { v: "supervisor", label: `Supervisor (${supervisorCount})` },
                 { v: "requester", label: `Staff (${requesterCount})` },
                 { v: "never", label: `ยังไม่ login (${neverLoggedIn})` },
               ] as const).map((p) => (
@@ -245,6 +258,7 @@ export function UsersClient({
 const KPI_TONE: Record<string, { gradient: string; ring: string }> = {
   primary: { gradient: "bg-gradient-to-br from-blue-500 to-blue-700", ring: "ring-blue-200" },
   amber: { gradient: "bg-gradient-to-br from-amber-400 to-orange-500", ring: "ring-amber-200" },
+  blue: { gradient: "bg-gradient-to-br from-indigo-500 to-violet-600", ring: "ring-indigo-200" },
   emerald: { gradient: "bg-gradient-to-br from-emerald-500 to-emerald-700", ring: "ring-emerald-200" },
   red: { gradient: "bg-gradient-to-br from-red-500 to-rose-600", ring: "ring-red-200" },
   slate: { gradient: "bg-gradient-to-br from-slate-300 to-slate-400", ring: "ring-slate-200" },
@@ -361,7 +375,7 @@ function UserCard({
             {u.role === "admin" ? (
               <Crown className="size-3.5 text-amber-500" />
             ) : u.role === "supervisor" ? (
-              <Shield className="size-3.5 text-blue-500" />
+              <ShieldCheck className="size-3.5 text-indigo-500" />
             ) : (
               <Shield className="size-3.5 text-muted-foreground" />
             )}
