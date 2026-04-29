@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { X, Trash2, Upload, ImageIcon, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,8 +141,14 @@ export function EditEquipmentDialog({
                     key={url}
                     className="aspect-square bg-slate-100 rounded-lg overflow-hidden relative group border border-slate-200"
                   >
-                    <img src={url} alt="" loading="lazy"
-                         className="w-full h-full object-cover" />
+                    <Image
+                      src={url}
+                      alt={`รูปที่ ${i + 1}`}
+                      fill
+                      sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 120px"
+                      className="object-cover"
+                      unoptimized
+                    />
                     {i === 0 && (
                       <div className="absolute top-1 left-1 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5">
                         <Star className="h-2.5 w-2.5" /> หลัก

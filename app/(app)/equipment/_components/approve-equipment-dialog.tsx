@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,9 +81,15 @@ export function ApproveEquipmentDialog({
               <div className="text-xs font-medium text-slate-700 mb-1.5">📷 รูปที่ user upload</div>
               <div className="grid grid-cols-4 gap-2">
                 {images.slice(0, 4).map((url, i) => (
-                  <div key={i} className="aspect-square bg-slate-100 rounded-lg overflow-hidden">
-                    <img src={url} alt="" loading="lazy"
-                         className="w-full h-full object-cover" />
+                  <div key={i} className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden">
+                    <Image
+                      src={url}
+                      alt={`รูปที่ ${i + 1}`}
+                      fill
+                      sizes="(max-width: 640px) 25vw, 120px"
+                      className="object-cover"
+                      unoptimized
+                    />
                   </div>
                 ))}
               </div>

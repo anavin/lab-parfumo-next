@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Bell, Check, X, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -165,10 +166,16 @@ export function PendingApproval({
                     className="h-4 w-4 rounded border-slate-300 text-brand-600 flex-shrink-0"
                   />
                   {/* Thumb */}
-                  <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="relative w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                     {images[0] ? (
-                      <img src={images[0]} alt={eq.name} loading="lazy"
-                           className="w-full h-full object-cover" />
+                      <Image
+                        src={images[0]}
+                        alt={eq.name}
+                        fill
+                        sizes="48px"
+                        className="object-cover"
+                        unoptimized
+                      />
                     ) : (
                       <span className="text-xl">✏️</span>
                     )}
