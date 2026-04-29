@@ -52,7 +52,7 @@ export async function GET(
   }
 
   const company = await getCompanyInfo();
-  const showPrices = user.role === "admin";
+  const showPrices = (user.role === "admin" || user.role === "supervisor");
 
   try {
     const buffer = await renderToBuffer(

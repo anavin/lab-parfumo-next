@@ -17,19 +17,25 @@ interface ActionResult {
   emailError?: string;
 }
 
-const ROLE_LABEL = { admin: "Admin", requester: "Staff" } as const;
+const ROLE_LABEL = {
+  admin: "Admin",
+  supervisor: "Supervisor",
+  requester: "Staff",
+} as const;
+
+type ManageRole = "admin" | "supervisor" | "requester";
 
 export async function createUserAction(input: {
   username: string;
   password: string;
   fullName: string;
-  role: "admin" | "requester";
+  role: ManageRole;
   email?: string;
   sendEmail?: boolean;
 }): Promise<ActionResult> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
 
   // Validate input schema first
@@ -38,6 +44,14 @@ export async function createUserAction(input: {
     return { ok: false, error: formatZodError(parsed.error) };
   }
   const username = parsed.data.username;
+
+  // 🔒 Permission gate — Supervisor ห้ามสร้าง user role = admin
+  if (me.role === "supervisor" && input.role === "admin") {
+    return {
+      ok: false,
+      error: "Supervisor ไม่มีสิทธิ์สร้างผู้ใช้ระดับ Admin — เฉพาะ Admin เท่านั้น",
+    };
+  }
 
   // Stricter password rules (length + complexity vs username)
   const v = validatePassword(input.password, username);
@@ -104,14 +118,14 @@ export async function updateUserAction(
   userId: string, input: {
     fullName?: string;
     email?: string;
-    role?: "admin" | "requester";
+    role?: ManageRole;
     isActive?: boolean;
     newPassword?: string;
   },
 ): Promise<ActionResult> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
 
   const parsed = updateUserSchema.safeParse(input);
@@ -120,6 +134,32 @@ export async function updateUserAction(
   }
 
   const sb = getSupabaseAdmin();
+
+  // 🔒 Permission gate — Supervisor:
+  //  - ห้ามแก้ user ที่ role = admin (รวม role/password/active)
+  //  - ห้ามเลื่อน role ใครเป็น admin
+  if (me.role === "supervisor") {
+    const { data: target } = await sb
+      .from("users")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!target) return { ok: false, error: "ไม่พบผู้ใช้" };
+
+    if (target.role === "admin") {
+      return {
+        ok: false,
+        error: "Supervisor ไม่มีสิทธิ์แก้ไขผู้ใช้ระดับ Admin",
+      };
+    }
+    if (input.role === "admin") {
+      return {
+        ok: false,
+        error: "Supervisor ไม่มีสิทธิ์เลื่อน role เป็น Admin",
+      };
+    }
+  }
+
   const update: Record<string, unknown> = {};
   if (input.fullName !== undefined) update.full_name = input.fullName.trim();
   if (input.email !== undefined) update.email = input.email.trim();
@@ -149,13 +189,30 @@ export async function updateUserAction(
 
 export async function deleteUserAction(userId: string): Promise<ActionResult> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (userId === me.id) {
     return { ok: false, error: "ลบตัวเองไม่ได้" };
   }
   const sb = getSupabaseAdmin();
+
+  // 🔒 Permission gate — Supervisor ห้ามลบ user ที่ role = admin
+  if (me.role === "supervisor") {
+    const { data: target } = await sb
+      .from("users")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!target) return { ok: false, error: "ไม่พบผู้ใช้" };
+    if (target.role === "admin") {
+      return {
+        ok: false,
+        error: "Supervisor ไม่มีสิทธิ์ลบผู้ใช้ระดับ Admin",
+      };
+    }
+  }
+
   // soft delete + invalidate sessions
   await sb.from("user_sessions").delete().eq("user_id", userId);
   const { error } = await sb

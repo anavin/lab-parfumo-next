@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PendingReceiptPage() {
   const user = await requireUser();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "supervisor";
 
   const pos = await getPosPendingReceipt();
 

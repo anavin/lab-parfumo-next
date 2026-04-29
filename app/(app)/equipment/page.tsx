@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/auth/require-user";
+import { requirePrivileged } from "@/lib/auth/require-user";
 import {
   getEquipmentList, getCategories, getPendingEquipment,
 } from "@/lib/db/equipment";
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function EquipmentPage() {
-  await requireAdmin();
+  await requirePrivileged();
 
   const [equipment, categories, pending] = await Promise.all([
     getEquipmentList({ activeOnly: false }),

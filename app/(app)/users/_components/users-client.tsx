@@ -23,14 +23,23 @@ import {
   createUserAction, updateUserAction, deleteUserAction,
 } from "@/lib/actions/users";
 
-const ROLE_LABEL = { admin: "Admin", requester: "Staff" } as const;
+const ROLE_LABEL = {
+  admin: "Admin",
+  supervisor: "Supervisor",
+  requester: "Staff",
+} as const;
+
+type ManageRole = "admin" | "supervisor" | "requester";
 
 export function UsersClient({
-  users, myId,
+  users, myId, myRole,
 }: {
   users: User[];
   myId: string;
+  myRole: "admin" | "supervisor" | "requester";
 }) {
+  // Supervisor มีสิทธิ์น้อยกว่า admin — ห้ามจัดการ user ที่เป็น admin
+  const isAdmin = myRole === "admin";
   const router = useRouter();
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -184,20 +193,31 @@ export function UsersClient({
           </Card>
         ) : (
           <div className="space-y-2">
-            {filtered.map((u) => (
-              <UserCard
-                key={u.id}
-                user={u}
-                isMe={u.id === myId}
-                onEdit={() => setEditId(u.id)}
-                onDel={() => setDelTarget(u)}
-              />
-            ))}
+            {filtered.map((u) => {
+              // Supervisor ห้ามจัดการ user ที่ role = admin
+              const canManage = isAdmin || u.role !== "admin";
+              return (
+                <UserCard
+                  key={u.id}
+                  user={u}
+                  isMe={u.id === myId}
+                  canManage={canManage}
+                  onEdit={() => setEditId(u.id)}
+                  onDel={() => setDelTarget(u)}
+                />
+              );
+            })}
           </div>
         )}
 
-        {showAdd && <AddUserDialog onClose={() => setShowAdd(false)} />}
-        {editing && <EditUserDialog user={editing} onClose={() => setEditId(null)} />}
+        {showAdd && <AddUserDialog isAdmin={isAdmin} onClose={() => setShowAdd(false)} />}
+        {editing && (
+          <EditUserDialog
+            user={editing}
+            isAdmin={isAdmin}
+            onClose={() => setEditId(null)}
+          />
+        )}
       </div>
 
       <ConfirmDialog
@@ -286,10 +306,12 @@ function KpiCard({
 // User Card
 // ==================================================================
 function UserCard({
-  user: u, isMe, onEdit, onDel,
+  user: u, isMe, canManage, onEdit, onDel,
 }: {
   user: User;
   isMe: boolean;
+  /** ผู้ใช้ปัจจุบันมีสิทธิ์แก้/ลบ user นี้หรือไม่ (false ถ้า supervisor + target.role=admin) */
+  canManage: boolean;
   onEdit: () => void;
   onDel: () => void;
 }) {
@@ -338,10 +360,12 @@ function UserCard({
           <div className="text-sm font-medium text-foreground inline-flex items-center gap-1.5">
             {u.role === "admin" ? (
               <Crown className="size-3.5 text-amber-500" />
+            ) : u.role === "supervisor" ? (
+              <Shield className="size-3.5 text-blue-500" />
             ) : (
               <Shield className="size-3.5 text-muted-foreground" />
             )}
-            {ROLE_LABEL[u.role]}
+            {ROLE_LABEL[u.role as keyof typeof ROLE_LABEL] ?? u.role}
           </div>
           {u.email && (
             <div className="text-xs text-muted-foreground truncate inline-flex items-center gap-1 mt-1">
@@ -393,18 +417,29 @@ function UserCard({
 
         {/* Actions */}
         <div className="col-span-12 sm:col-span-2 flex justify-end gap-1.5">
-          <Button size="sm" variant="secondary" onClick={onEdit}>
-            <Edit2 className="size-3.5" /> แก้ไข
-          </Button>
-          {!isMe && (
-            <Button
-              size="sm" variant="secondary" onClick={onDel}
-              className="!text-red-600 hover:!bg-red-50"
-              title="ลบผู้ใช้"
-              aria-label="ลบผู้ใช้"
+          {canManage ? (
+            <>
+              <Button size="sm" variant="secondary" onClick={onEdit}>
+                <Edit2 className="size-3.5" /> แก้ไข
+              </Button>
+              {!isMe && (
+                <Button
+                  size="sm" variant="secondary" onClick={onDel}
+                  className="!text-red-600 hover:!bg-red-50"
+                  title="ลบผู้ใช้"
+                  aria-label="ลบผู้ใช้"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              )}
+            </>
+          ) : (
+            <span
+              className="text-[10px] text-muted-foreground italic"
+              title="Supervisor ไม่มีสิทธิ์จัดการ Admin"
             >
-              <Trash2 className="size-3.5" />
-            </Button>
+              🔒 admin only
+            </span>
           )}
         </div>
       </div>
@@ -415,14 +450,20 @@ function UserCard({
 // ==================================================================
 // Add User Dialog
 // ==================================================================
-function AddUserDialog({ onClose }: { onClose: () => void }) {
+function AddUserDialog({
+  isAdmin, onClose,
+}: {
+  /** ผู้ใช้ปัจจุบันเป็น admin (ถ้าไม่ใช่ — ซ่อนตัวเลือก "Admin") */
+  isAdmin: boolean;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<"admin" | "requester">("requester");
+  const [role, setRole] = useState<ManageRole>("requester");
   const [email, setEmail] = useState("");
   const [sendEmailFlag, setSendEmailFlag] = useState(true);
 
@@ -476,7 +517,7 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-xs font-bold text-foreground mb-1">Role</label>
-              <div className="grid grid-cols-2 gap-1 bg-muted rounded-lg p-1">
+              <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-2"} gap-1 bg-muted rounded-lg p-1`}>
                 <button
                   type="button"
                   onClick={() => setRole("requester")}
@@ -490,15 +531,28 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRole("admin")}
+                  onClick={() => setRole("supervisor")}
                   className={`h-9 rounded-md text-xs font-semibold transition-all ${
-                    role === "admin"
+                    role === "supervisor"
                       ? "bg-card text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  Admin
+                  Supervisor
                 </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setRole("admin")}
+                    className={`h-9 rounded-md text-xs font-semibold transition-all ${
+                      role === "admin"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Admin
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -558,9 +612,11 @@ function AddUserDialog({ onClose }: { onClose: () => void }) {
 // Edit User Dialog
 // ==================================================================
 function EditUserDialog({
-  user: u, onClose,
+  user: u, isAdmin, onClose,
 }: {
   user: User;
+  /** ผู้ใช้ปัจจุบันเป็น admin (ถ้าไม่ใช่ — ซ่อนตัวเลือก "Admin") */
+  isAdmin: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -568,7 +624,7 @@ function EditUserDialog({
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState(u.full_name);
   const [email, setEmail] = useState(u.email ?? "");
-  const [role, setRole] = useState<"admin" | "requester">(u.role);
+  const [role, setRole] = useState<ManageRole>(u.role as ManageRole);
   const [isActive, setIsActive] = useState(u.is_active);
   const [newPassword, setNewPassword] = useState("");
 
@@ -610,7 +666,7 @@ function EditUserDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-foreground mb-1">Role</label>
-              <div className="grid grid-cols-2 gap-1 bg-muted rounded-lg p-1">
+              <div className={`grid ${isAdmin ? "grid-cols-3" : "grid-cols-2"} gap-1 bg-muted rounded-lg p-1`}>
                 <button
                   type="button"
                   onClick={() => setRole("requester")}
@@ -624,15 +680,28 @@ function EditUserDialog({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRole("admin")}
+                  onClick={() => setRole("supervisor")}
                   className={`h-9 rounded-md text-xs font-semibold transition-all ${
-                    role === "admin"
+                    role === "supervisor"
                       ? "bg-card text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  Admin
+                  Supervisor
                 </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setRole("admin")}
+                    className={`h-9 rounded-md text-xs font-semibold transition-all ${
+                      role === "admin"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Admin
+                  </button>
+                )}
               </div>
             </div>
             <div>

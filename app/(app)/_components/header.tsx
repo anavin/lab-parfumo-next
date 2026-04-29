@@ -14,11 +14,13 @@ import { SearchTrigger } from "./search-trigger";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
+  supervisor: "Supervisor",
   requester: "Staff",
 };
 
 export function AppHeader({ user }: { user: User }) {
   const isAdmin = user.role === "admin";
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
 
   return (
     <header className="sticky top-0 z-30 w-full bg-background/80 backdrop-blur-md border-b border-border/60 supports-[backdrop-filter]:bg-background/70">
@@ -78,7 +80,7 @@ export function AppHeader({ user }: { user: User }) {
 
           {/* Nav (desktop) */}
           <nav className="hidden md:flex flex-1 items-center justify-center">
-            <NavLinks isAdmin={isAdmin} />
+            <NavLinks isAdmin={isAdmin} isPrivileged={isPrivileged} />
           </nav>
 
           {/* Right actions */}
@@ -165,7 +167,7 @@ export function AppHeader({ user }: { user: User }) {
         {/* Nav (mobile) — แถวที่สอง */}
         <nav className="md:hidden -mx-4 px-4 pb-2 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-1 whitespace-nowrap">
-            <NavLinks isAdmin={isAdmin} mobile />
+            <NavLinks isAdmin={isAdmin} isPrivileged={isPrivileged} mobile />
           </div>
         </nav>
       </div>

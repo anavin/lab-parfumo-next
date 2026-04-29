@@ -16,7 +16,7 @@ export const createUserSchema = z.object({
     .regex(/^[a-zA-Z0-9._-]+$/, "Username ใช้ได้เฉพาะ a-z, 0-9, . _ -"),
   password: z.string().min(8, "รหัสผ่านอย่างน้อย 8 ตัว").max(128),
   fullName: z.string().trim().min(1, "กรุณากรอกชื่อ").max(100),
-  role: z.enum(["admin", "requester"]),
+  role: z.enum(["admin", "supervisor", "requester"]),
   email: z.string().trim().email("อีเมลไม่ถูกต้อง").max(120).optional()
     .or(z.literal("")),
   sendEmail: z.boolean().optional(),
@@ -27,7 +27,7 @@ export const updateUserSchema = z.object({
   email: z.string().trim().max(120)
     .refine((v) => !v || z.string().email().safeParse(v).success, "อีเมลไม่ถูกต้อง")
     .optional(),
-  role: z.enum(["admin", "requester"]).optional(),
+  role: z.enum(["admin", "supervisor", "requester"]).optional(),
   isActive: z.boolean().optional(),
   newPassword: z.string().min(8).max(128).optional(),
 });

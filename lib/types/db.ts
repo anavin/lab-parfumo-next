@@ -20,8 +20,12 @@ export const PO_STATUSES = [
 ] as const;
 export type PoStatus = (typeof PO_STATUSES)[number];
 
-export const ROLES = ["admin", "requester"] as const;
+export const ROLES = ["admin", "supervisor", "requester"] as const;
 export type Role = (typeof ROLES)[number];
+
+/** Role ที่มีสิทธิ์เหมือน admin (ยกเว้น settings + manage admin users) */
+export const PRIVILEGED_ROLES = ["admin", "supervisor"] as const;
+export type PrivilegedRole = (typeof PRIVILEGED_ROLES)[number];
 
 // ==================================================================
 // Sort + filter constants (shared by client + server)

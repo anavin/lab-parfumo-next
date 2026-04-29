@@ -42,7 +42,7 @@ export default async function PoListPage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await requireUser();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "supervisor";
   const sp = await searchParams;
 
   const allPos = await getPos({ userId: user.id, role: user.role });

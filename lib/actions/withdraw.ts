@@ -117,8 +117,8 @@ export async function deleteWithdrawalAction(
   withdrawalId: string, restoreStock = true,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
 
   const sb = getSupabaseAdmin();

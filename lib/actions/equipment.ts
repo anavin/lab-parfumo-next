@@ -32,8 +32,8 @@ export async function createEquipmentAction(
   input: NewEquipmentInput,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (!input.name.trim()) return { ok: false, error: "กรุณากรอกชื่อ" };
 
@@ -70,8 +70,8 @@ export async function updateEquipmentAction(
   equipmentId: string, patch: Partial<NewEquipmentInput>,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
 
@@ -102,8 +102,8 @@ export async function deleteEquipmentAction(
   equipmentId: string,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   // Soft-delete (เหมือน Streamlit)
@@ -131,8 +131,8 @@ export async function approveEquipmentAction(
   },
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (!input.sku.trim()) return { ok: false, error: "กรุณากรอก SKU" };
   if (!input.name.trim()) return { ok: false, error: "กรุณากรอกชื่อ" };
@@ -169,8 +169,8 @@ export async function bulkApproveEquipmentAction(
   equipmentIds: string[], defaultCategory = "อุปกรณ์อื่นๆ",
 ): Promise<{ ok: boolean; success: number; failed: number; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, success: 0, failed: 0, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, success: 0, failed: 0, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (!equipmentIds.length) {
     return { ok: false, success: 0, failed: 0, error: "ไม่ได้เลือกรายการ" };
@@ -217,8 +217,8 @@ export async function addEquipmentImageAction(
   equipmentId: string, imageUrl: string,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   const { data: eq } = await sb
@@ -249,8 +249,8 @@ export async function removeEquipmentImageAction(
   equipmentId: string, imageUrl: string,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   const { data: eq } = await sb
@@ -284,8 +284,8 @@ export async function addCategoryAction(
   name: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "กรุณากรอกชื่อหมวด" };
@@ -317,8 +317,8 @@ export async function updateCategoryAction(
   oldName: string, newName: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const trimmed = newName.trim();
   if (!trimmed) return { ok: false, error: "กรุณากรอกชื่อใหม่" };
@@ -335,8 +335,8 @@ export async function deleteCategoryAction(
   name: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   // Check if equipment uses this category
@@ -357,8 +357,8 @@ export async function moveCategoryAction(
   name: string, direction: "up" | "down",
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   const { data: cats } = await sb
@@ -393,8 +393,8 @@ export async function rejectEquipmentAction(
   equipmentId: string, reason = "",
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
 
   const sb = getSupabaseAdmin();

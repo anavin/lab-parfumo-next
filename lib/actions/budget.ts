@@ -17,8 +17,8 @@ export async function upsertBudgetAction(
   input: UpsertInput,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (input.amount <= 0) return { ok: false, error: "งบประมาณต้องมากกว่า 0" };
 
@@ -59,8 +59,8 @@ export async function deleteBudgetAction(
   budgetId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
   await sb.from("budget_periods" as never).delete().eq("id", budgetId);

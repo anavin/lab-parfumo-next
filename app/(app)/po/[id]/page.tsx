@@ -43,7 +43,7 @@ export default async function PoViewPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "supervisor";
   const { id } = await params;
 
   const po = await getPoById(id);

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/auth/require-user";
+import { requirePrivileged } from "@/lib/auth/require-user";
 import { getActiveUsers } from "@/lib/db/users";
 import { UsersClient } from "./_components/users-client";
 
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
-  const me = await requireAdmin();
+  const me = await requirePrivileged();
   const users = await getActiveUsers();
 
   return (
@@ -21,7 +21,7 @@ export default async function UsersPage() {
           เพิ่ม / แก้ไข / รีเซ็ตรหัสผ่าน user ทั้งหมด
         </p>
       </div>
-      <UsersClient users={users} myId={me.id} />
+      <UsersClient users={users} myId={me.id} myRole={me.role} />
     </div>
   );
 }

@@ -12,6 +12,9 @@ interface NavItem {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
+  /** ต้องเป็น admin หรือ supervisor ถึงจะเห็น */
+  privileged?: boolean;
+  /** ต้องเป็น admin เท่านั้น (supervisor ไม่เห็น) */
   adminOnly?: boolean;
 }
 
@@ -20,20 +23,29 @@ const ITEMS: NavItem[] = [
   { href: "/po", label: "ใบ PO", icon: FileText },
   { href: "/po/pending-receipt", label: "รอรับของ", icon: PackageOpen },
   { href: "/withdraw", label: "เบิกของ", icon: Send },
-  { href: "/equipment", label: "Catalog", icon: Box, adminOnly: true },
-  { href: "/budget", label: "งบ", icon: Wallet, adminOnly: true },
-  { href: "/reports", label: "รายงาน", icon: BarChart3, adminOnly: true },
-  { href: "/users", label: "ผู้ใช้", icon: Users, adminOnly: true },
+  { href: "/equipment", label: "Catalog", icon: Box, privileged: true },
+  { href: "/budget", label: "งบ", icon: Wallet, privileged: true },
+  { href: "/reports", label: "รายงาน", icon: BarChart3, privileged: true },
+  { href: "/users", label: "ผู้ใช้", icon: Users, privileged: true },
+  // /settings มีไว้ใน dropdown menu ของ user — ไม่ใส่ใน nav bar หลัก
 ];
 
 export function NavLinks({
-  isAdmin, mobile,
+  isAdmin, isPrivileged, mobile,
 }: {
   isAdmin: boolean;
+  /** Admin OR Supervisor — เห็นเมนู privileged */
+  isPrivileged?: boolean;
   mobile?: boolean;
 }) {
   const pathname = usePathname();
-  const items = ITEMS.filter((it) => isAdmin || !it.adminOnly);
+  // Backward compat: ถ้าไม่ pass isPrivileged → fallback ใช้ isAdmin
+  const canSeePrivileged = isPrivileged ?? isAdmin;
+  const items = ITEMS.filter((it) => {
+    if (it.adminOnly) return isAdmin;
+    if (it.privileged) return canSeePrivileged;
+    return true;
+  });
 
   // ⚡ Longest-match wins — ป้องกัน /po และ /po/pending-receipt มาร์ค active พร้อมกัน
   // 1) เก็บ href ที่ match แล้ว sort หา href ที่ยาวที่สุด

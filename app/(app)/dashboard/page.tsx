@@ -92,7 +92,7 @@ function fmtNumber(n: number): string {
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "supervisor";
 
   // === Staff (non-admin) — render personalized dashboard ===
   if (!isAdmin) {

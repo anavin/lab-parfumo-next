@@ -27,7 +27,7 @@ export default async function WithdrawPage({
     getEquipmentList({ activeOnly: true }),
     getCategories(),
     getWithdrawals({
-      userId: user.role === "admin" ? undefined : user.id,
+      userId: (user.role === "admin" || user.role === "supervisor") ? undefined : user.id,
       limit: 200,
     }),
   ]);
@@ -47,7 +47,7 @@ export default async function WithdrawPage({
         categories={categories}
         withdrawals={withdrawals}
         currentUserId={user.id}
-        isAdmin={user.role === "admin"}
+        isAdmin={(user.role === "admin" || user.role === "supervisor")}
       />
     </div>
   );

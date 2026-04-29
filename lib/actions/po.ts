@@ -294,8 +294,8 @@ export async function shipPoAction(
   poId: string, trackingNumber: string, note: string,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   return _updateStatus(poId, "กำลังขนส่ง", note, trackingNumber);
 }
@@ -649,8 +649,8 @@ export async function updateProcurementAction(
   poId: string, input: ProcurementInput,
 ): Promise<ProcurementResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return { ok: false, error: "เฉพาะแอดมิน" };
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   if (!input.supplierName.trim()) {
     return { ok: false, error: "กรุณากรอกชื่อ supplier" };
