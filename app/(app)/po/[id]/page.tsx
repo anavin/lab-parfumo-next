@@ -171,6 +171,7 @@ export default async function PoViewPage({
             isAdmin={isAdmin}
             canCancel={isAdmin || po.created_by === user.id}
             suppliers={suppliers}
+            deliveries={deliveries}
           />
         </CardContent>
       </Card>

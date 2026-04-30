@@ -36,12 +36,14 @@ interface PoSummary {
 }
 
 export function ActionButtons({
-  po, isAdmin, canCancel, suppliers,
+  po, isAdmin, canCancel, suppliers, deliveries = [],
 }: {
   po: PoSummary;
   isAdmin: boolean;
   canCancel: boolean;
   suppliers: SupplierEntry[];
+  /** ประวัติการรับของ — ใช้คำนวณจำนวนคงเหลือใน ReceiveForm */
+  deliveries?: import("@/lib/types/db").PoDelivery[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -53,8 +55,11 @@ export function ActionButtons({
   const canClose = ["รับของแล้ว", "มีปัญหา"].includes(po.status);
   const canOrder = isAdmin && po.status === "รอจัดซื้อดำเนินการ";
   const canShip = isAdmin && po.status === "สั่งซื้อแล้ว";
-  // รับของได้เฉพาะเมื่อ admin อัปเดตสถานะเป็น "กำลังขนส่ง" แล้วเท่านั้น
-  const canReceive = po.status === "กำลังขนส่ง";
+  // รับของได้:
+  //  - "กำลังขนส่ง"  → รับครั้งแรก
+  //  - "รับของแล้ว"  → supplier ส่งของแยกหลายรอบ — รับเพิ่มได้
+  //  - "มีปัญหา"      → ของยังมาไม่ครบ/ของเสีย → รับเพิ่มเพื่อ resolve ได้
+  const canReceive = ["กำลังขนส่ง", "รับของแล้ว", "มีปัญหา"].includes(po.status);
   // แสดง hint เมื่อยังกดรับไม่ได้ (status ยังเป็น "สั่งซื้อแล้ว")
   const receiveBlockedHint = po.status === "สั่งซื้อแล้ว";
   const showCancelBtn = canCancel && !["เสร็จสมบูรณ์", "ยกเลิก"].includes(po.status);
@@ -145,7 +150,8 @@ export function ActionButtons({
             onClick={() => setFormMode(formMode === "receive" ? null : "receive")}
             disabled={pending}
           >
-            <PackageOpen className="h-3.5 w-3.5" /> รับของ
+            <PackageOpen className="h-3.5 w-3.5" />
+            {po.status === "กำลังขนส่ง" ? "รับของ" : "รับของเพิ่ม"}
           </Button>
         )}
 
@@ -256,6 +262,7 @@ export function ActionButtons({
           tracking={po.tracking_number}
           expectedDate={po.expected_date}
           items={po.items}
+          deliveries={deliveries}
           onClose={() => setFormMode(null)}
         />
       )}

@@ -15,7 +15,7 @@ import {
 import { addDeliveryAction } from "@/lib/actions/po";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
 import { compressImages } from "@/lib/utils/image";
-import type { PoItem } from "@/lib/types/db";
+import type { PoItem, PoDelivery } from "@/lib/types/db";
 
 const CONDITIONS = [
   "ปกติ", "มีของเสียหาย", "ขาดจำนวน", "ส่งผิด", "อื่นๆ",
@@ -29,6 +29,7 @@ interface ItemState {
 
 export function ReceiveForm({
   poId, poNumber, supplier, tracking, expectedDate, items,
+  deliveries = [],
   onClose,
 }: {
   poId: string;
@@ -37,18 +38,39 @@ export function ReceiveForm({
   tracking: string | null;
   expectedDate: string | null;
   items: PoItem[];
+  /** ประวัติการรับของก่อนหน้า (ถ้ามี) — ใช้คำนวณจำนวนคงเหลือ */
+  deliveries?: PoDelivery[];
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // State per item
+  // คำนวณจำนวนที่รับมาแล้วต่อ item (รวมทุก delivery)
+  // - match by equipment_id ถ้ามี ไม่งั้น match by name
+  const alreadyReceivedByItem = items.map((it) => {
+    let total = 0;
+    for (const d of deliveries) {
+      for (const r of d.items_received ?? []) {
+        const matches = it.equipment_id
+          ? r.equipment_id === it.equipment_id
+          : r.name === it.name;
+        if (matches) total += r.qty_received ?? 0;
+      }
+    }
+    return total;
+  });
+
+  // State per item — default qty_received = ที่ยังเหลือ (qty_ordered - already_received)
   const [itemStates, setItemStates] = useState<ItemState[]>(() =>
-    items.map((it) => ({
-      qty_received: it.qty ?? 0,
-      qty_damaged: 0,
-      notes: "",
-    })),
+    items.map((it, i) => {
+      const ordered = it.qty ?? 0;
+      const remaining = Math.max(0, ordered - alreadyReceivedByItem[i]);
+      return {
+        qty_received: remaining,
+        qty_damaged: 0,
+        notes: "",
+      };
+    }),
   );
 
   function updateItem(idx: number, patch: Partial<ItemState>) {
@@ -57,10 +79,12 @@ export function ReceiveForm({
     );
   }
 
-  // Auto-detect issue
-  const hasIssue = itemStates.some((s, i) =>
-    s.qty_received !== (items[i].qty ?? 0) || s.qty_damaged > 0,
-  );
+  // Auto-detect issue (เทียบกับยอดที่ "ควรจะได้รอบนี้" — ที่เหลือ)
+  const hasIssue = itemStates.some((s, i) => {
+    const ordered = items[i].qty ?? 0;
+    const remaining = Math.max(0, ordered - alreadyReceivedByItem[i]);
+    return s.qty_received !== remaining || s.qty_damaged > 0;
+  });
 
   const [overallCondition, setOverallCondition] = useState<string>(
     () => (hasIssue ? "มีของเสียหาย" : "ปกติ"),
@@ -174,9 +198,11 @@ export function ReceiveForm({
         <div className="space-y-2">
           {items.map((it, i) => {
             const ordered = it.qty ?? 0;
+            const alreadyReceived = alreadyReceivedByItem[i];
+            const remaining = Math.max(0, ordered - alreadyReceived);
             const received = itemStates[i].qty_received;
             const damaged = itemStates[i].qty_damaged;
-            const isProblem = received !== ordered || damaged > 0;
+            const isProblem = received !== remaining || damaged > 0;
 
             return (
               <div
@@ -188,8 +214,16 @@ export function ReceiveForm({
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                   <div className="sm:col-span-4">
                     <div className="text-sm font-semibold text-slate-900">{it.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      สั่ง: <span className="font-semibold tabular-nums">{ordered.toLocaleString("th-TH")}</span> {it.unit}
+                    <div className="text-xs text-slate-500 mt-0.5 space-x-1.5">
+                      <span>สั่ง: <span className="font-semibold tabular-nums">{ordered.toLocaleString("th-TH")}</span> {it.unit}</span>
+                      {alreadyReceived > 0 && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span>รับแล้ว: <span className="font-semibold tabular-nums text-emerald-600">{alreadyReceived.toLocaleString("th-TH")}</span></span>
+                          <span className="text-slate-300">•</span>
+                          <span>เหลือ: <span className="font-semibold tabular-nums text-amber-600">{remaining.toLocaleString("th-TH")}</span></span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="sm:col-span-2">
