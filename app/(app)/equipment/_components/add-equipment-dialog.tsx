@@ -186,7 +186,9 @@ export function AddEquipmentDialog({
               <label className="block text-sm font-medium text-slate-700 mb-1">ราคาต้นทุน (฿)</label>
               <input type="number" min="0" step="1"
                      className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm tabular-nums"
-                     value={lastCost}
+                     value={lastCost === 0 ? "" : lastCost}
+                     placeholder="0"
+                     onFocus={(e) => e.currentTarget.select()}
                      onChange={(e) => setLastCost(parseFloat(e.target.value) || 0)}
                      disabled={pending} />
             </div>
@@ -194,7 +196,9 @@ export function AddEquipmentDialog({
               <label className="block text-sm font-medium text-slate-700 mb-1">สต็อก</label>
               <input type="number" min="0" step="1"
                      className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm tabular-nums"
-                     value={stock}
+                     value={stock === 0 ? "" : stock}
+                     placeholder="0"
+                     onFocus={(e) => e.currentTarget.select()}
                      onChange={(e) => setStock(parseInt(e.target.value, 10) || 0)}
                      disabled={pending} />
             </div>
@@ -206,7 +210,9 @@ export function AddEquipmentDialog({
             </label>
             <input type="number" min="0" step="1"
                    className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm tabular-nums"
-                   value={reorderLevel}
+                   value={reorderLevel === 0 ? "" : reorderLevel}
+                   placeholder="0"
+                   onFocus={(e) => e.currentTarget.select()}
                    onChange={(e) => setReorderLevel(parseInt(e.target.value, 10) || 0)}
                    disabled={pending} />
           </div>

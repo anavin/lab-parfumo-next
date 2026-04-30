@@ -202,7 +202,9 @@ export function ReceiveForm({
                     <input
                       id={`item-${i}-received`}
                       type="number" min="0"
-                      value={received}
+                      value={received === 0 ? "" : received}
+                      placeholder="0"
+                      onFocus={(e) => e.currentTarget.select()}
                       onChange={(e) => updateItem(i, {
                         qty_received: Math.max(0, parseInt(e.target.value, 10) || 0),
                       })}
@@ -220,7 +222,9 @@ export function ReceiveForm({
                     <input
                       id={`item-${i}-damaged`}
                       type="number" min="0" max={received}
-                      value={damaged}
+                      value={damaged === 0 ? "" : damaged}
+                      placeholder="0"
+                      onFocus={(e) => e.currentTarget.select()}
                       onChange={(e) => updateItem(i, {
                         qty_damaged: Math.max(0, Math.min(received, parseInt(e.target.value, 10) || 0)),
                       })}

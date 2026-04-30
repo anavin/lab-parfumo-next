@@ -131,6 +131,7 @@ export function CartItems({
                   type="number"
                   min="1"
                   value={item.qty}
+                  onFocus={(e) => e.currentTarget.select()}
                   onChange={(e) =>
                     onUpdateQty(idx, Math.max(1, parseInt(e.target.value, 10) || 1))
                   }
