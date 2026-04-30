@@ -61,50 +61,136 @@ function isAllowed(prefs: NotificationPrefs | null | undefined, kind: NotifyKind
 }
 
 /**
+ * Email context — pass มาจาก callsite เพื่อให้ notifyUser ส่ง email ได้
+ * ถ้าไม่ส่ง emailContext → ส่งแต่ in-app noti
+ */
+interface EmailContext {
+  poNumber: string;
+  emailKind: "ordered" | "shipping" | "completed" | "cancelled" | "issue";
+  by: string;
+  trackingNumber?: string;
+  reason?: string;
+  supplierName?: string;
+  expectedDate?: string;
+}
+
+/**
  * แจ้งเตือน user ที่มีสิทธิ์ระดับสูง (admin + supervisor)
- * ใช้ตอน: PO ถูกยกเลิก / มีปัญหา / รับของแล้ว / สร้าง PO ใหม่
- * (เดิมแจ้งเฉพาะ admin → ปรับให้ supervisor เห็นด้วย เพราะมีสิทธิ์อนุมัติ/ขนส่ง)
- *
- * Phase B: filter ตาม notification_prefs ของแต่ละคน
+ * - in-app: ตาม pref `inapp_*`
+ * - email: เฉพาะ kind="new_po" + pref `email_new_po` (default true)
  */
 async function notifyAdmins(
   poId: string, title: string, message: string,
   kind: NotifyKind = "new_po",
+  emailContext?: { poNumber: string; by: string; itemCount?: number },
 ) {
   const sb = getSupabaseAdmin();
   const { data: privileged } = await sb
     .from("users")
-    .select("id, notification_prefs")
+    .select("id, email, full_name, notification_prefs")
     .in("role", ["admin", "supervisor"])
     .eq("is_active", true);
   if (!privileged?.length) return;
-  const recipients = (privileged as Array<{ id: string; notification_prefs: NotificationPrefs | null }>)
-    .filter((a) => isAllowed(a.notification_prefs, kind));
-  if (!recipients.length) return;
-  await sb.from("notifications").insert(
-    recipients.map((a) => ({
-      user_id: a.id, po_id: poId, title, message,
-    })),
-  );
+
+  type Row = {
+    id: string;
+    email: string | null;
+    full_name: string;
+    notification_prefs: NotificationPrefs | null;
+  };
+  const rows = privileged as Row[];
+
+  // 1) In-app
+  const inappRecipients = rows.filter((a) => isAllowed(a.notification_prefs, kind));
+  if (inappRecipients.length) {
+    await sb.from("notifications").insert(
+      inappRecipients.map((a) => ({ user_id: a.id, po_id: poId, title, message })),
+    );
+  }
+
+  // 2) Email — เฉพาะ "new_po" เท่านั้น (admin ไม่รับ email status-change)
+  if (kind === "new_po" && emailContext) {
+    const emailRecipients = rows.filter((a) => {
+      if (!a.email) return false;
+      const pref = a.notification_prefs?.email_new_po ?? DEFAULT_NOTIFICATION_PREFS.email_new_po;
+      return pref;
+    });
+    if (emailRecipients.length) {
+      try {
+        const { sendPoUpdateEmail } = await import("@/lib/email");
+        await Promise.allSettled(
+          emailRecipients.map((a) =>
+            sendPoUpdateEmail({
+              to: a.email!,
+              recipientName: a.full_name,
+              poId,
+              poNumber: emailContext.poNumber,
+              kind: "new_for_admin",
+              by: emailContext.by,
+              itemCount: emailContext.itemCount,
+            }),
+          ),
+        );
+      } catch (e) {
+        console.warn("[email new_po admins] failed:", e);
+      }
+    }
+  }
 }
 
+/**
+ * แจ้งเตือน user เดี่ยว (ส่วนใหญ่คือ creator)
+ * - in-app: ตาม pref `inapp_*`
+ * - email: ถ้า emailContext ระบุ + pref `email_po_status_change` allow + มี email
+ */
 async function notifyUser(
   userId: string, poId: string, title: string, message: string,
   kind: NotifyKind = "po_status_change",
+  emailContext?: EmailContext,
 ) {
   const sb = getSupabaseAdmin();
-  // Check pref first — skip insert if user opted out
   const { data: u } = await sb
     .from("users")
-    .select("notification_prefs")
+    .select("notification_prefs, email, full_name")
     .eq("id", userId)
     .maybeSingle();
-  const prefs = (u as { notification_prefs: NotificationPrefs | null } | null)?.notification_prefs ?? null;
-  if (!isAllowed(prefs, kind)) return;
+  const user = u as {
+    notification_prefs: NotificationPrefs | null;
+    email: string | null;
+    full_name: string;
+  } | null;
+  const prefs = user?.notification_prefs ?? null;
 
-  await sb.from("notifications").insert({
-    user_id: userId, po_id: poId, title, message,
-  });
+  // 1) In-app
+  if (isAllowed(prefs, kind)) {
+    await sb.from("notifications").insert({
+      user_id: userId, po_id: poId, title, message,
+    });
+  }
+
+  // 2) Email
+  if (emailContext && user?.email) {
+    const emailPref = prefs?.email_po_status_change ?? DEFAULT_NOTIFICATION_PREFS.email_po_status_change;
+    if (emailPref) {
+      try {
+        const { sendPoUpdateEmail } = await import("@/lib/email");
+        await sendPoUpdateEmail({
+          to: user.email,
+          recipientName: user.full_name,
+          poId,
+          poNumber: emailContext.poNumber,
+          kind: emailContext.emailKind,
+          by: emailContext.by,
+          trackingNumber: emailContext.trackingNumber,
+          reason: emailContext.reason,
+          supplierName: emailContext.supplierName,
+          expectedDate: emailContext.expectedDate,
+        });
+      } catch (e) {
+        console.warn("[email po status] failed:", e);
+      }
+    }
+  }
 }
 
 // ==================================================================
@@ -141,7 +227,7 @@ async function _updateStatus(
     `${po.status} → ${newStatus}${note ? ` | ${note}` : ""}`,
   );
 
-  // Notifications (ตาม Streamlit เดิม)
+  // Notifications + email (5 transitions ส่ง email หา creator ตาม pref)
   try {
     if (newStatus === "กำลังขนส่ง" && po.created_by) {
       const tk = trackingNumber ? ` • Tracking: ${trackingNumber}` : "";
@@ -149,12 +235,25 @@ async function _updateStatus(
         po.created_by, poId,
         `🚚 ${po.po_number} กำลังขนส่ง`,
         `Supplier ส่งของแล้ว${tk} — เตรียมรับของได้`,
+        "po_status_change",
+        {
+          poNumber: po.po_number,
+          emailKind: "shipping",
+          by: user.full_name,
+          trackingNumber: trackingNumber || undefined,
+        },
       );
     } else if (newStatus === "เสร็จสมบูรณ์" && po.created_by) {
       await notifyUser(
         po.created_by, poId,
         `🎉 ${po.po_number} เสร็จสมบูรณ์`,
         "ปิดงานเรียบร้อย",
+        "po_status_change",
+        {
+          poNumber: po.po_number,
+          emailKind: "completed",
+          by: user.full_name,
+        },
       );
     } else if (newStatus === "ยกเลิก") {
       if (po.created_by) {
@@ -163,8 +262,15 @@ async function _updateStatus(
           `❌ ${po.po_number} ถูกยกเลิก`,
           `โดย ${user.full_name}${note ? ` • ${note}` : ""}`,
           "po_cancelled",
+          {
+            poNumber: po.po_number,
+            emailKind: "cancelled",
+            by: user.full_name,
+            reason: note || undefined,
+          },
         );
       }
+      // admin in-app เดิม (ไม่ส่ง email — admin ไม่รับ status-change emails)
       await notifyAdmins(
         poId, `❌ ${po.po_number} ถูกยกเลิก`, `โดย ${user.full_name}`,
         "po_cancelled",
@@ -643,13 +749,21 @@ export async function createPoAction(
       .eq("id", newPo.id);
   }
 
-  // Notify admins
+  // Notify admins (in-app + email — admin รับ email ตาม pref `email_new_po`)
   try {
     const nCustom = items.filter((it) => !it.equipment_id).length;
     const msg = `${newPo.po_number} • ${items.length} รายการ${
       nCustom > 0 ? ` (มี ${nCustom} รายการใหม่ที่รออนุมัติ)` : ""
     }`;
-    await notifyAdmins(newPo.id, `📥 PO ใหม่จาก ${user.full_name}`, msg);
+    await notifyAdmins(
+      newPo.id, `📥 PO ใหม่จาก ${user.full_name}`, msg,
+      "new_po",
+      {
+        poNumber: newPo.po_number,
+        by: user.full_name,
+        itemCount: items.length,
+      },
+    );
   } catch {
     // ok ถ้าแจ้งไม่ได้
   }
@@ -824,6 +938,14 @@ export async function updateProcurementAction(
         po.created_by, poId,
         `✅ ${po.po_number} สั่งซื้อแล้ว`,
         `แอดมินสั่งกับ ${input.supplierName} • คาดว่าจะได้รับ ${input.expectedDate}`,
+        "po_status_change",
+        {
+          poNumber: po.po_number,
+          emailKind: "ordered",
+          by: user.full_name,
+          supplierName: input.supplierName,
+          expectedDate: input.expectedDate,
+        },
       );
     } catch { /* ok */ }
   }
@@ -1029,7 +1151,7 @@ export async function addDeliveryAction(
     `รับของ #${newNo} | สภาพ: ${input.overallCondition}${stockNote}${customNote}`,
   );
 
-  // Notify admins
+  // Notify admins (in-app) + creator (email สำหรับ "มีปัญหา" — 1 ใน 5 transitions)
   try {
     if (newStatus === "มีปัญหา") {
       await notifyAdmins(
@@ -1037,7 +1159,23 @@ export async function addDeliveryAction(
         `⚠️ ${po.po_number} มีปัญหา`,
         `${user.full_name} แจ้ง: ${input.issueDescription || "ของไม่ครบ"}`,
       );
+      // Email creator — "issue" transition (1 ใน 5)
+      if (po.created_by) {
+        await notifyUser(
+          po.created_by, poId,
+          `⚠️ ${po.po_number} มีปัญหา`,
+          `${user.full_name} แจ้ง: ${input.issueDescription || "ของไม่ครบ"}`,
+          "po_status_change",
+          {
+            poNumber: po.po_number,
+            emailKind: "issue",
+            by: user.full_name,
+            reason: input.issueDescription || undefined,
+          },
+        );
+      }
     } else {
+      // "รับของแล้ว" — admin in-app เดิม (ไม่ส่ง email — ไม่อยู่ใน 5 transitions)
       await notifyAdmins(
         poId,
         `📦 ${po.po_number} รับของแล้ว`,

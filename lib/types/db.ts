@@ -151,8 +151,10 @@ export interface SupplierWithStats extends Supplier {
 export interface NotificationPrefs {
   /** รับสรุปประจำวันทางอีเมล (admin/supervisor) */
   email_daily_digest: boolean;
-  /** รับอีเมลเมื่อ PO ของฉันเปลี่ยนสถานะ — ยังไม่ส่งจริง (placeholder for future) */
+  /** รับอีเมลเมื่อ PO ของฉันเปลี่ยนสถานะ (ordered/shipping/completed/cancelled/issue) */
   email_po_status_change: boolean;
+  /** รับอีเมลเมื่อมี PO ใหม่รออนุมัติ (admin/supervisor) */
+  email_new_po: boolean;
   /** Bell icon: PO ของฉันเปลี่ยนสถานะ */
   inapp_po_status_change: boolean;
   /** Bell icon: PO ถูกยกเลิก */
@@ -163,7 +165,8 @@ export interface NotificationPrefs {
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   email_daily_digest: true,
-  email_po_status_change: false,
+  email_po_status_change: true,    // เปลี่ยนจาก false → true (ผู้สั่งย่อมอยากรู้)
+  email_new_po: true,              // ใหม่ — admin รับทันทีตอนมี PO ใหม่
   inapp_po_status_change: true,
   inapp_po_cancelled: true,
   inapp_new_po: true,

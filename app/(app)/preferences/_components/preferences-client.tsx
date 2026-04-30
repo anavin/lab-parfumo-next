@@ -37,6 +37,17 @@ const INAPP_ROWS: PrefsRow[] = [
 
 const EMAIL_ROWS: PrefsRow[] = [
   {
+    key: "email_po_status_change",
+    label: "อีเมลเมื่อ PO ของฉันเปลี่ยนสถานะ",
+    desc: "ส่งเมื่อ: สั่งซื้อแล้ว / กำลังขนส่ง / เสร็จสมบูรณ์ / ยกเลิก / มีปัญหา",
+  },
+  {
+    key: "email_new_po",
+    label: "อีเมลเมื่อมี PO ใหม่รออนุมัติ",
+    desc: "(เฉพาะ Admin/Supervisor) ส่งเมื่อมี user สร้าง PO ใหม่",
+    privilegedOnly: true,
+  },
+  {
     key: "email_daily_digest",
     label: "อีเมลสรุปประจำวัน",
     desc: "(เฉพาะ Admin/Supervisor) ทุก 8 โมงเช้า — สรุปกิจกรรมของวันก่อนหน้า",
@@ -94,30 +105,28 @@ export function PreferencesClient({
         </CardContent>
       </Card>
 
-      {/* Email notifications */}
-      {isPrivileged && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Mail className="size-4 text-primary" />
-              อีเมล
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 pt-0">
-            {EMAIL_ROWS.filter((r) => !r.privilegedOnly || isPrivileged).map((row) => (
-              <PrefRow
-                key={row.key}
-                row={row}
-                checked={prefs[row.key]}
-                onChange={(v) => set(row.key, v)}
-              />
-            ))}
-            <p className="text-xs text-muted-foreground pt-3 px-1">
-              การส่งอีเมลทำงานเมื่อ admin ตั้งค่า SMTP ใน /settings → Email แล้วเท่านั้น
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Email notifications — ทุก user เห็น (มี email_po_status_change) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Mail className="size-4 text-primary" />
+            อีเมล
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1 pt-0">
+          {EMAIL_ROWS.filter((r) => !r.privilegedOnly || isPrivileged).map((row) => (
+            <PrefRow
+              key={row.key}
+              row={row}
+              checked={prefs[row.key]}
+              onChange={(v) => set(row.key, v)}
+            />
+          ))}
+          <p className="text-xs text-muted-foreground pt-3 px-1">
+            ⓘ การส่งอีเมลทำงานเมื่อ admin ตั้งค่า SMTP ใน /settings → Email และ user มี email ในบัญชีเท่านั้น
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Save bar */}
       <div className="sticky bottom-0 bg-background/80 backdrop-blur-sm py-3 -mx-4 px-4 border-t border-border/40 flex justify-end">

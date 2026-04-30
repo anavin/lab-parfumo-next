@@ -411,3 +411,155 @@ function escHtml(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// ==================================================================
+// PO update email — ส่งหา creator (5 transitions) + admin (PO ใหม่)
+// ==================================================================
+export type PoEmailKind =
+  | "ordered"        // → "สั่งซื้อแล้ว" (creator)
+  | "shipping"       // → "กำลังขนส่ง" (creator)
+  | "completed"      // → "เสร็จสมบูรณ์" (creator)
+  | "cancelled"      // → "ยกเลิก" (creator)
+  | "issue"          // → "มีปัญหา" (creator)
+  | "new_for_admin"; // PO ใหม่ — แจ้ง admin/supervisor
+
+interface PoEmailTemplate {
+  icon: string;
+  title: string;
+  headline: string;
+  color: string;
+  /** detail line — กรณี cancelled/issue ใส่ reason ลงไป */
+  body: (o: PoUpdateEmailOpts) => string;
+}
+
+const PO_EMAIL_TEMPLATES: Record<PoEmailKind, PoEmailTemplate> = {
+  ordered: {
+    icon: "✅", title: "สั่งซื้อแล้ว",
+    headline: "PO ของคุณถูกสั่งซื้อแล้ว",
+    color: "#3B82F6",
+    body: (o) => {
+      const parts: string[] = [];
+      if (o.supplierName) parts.push(`สั่งกับ ${o.supplierName}`);
+      if (o.expectedDate) parts.push(`คาดได้ ${o.expectedDate}`);
+      return parts.join(" • ");
+    },
+  },
+  shipping: {
+    icon: "🚚", title: "กำลังขนส่ง",
+    headline: "Supplier ส่งของแล้ว — เตรียมรับของได้",
+    color: "#8B5CF6",
+    body: (o) => o.trackingNumber ? `Tracking: ${o.trackingNumber}` : "",
+  },
+  completed: {
+    icon: "🎉", title: "เสร็จสมบูรณ์",
+    headline: "PO ของคุณปิดงานเรียบร้อย",
+    color: "#10B981",
+    body: () => "ขอบคุณ — เก็บเป็น record ได้",
+  },
+  cancelled: {
+    icon: "❌", title: "ถูกยกเลิก",
+    headline: "PO ของคุณถูกยกเลิก",
+    color: "#EF4444",
+    body: (o) => {
+      const parts = [`โดย ${o.by}`];
+      if (o.reason) parts.push(o.reason);
+      return parts.join(" • ");
+    },
+  },
+  issue: {
+    icon: "⚠️", title: "มีปัญหา",
+    headline: "PO ของคุณมีปัญหา — ของไม่ครบ/เสียหาย",
+    color: "#F59E0B",
+    body: (o) => {
+      const parts = [`แจ้งโดย ${o.by}`];
+      if (o.reason) parts.push(o.reason);
+      return parts.join(" • ");
+    },
+  },
+  new_for_admin: {
+    icon: "📥", title: "PO ใหม่",
+    headline: "มี PO ใหม่รออนุมัติ",
+    color: "#3B82F6",
+    body: (o) => {
+      const parts = [`จาก ${o.by}`];
+      if (o.itemCount) parts.push(`${o.itemCount} รายการ`);
+      return parts.join(" • ");
+    },
+  },
+};
+
+export interface PoUpdateEmailOpts {
+  to: string;
+  recipientName: string;
+  poId: string;
+  poNumber: string;
+  kind: PoEmailKind;
+  by: string;
+  trackingNumber?: string;
+  reason?: string;
+  supplierName?: string;
+  expectedDate?: string;
+  itemCount?: number;
+  appUrl?: string;
+}
+
+export async function sendPoUpdateEmail(opts: PoUpdateEmailOpts): Promise<SendResult> {
+  const baseUrl = opts.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const poUrl = `${baseUrl}/po/${opts.poId}`;
+  const prefsUrl = `${baseUrl}/preferences`;
+
+  const t = PO_EMAIL_TEMPLATES[opts.kind];
+  const detail = t.body(opts);
+  const subject = `${t.icon} ${opts.poNumber} — ${t.title}`;
+
+  const detailHtml = detail
+    ? `<div style="font-size:13px; color:#475569; margin-top:12px;">${escHtml(detail)}</div>`
+    : "";
+
+  const html = `<!doctype html>
+<html lang="th">
+<head><meta charset="utf-8"><title>${escHtml(subject)}</title></head>
+<body style="margin:0; padding:0; background:#F8FAFC; font-family:'Sarabun',-apple-system,BlinkMacSystemFont,sans-serif; color:#1E293B;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#F8FAFC; padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 12px rgba(15,23,42,0.08);">
+        <tr><td style="background:${t.color}; padding:24px; color:#fff; text-align:center;">
+          <div style="font-size:36px; line-height:1;">${t.icon}</div>
+          <div style="font-size:11px; font-weight:700; margin-top:8px; opacity:0.85; text-transform:uppercase; letter-spacing:0.08em;">${escHtml(t.title)}</div>
+          <div style="font-size:20px; font-weight:bold; margin-top:6px; line-height:1.4;">${escHtml(t.headline)}</div>
+        </td></tr>
+        <tr><td style="padding:28px 32px;">
+          <p style="margin:0 0 14px; font-size:15px;">สวัสดีคุณ <strong>${escHtml(opts.recipientName)}</strong>,</p>
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:18px; margin:18px 0;">
+            <div style="font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.06em;">PO Number</div>
+            <div style="font-size:18px; font-weight:bold; margin-top:4px; font-family:'JetBrains Mono',monospace; color:#1E293B;">${escHtml(opts.poNumber)}</div>
+            ${detailHtml}
+          </div>
+          <p style="margin:24px 0; text-align:center;">
+            <a href="${poUrl}" style="display:inline-block; background:${t.color}; color:#fff; padding:12px 28px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">ดูรายละเอียด PO →</a>
+          </p>
+          <p style="margin:24px 0 0; font-size:12px; color:#94A3B8; text-align:center; border-top:1px solid #E2E8F0; padding-top:18px;">
+            อีเมลอัตโนมัติจากระบบ Lab Parfumo PO<br>
+            หากไม่ต้องการรับอีเมลนี้ ตั้งค่าได้ที่ <a href="${prefsUrl}" style="color:#64748B;">การตั้งค่าการแจ้งเตือน</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const text = `${t.icon} ${t.title}
+
+PO: ${opts.poNumber}
+${t.headline}
+${detail ? detail + "\n" : ""}
+ดูรายละเอียด: ${poUrl}
+
+—
+Lab Parfumo PO
+ตั้งค่าการแจ้งเตือน: ${prefsUrl}
+`;
+
+  return sendEmail({ to: opts.to, subject, html, text });
+}

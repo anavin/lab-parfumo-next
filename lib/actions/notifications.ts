@@ -44,6 +44,7 @@ export async function updateMyPrefsAction(
   const allowed: (keyof NotificationPrefs)[] = [
     "email_daily_digest",
     "email_po_status_change",
+    "email_new_po",
     "inapp_po_status_change",
     "inapp_po_cancelled",
     "inapp_new_po",
