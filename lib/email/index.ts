@@ -425,12 +425,28 @@ function escHtml(s: string): string {
  *    บน preview deployments → ใช้ VERCEL_PROJECT_PRODUCTION_URL ก่อนเสมอ
  */
 function resolveBaseUrl(override?: string): string {
-  if (override) return override;
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (override) {
+    console.log(`[resolveBaseUrl] using override: ${override}`);
+    return override;
   }
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    console.log(`[resolveBaseUrl] using NEXT_PUBLIC_APP_URL: ${process.env.NEXT_PUBLIC_APP_URL}`);
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    const url = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+    console.log(`[resolveBaseUrl] using VERCEL_PROJECT_PRODUCTION_URL: ${url}`);
+    return url;
+  }
+  if (process.env.VERCEL_URL) {
+    const url = `https://${process.env.VERCEL_URL}`;
+    console.warn(
+      `[resolveBaseUrl] FALLBACK to VERCEL_URL (deployment-specific, may have SSO): ${url}\n` +
+      `→ ตั้ง NEXT_PUBLIC_APP_URL ใน Vercel env เพื่อแก้ปัญหานี้`,
+    );
+    return url;
+  }
+  console.warn(`[resolveBaseUrl] no env var found, using localhost`);
   return "http://localhost:3000";
 }
 
