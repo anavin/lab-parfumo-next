@@ -221,7 +221,7 @@ export async function sendWelcomeEmail(opts: {
   companyName: string;
   loginUrl?: string;
 }): Promise<SendResult> {
-  const url = opts.loginUrl ?? resolveBaseUrl();
+  const url = opts.loginUrl ?? `${resolveBaseUrl()}/login`;
   const subject = `🔐 บัญชีใหม่ใน ${opts.companyName} — เริ่มใช้งาน Lab Parfumo PO Pro`;
 
   const html = `<!doctype html>
