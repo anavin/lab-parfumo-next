@@ -135,11 +135,11 @@ export function AppHeader({ user }: { user: User }) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {isAdmin && (
+                {isPrivileged && (
                   <DropdownMenuItem asChild>
                     <Link href="/settings">
                       <Settings className="size-4 mr-2" />
-                      ตั้งค่าระบบ
+                      {isAdmin ? "ตั้งค่าระบบ" : "Lookups"}
                     </Link>
                   </DropdownMenuItem>
                 )}

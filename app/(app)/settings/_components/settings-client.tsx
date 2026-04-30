@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building, Lock, Save, Mail, Send, CheckCircle2, AlertCircle, Eye, EyeOff,
-  Server, Trash2,
+  Server, Trash2, Wrench,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
 import { toast } from "sonner";
+import type { LookupWithUsage } from "@/lib/types/db";
 import {
   updateCompanySettingsAction,
   updateEmailSettingsAction,
@@ -20,6 +21,7 @@ import {
   testEmailAction,
   verifyEmailAction,
 } from "@/lib/actions/settings";
+import { LookupsManager } from "./lookups-manager";
 
 export interface CompanySettings {
   name: string;
@@ -60,32 +62,42 @@ interface EmailDiagnostic {
   testedAt: number;        // timestamp
 }
 
-type Tab = "company" | "login" | "email";
+type Tab = "company" | "login" | "email" | "lookups";
 
 export function SettingsClient({
-  initial, email, adminEmail,
+  initial, email, adminEmail, lookupsByType, isAdmin,
 }: {
-  initial: CompanySettings;
-  email: EmailUiSettings;
+  initial: CompanySettings | null;
+  email: EmailUiSettings | null;
   adminEmail: string;
+  lookupsByType: Record<string, LookupWithUsage[]>;
+  isAdmin: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>("company");
+  // Default tab: ถ้าเป็น admin → company, ถ้า supervisor → lookups
+  const [tab, setTab] = useState<Tab>(isAdmin ? "company" : "lookups");
 
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
-        <TabButton active={tab === "company"} onClick={() => setTab("company")}
-                    icon={<Building className="h-4 w-4" />} label="ข้อมูลบริษัท" />
-        <TabButton active={tab === "login"} onClick={() => setTab("login")}
-                    icon={<Lock className="h-4 w-4" />} label="หน้า Login" />
-        <TabButton active={tab === "email"} onClick={() => setTab("email")}
-                    icon={<Mail className="h-4 w-4" />} label="อีเมล (SMTP)"
-                    badge={email.source === "none" ? "ยังไม่ตั้ง" : undefined} />
+        {isAdmin && (
+          <>
+            <TabButton active={tab === "company"} onClick={() => setTab("company")}
+                        icon={<Building className="h-4 w-4" />} label="ข้อมูลบริษัท" />
+            <TabButton active={tab === "login"} onClick={() => setTab("login")}
+                        icon={<Lock className="h-4 w-4" />} label="หน้า Login" />
+            <TabButton active={tab === "email"} onClick={() => setTab("email")}
+                        icon={<Mail className="h-4 w-4" />} label="อีเมล (SMTP)"
+                        badge={email?.source === "none" ? "ยังไม่ตั้ง" : undefined} />
+          </>
+        )}
+        <TabButton active={tab === "lookups"} onClick={() => setTab("lookups")}
+                    icon={<Wrench className="h-4 w-4" />} label="Lookups" />
       </div>
 
-      {tab === "company" && <CompanyForm initial={initial} />}
-      {tab === "login" && <LoginIntroForm initial={initial} />}
-      {tab === "email" && <EmailForm initial={email} adminEmail={adminEmail} />}
+      {tab === "company" && initial && <CompanyForm initial={initial} />}
+      {tab === "login" && initial && <LoginIntroForm initial={initial} />}
+      {tab === "email" && email && <EmailForm initial={email} adminEmail={adminEmail} />}
+      {tab === "lookups" && <LookupsManager lookupsByType={lookupsByType} />}
     </div>
   );
 }
