@@ -246,6 +246,7 @@ async function notifyUser(
 async function _updateStatus(
   poId: string, newStatus: PoStatus, note: string, trackingNumber?: string,
 ): Promise<ActionResult> {
+  console.log(`[po _updateStatus] ENTER — poId=${poId} newStatus=${newStatus} note=${note} tracking=${trackingNumber ?? "-"}`);
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
@@ -256,6 +257,7 @@ async function _updateStatus(
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  console.log(`[po _updateStatus] po.created_by=${po.created_by} po.po_number=${po.po_number}`);
 
   const update: Record<string, unknown> = {
     status: newStatus,
@@ -708,6 +710,7 @@ export async function generatePoNumber(): Promise<string> {
 export async function createPoAction(
   items: PoItem[], notes: string,
 ): Promise<ActionResult> {
+  console.log(`[po createPoAction] ENTER — items=${items.length}`);
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
@@ -851,6 +854,7 @@ export interface ProcurementResult extends ActionResult {
 export async function updateProcurementAction(
   poId: string, input: ProcurementInput,
 ): Promise<ProcurementResult> {
+  console.log(`[po updateProcurementAction] ENTER — poId=${poId} supplier=${input.supplierName}`);
   const user = await getCurrentUser();
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
