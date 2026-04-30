@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FileText, PackageOpen, Send, Box,
-  Wallet, BarChart3, Users, Settings,
+  Wallet, BarChart3, Users, Settings, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,7 @@ const ITEMS: NavItem[] = [
   { href: "/po/pending-receipt", label: "รอรับของ", icon: PackageOpen },
   { href: "/withdraw", label: "เบิกของ", icon: Send },
   { href: "/equipment", label: "Catalog", icon: Box, privileged: true },
+  { href: "/suppliers", label: "Supplier", icon: Building2, privileged: true },
   { href: "/budget", label: "งบ", icon: Wallet, privileged: true },
   { href: "/reports", label: "รายงาน", icon: BarChart3, privileged: true },
   { href: "/users", label: "ผู้ใช้", icon: Users, privileged: true },
