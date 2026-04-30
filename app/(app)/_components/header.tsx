@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, Bell, Package, Settings } from "lucide-react";
+import { LogOut, Bell, Package, Settings, SlidersHorizontal } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 import type { User } from "@/lib/types/db";
 import { Button } from "@/components/ui/button";
@@ -147,6 +147,12 @@ export function AppHeader({ user }: { user: User }) {
                   <Link href="/notifications">
                     <Bell className="size-4 mr-2" />
                     แจ้งเตือน
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/preferences">
+                    <SlidersHorizontal className="size-4 mr-2" />
+                    ตั้งค่าการแจ้งเตือน
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

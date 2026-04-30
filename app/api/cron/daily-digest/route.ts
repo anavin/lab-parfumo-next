@@ -101,9 +101,10 @@ export async function GET(req: Request) {
 
   // Get all privileged users (admin + supervisor) with email
   // Supervisor ก็มีสิทธิ์อนุมัติ/จัดการ — ควรได้ digest เหมือน admin
+  // Phase B: filter ตาม notification_prefs.email_daily_digest (default true)
   const { data: admins } = await sb
     .from("users")
-    .select("full_name, email")
+    .select("full_name, email, notification_prefs")
     .in("role", ["admin", "supervisor"])
     .eq("is_active", true)
     .not("email", "is", null);
@@ -124,7 +125,15 @@ export async function GET(req: Request) {
   });
 
   // Send to each admin (parallel, best-effort)
-  const recipients = (admins ?? []).filter((a: { email: string | null }) => a.email);
+  // Filter: must have email AND email_daily_digest pref enabled (default true)
+  type AdminRow = {
+    full_name: string;
+    email: string | null;
+    notification_prefs: { email_daily_digest?: boolean } | null;
+  };
+  const recipients = ((admins ?? []) as AdminRow[]).filter(
+    (a) => a.email && (a.notification_prefs?.email_daily_digest ?? true),
+  );
   const results = await Promise.allSettled(
     recipients.map((a: { full_name: string; email: string | null }) =>
       sendDailyDigest({

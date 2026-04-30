@@ -144,6 +144,31 @@ export interface SupplierWithStats extends Supplier {
 // ==================================================================
 // Row types
 // ==================================================================
+/**
+ * Notification preferences — ผู้ใช้ตั้งเองที่ /preferences
+ * เก็บเป็น JSONB ใน users.notification_prefs
+ */
+export interface NotificationPrefs {
+  /** รับสรุปประจำวันทางอีเมล (admin/supervisor) */
+  email_daily_digest: boolean;
+  /** รับอีเมลเมื่อ PO ของฉันเปลี่ยนสถานะ — ยังไม่ส่งจริง (placeholder for future) */
+  email_po_status_change: boolean;
+  /** Bell icon: PO ของฉันเปลี่ยนสถานะ */
+  inapp_po_status_change: boolean;
+  /** Bell icon: PO ถูกยกเลิก */
+  inapp_po_cancelled: boolean;
+  /** Bell icon: มี PO ใหม่เข้ามา (admin/supervisor) */
+  inapp_new_po: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  email_daily_digest: true,
+  email_po_status_change: false,
+  inapp_po_status_change: true,
+  inapp_po_cancelled: true,
+  inapp_new_po: true,
+};
+
 export interface User {
   id: string;
   username: string;
@@ -157,6 +182,7 @@ export interface User {
   last_login_at: string | null;
   password_changed_at: string | null;
   created_at: string;
+  notification_prefs?: NotificationPrefs | null;
 }
 
 export interface UserSession {

@@ -17,7 +17,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { suggestEquipmentFromPo } from "@/lib/db/equipment";
 import type {
   PoStatus, PoItem, PurchaseOrder, PoAttachment,
+  NotificationPrefs,
 } from "@/lib/types/db";
+import { DEFAULT_NOTIFICATION_PREFS } from "@/lib/types/db";
 import { createPoSchema, cancelPoSchema, formatZodError } from "./schemas";
 
 interface ActionResult {
@@ -42,22 +44,45 @@ async function logActivity(
 }
 
 /**
+ * Notification kind → maps to user pref key (Phase B)
+ * - po_status_change: สถานะ PO เปลี่ยน (สั่งซื้อ/ขนส่ง/รับของ/เสร็จ)
+ * - po_cancelled:     PO ถูกยกเลิก
+ * - new_po:           มี PO ใหม่ (notify privileged)
+ */
+type NotifyKind = "po_status_change" | "po_cancelled" | "new_po";
+
+function isAllowed(prefs: NotificationPrefs | null | undefined, kind: NotifyKind): boolean {
+  const p = prefs ?? DEFAULT_NOTIFICATION_PREFS;
+  switch (kind) {
+    case "po_status_change": return p.inapp_po_status_change;
+    case "po_cancelled":     return p.inapp_po_cancelled;
+    case "new_po":           return p.inapp_new_po;
+  }
+}
+
+/**
  * แจ้งเตือน user ที่มีสิทธิ์ระดับสูง (admin + supervisor)
  * ใช้ตอน: PO ถูกยกเลิก / มีปัญหา / รับของแล้ว / สร้าง PO ใหม่
  * (เดิมแจ้งเฉพาะ admin → ปรับให้ supervisor เห็นด้วย เพราะมีสิทธิ์อนุมัติ/ขนส่ง)
+ *
+ * Phase B: filter ตาม notification_prefs ของแต่ละคน
  */
 async function notifyAdmins(
   poId: string, title: string, message: string,
+  kind: NotifyKind = "new_po",
 ) {
   const sb = getSupabaseAdmin();
   const { data: privileged } = await sb
     .from("users")
-    .select("id")
+    .select("id, notification_prefs")
     .in("role", ["admin", "supervisor"])
     .eq("is_active", true);
   if (!privileged?.length) return;
+  const recipients = (privileged as Array<{ id: string; notification_prefs: NotificationPrefs | null }>)
+    .filter((a) => isAllowed(a.notification_prefs, kind));
+  if (!recipients.length) return;
   await sb.from("notifications").insert(
-    privileged.map((a: { id: string }) => ({
+    recipients.map((a) => ({
       user_id: a.id, po_id: poId, title, message,
     })),
   );
@@ -65,8 +90,18 @@ async function notifyAdmins(
 
 async function notifyUser(
   userId: string, poId: string, title: string, message: string,
+  kind: NotifyKind = "po_status_change",
 ) {
   const sb = getSupabaseAdmin();
+  // Check pref first — skip insert if user opted out
+  const { data: u } = await sb
+    .from("users")
+    .select("notification_prefs")
+    .eq("id", userId)
+    .maybeSingle();
+  const prefs = (u as { notification_prefs: NotificationPrefs | null } | null)?.notification_prefs ?? null;
+  if (!isAllowed(prefs, kind)) return;
+
   await sb.from("notifications").insert({
     user_id: userId, po_id: poId, title, message,
   });
@@ -127,10 +162,12 @@ async function _updateStatus(
           po.created_by, poId,
           `❌ ${po.po_number} ถูกยกเลิก`,
           `โดย ${user.full_name}${note ? ` • ${note}` : ""}`,
+          "po_cancelled",
         );
       }
       await notifyAdmins(
         poId, `❌ ${po.po_number} ถูกยกเลิก`, `โดย ${user.full_name}`,
+        "po_cancelled",
       );
     }
   } catch {
