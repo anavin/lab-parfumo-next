@@ -280,6 +280,49 @@ export interface Withdrawal {
   withdrawn_at: string;
   notes: string | null;
   created_at: string;
+  /** Optional: ระบุว่าเบิกจาก lot ไหน (Phase E) */
+  lot_id?: string | null;
+}
+
+// ==================================================================
+// Lot/Batch tracking (Phase E)
+// ==================================================================
+export const LOT_STATUSES = ["active", "depleted", "expired", "discarded"] as const;
+export type LotStatus = (typeof LOT_STATUSES)[number];
+
+export const LOT_STATUS_LABEL: Record<LotStatus, string> = {
+  active: "กำลังใช้",
+  depleted: "หมดแล้ว",
+  expired: "หมดอายุ",
+  discarded: "ทิ้ง/ทำลาย",
+};
+
+export interface Lot {
+  id: string;
+  lot_no: string;
+  equipment_id: string;
+  equipment_name: string;
+  unit: string | null;
+
+  qty_initial: number;
+  qty_remaining: number;
+
+  po_id: string | null;
+  po_number: string | null;
+  po_delivery_id: string | null;
+  supplier_name: string | null;
+  supplier_lot_no: string | null;
+
+  manufactured_date: string | null;
+  expiry_date: string | null;
+  received_date: string;
+
+  status: LotStatus;
+  notes: string | null;
+
+  created_at: string;
+  updated_at: string;
+  created_by_name: string | null;
 }
 
 export interface Notification {

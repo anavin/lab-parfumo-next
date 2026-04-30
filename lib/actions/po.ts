@@ -889,6 +889,7 @@ export async function addDeliveryAction(
   // - ถ้า RPC ไม่มี (migration ยังไม่รัน) → fallback select-max + retry
   let newNo = 0;
   let inserted = false;
+  let insertedDeliveryId: string | null = null;  // Phase E: เก็บไว้ใช้สร้าง lot
   for (let attempt = 0; attempt < 5 && !inserted; attempt++) {
     let candidateNo: number | null = null;
     // 1) ลองใช้ RPC (atomic — รัน migration แล้วจะ work)
@@ -913,7 +914,7 @@ export async function addDeliveryAction(
       candidateNo = maxNo + 1 + attempt; // bump ตาม attempt เพื่อ retry
     }
 
-    const { error: deliveryErr } = await sb
+    const { data: insertedRow, error: deliveryErr } = await sb
       .from("po_deliveries" as never)
       .insert({
         po_id: poId,
@@ -925,10 +926,13 @@ export async function addDeliveryAction(
         issue_description: input.issueDescription,
         notes: input.notes,
         image_urls: input.imageUrls,
-      } as never);
+      } as never)
+      .select("id")
+      .maybeSingle();
     if (!deliveryErr) {
       newNo = candidateNo;
       inserted = true;
+      insertedDeliveryId = (insertedRow as { id: string } | null)?.id ?? null;
       break;
     }
     // unique_violation (Postgres 23505) — retry
@@ -979,6 +983,29 @@ export async function addDeliveryAction(
         .eq("id", it.equipment_id);
     }
     stockUpdatedCount++;
+  }
+
+  // Phase E: สร้าง lot อัตโนมัติ (best-effort — ไม่ block flow ถ้า lots table ยังไม่ migrate)
+  if (insertedDeliveryId) {
+    try {
+      const { createLotsForDelivery } = await import("./lots");
+      await createLotsForDelivery({
+        poId,
+        poNumber: po.po_number ?? "",
+        poDeliveryId: insertedDeliveryId,
+        supplierName: po.supplier_name ?? null,
+        receivedByName: user.full_name,
+        receivedDate: new Date().toISOString().slice(0, 10),
+        items: input.itemsReceived.map((it) => ({
+          equipment_id: it.equipment_id,
+          name: it.name,
+          qty_received: it.qty_received,
+          unit: undefined, // อาจจะดึงจาก equipment.unit ทีหลัง
+        })),
+      });
+    } catch (e) {
+      console.warn("[lots] auto-create skipped:", e);
+    }
   }
 
   // Update PO status + received_date
