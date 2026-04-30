@@ -728,11 +728,26 @@ export async function updateProcurementAction(
     }
   }
 
+  // ค้นหา supplier_id จาก name (case-insensitive) — link FK เพื่อ PO history
+  // ถ้าไม่เจอ → supplier_id = null (admin ต้อง create supplier ใน /suppliers ก่อน)
+  let supplierId: string | null = null;
+  const supplierName = input.supplierName.trim();
+  if (supplierName) {
+    const { data: matched } = await sb
+      .from("suppliers" as never)
+      .select("id")
+      .ilike("name", supplierName)
+      .limit(1)
+      .maybeSingle();
+    supplierId = ((matched as { id: string } | null)?.id) ?? null;
+  }
+
   const { error } = await sb
     .from("purchase_orders")
     .update({
-      supplier_name: input.supplierName.trim(),
+      supplier_name: supplierName,
       supplier_contact: input.supplierContact.trim(),
+      supplier_id: supplierId,
       items: newItems,
       subtotal,
       discount: input.discount,

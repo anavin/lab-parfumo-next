@@ -7,9 +7,20 @@
 Internal Purchase Order (PO) management system for Lab Parfumo (Thai perfume lab).
 Originally built in Streamlit, **rewritten from scratch in Next.js 15** during this development cycle.
 
-**Audience**: Admins (จัดซื้อ + manage catalog) + requesters (สร้าง PO).
+**Audience**: Admins + Supervisors (จัดซื้อ + manage catalog/users) + Staff (สร้าง PO/รับของ/เบิก).
 **Language**: Thai-first UI; English for technical/code labels (PO PRO, KPI, etc.).
 **Deployed**: Vercel (region `sin1` for Thai user latency).
+
+## Roles (3-tier)
+
+```
+👑 Admin          — สูงสุด: ทุกอย่าง + Settings (Company/Login/Email)
+🛡️ Supervisor    — เหมือน admin ยกเว้น settings + จัดการ admin users
+👤 Staff (requester) — สร้าง PO, รับของ, เบิกของ, ดูเฉพาะของตัวเอง
+```
+
+`requirePrivileged()` = admin OR supervisor (lib/auth/require-user.ts)
+`requireAdmin()` = admin only
 
 ---
 
@@ -48,7 +59,8 @@ app/
     budget/          — admin only
     reports/         — admin only (lazy charts)
     users/           — admin only
-    settings/        — admin only
+    settings/        — admin only (Company/Login/Email tabs); supervisor sees only Lookups tab
+    suppliers/       — privileged: list + detail + manage suppliers
     notifications/
   api/
     po/[id]/pdf/     — PDF download
@@ -76,12 +88,19 @@ lib/
     users.ts
     budget.ts
     notifications.ts
+    suppliers.ts     — Supplier CRUD (privileged only)
+    lookups.ts       — Lookup CRUD (5 types: supplier_category/bank/equipment_unit/payment_term/withdrawal_purpose)
     upload.ts        — uploadImage / uploadAttachment + ensureBucket()
     schemas.ts       — Zod schemas (createUser, updatePO, cancelPO, etc.)
     search.ts
+  db/
+    suppliers.ts     — Supplier queries + getSuppliersWithStats
+    lookups.ts       — Lookup queries (cache + usage count)
   email/index.ts     — sendEmail + sendWelcomeEmail + sendDailyDigest
   pdf/po-document.tsx — PDF layout (Sarabun font from public/fonts)
-  types/db.ts        — all shared types (PurchaseOrder, Equipment, Budget, ...)
+  crypto/secrets.ts  — AES-256-GCM (SMTP password encryption)
+  utils/image.ts     — Browser image compression (HEIC → JPEG)
+  types/db.ts        — all shared types (PurchaseOrder, Equipment, Supplier, Lookup, ...)
 
 components/
   ui/                — shadcn primitives + custom (status-pill, confirm-dialog, user-avatar, empty-state)
@@ -100,6 +119,29 @@ components/
 | `po-attachments`  | PDF/Word/Excel attached to PO | Yes (added late, auto-creates on first upload) |
 
 `ensureBucket()` in `lib/actions/upload.ts` — race-safe, idempotent, creates if missing.
+
+---
+
+## Tables ที่เพิ่มใหม่ (จาก migrations)
+
+| Table | Purpose | Migration file |
+|---|---|---|
+| `suppliers` | ผู้ผลิต/ผู้ขาย (full CRUD with bank/contact/payment) | `202604_suppliers.sql` |
+| `lookups` | Generic dropdown (5 types) | `202604_lookups.sql` |
+| `po_deliveries.uq_po_deliveries_no` | UNIQUE constraint (race-safe) | `202604_workflow_atomic.sql` |
+| `users.role CHECK` | Allow "supervisor" | `202604_role_supervisor.sql` |
+| `company_settings.smtp_*` | SMTP fields | `202604_email_settings.sql` |
+
+**FK link**: `purchase_orders.supplier_id → suppliers.id` (auto-set by orderPoAction via name lookup)
+
+## RPCs (Postgres functions)
+
+| Function | Purpose |
+|---|---|
+| `increment_equipment_stock(p_id, p_qty)` | Atomic stock +/- (signed qty) |
+| `next_po_delivery_no(p_po_id)` | Atomic delivery_no via advisory lock |
+| `update_suppliers_updated_at()` | Trigger on suppliers UPDATE |
+| `update_lookups_updated_at()` | Trigger on lookups UPDATE |
 
 ---
 
@@ -216,13 +258,21 @@ git push
 
 ### Required env vars (Vercel)
 ```
+# DB
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
-NEXT_PUBLIC_APP_URL              # for email links
-SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD  # optional, for emails
-FROM_EMAIL / FROM_NAME           # optional
-CRON_SECRET                      # for /api/cron/daily-digest auth
+NEXT_PUBLIC_APP_URL              # for email links + redirects
+
+# SMTP (optional — admin can also set in /settings UI)
+SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD
+FROM_EMAIL / FROM_NAME
+
+# Security (recommended)
+CRON_SECRET                      # /api/cron/daily-digest — REJECTS if not set
+ENCRYPTION_KEY                   # 32 bytes hex (openssl rand -hex 32)
+                                 # for SMTP password encryption (AES-256-GCM)
+                                 # if not set → plaintext fallback + UI warning
 ```
 
 ---

@@ -184,10 +184,29 @@ export default async function PoViewPage({
                 <SectionTitle icon={<Truck className="h-4 w-4" />}>Supplier</SectionTitle>
                 {po.supplier_name ? (
                   <>
-                    <div className="font-bold text-slate-900">{po.supplier_name}</div>
+                    {po.supplier_id ? (
+                      <Link
+                        href={`/suppliers/${po.supplier_id}`}
+                        className="font-bold text-slate-900 hover:text-primary inline-flex items-center gap-1.5 group"
+                        title="ดูข้อมูล Supplier"
+                      >
+                        {po.supplier_name}
+                        <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </Link>
+                    ) : (
+                      <div className="font-bold text-slate-900">{po.supplier_name}</div>
+                    )}
                     {po.supplier_contact && (
                       <div className="text-sm text-slate-600 whitespace-pre-line mt-1">
                         {po.supplier_contact}
+                      </div>
+                    )}
+                    {!po.supplier_id && (
+                      <div className="text-[11px] text-amber-600 mt-1.5 inline-flex items-center gap-1">
+                        ⚠️ ยังไม่ link กับ Supplier ใน DB —
+                        <Link href="/suppliers" className="underline hover:text-amber-800">
+                          เพิ่ม Supplier ใหม่
+                        </Link>
                       </div>
                     )}
                   </>
