@@ -110,15 +110,27 @@ async function notifyAdmins(
 
   // 2) Email — เฉพาะ "new_po" เท่านั้น (admin ไม่รับ email status-change)
   if (kind === "new_po" && emailContext) {
+    const adminWithoutEmail = rows.filter((a) => !a.email).length;
+    const adminOptedOut = rows.filter((a) => {
+      if (!a.email) return false;
+      const pref = a.notification_prefs?.email_new_po ?? DEFAULT_NOTIFICATION_PREFS.email_new_po;
+      return !pref;
+    }).length;
     const emailRecipients = rows.filter((a) => {
       if (!a.email) return false;
       const pref = a.notification_prefs?.email_new_po ?? DEFAULT_NOTIFICATION_PREFS.email_new_po;
       return pref;
     });
+    console.log(
+      `[email new_po] PO=${emailContext.poNumber} • totalAdmins=${rows.length} ` +
+      `• willEmail=${emailRecipients.length} ` +
+      `• skipped(no email)=${adminWithoutEmail} ` +
+      `• skipped(opted-out)=${adminOptedOut}`,
+    );
     if (emailRecipients.length) {
       try {
         const { sendPoUpdateEmail } = await import("@/lib/email");
-        await Promise.allSettled(
+        const results = await Promise.allSettled(
           emailRecipients.map((a) =>
             sendPoUpdateEmail({
               to: a.email!,
@@ -131,8 +143,22 @@ async function notifyAdmins(
             }),
           ),
         );
+        // Log each result individually so we can see SMTP errors
+        results.forEach((r, i) => {
+          const recipient = emailRecipients[i].email;
+          if (r.status === "rejected") {
+            console.error(`[email new_po → ${recipient}] rejected:`, r.reason);
+          } else if (!r.value.ok) {
+            console.error(
+              `[email new_po → ${recipient}] sendEmail returned ok=false:`,
+              { errorKind: r.value.errorKind, error: r.value.error, detail: r.value.errorDetail },
+            );
+          } else {
+            console.log(`[email new_po → ${recipient}] sent ✓`);
+          }
+        });
       } catch (e) {
-        console.warn("[email new_po admins] failed:", e);
+        console.error("[email new_po admins] threw:", e);
       }
     }
   }
@@ -168,13 +194,26 @@ async function notifyUser(
     });
   }
 
-  // 2) Email
-  if (emailContext && user?.email) {
+  // 2) Email — diagnostic logging
+  if (!emailContext) {
+    // ไม่ใช่ transition ที่จะส่ง email — skip silent
+  } else if (!user) {
+    console.warn(`[email po status] user not found: ${userId}`);
+  } else if (!user.email) {
+    console.warn(`[email po status] user has no email: ${userId} (${user.full_name})`);
+  } else {
     const emailPref = prefs?.email_po_status_change ?? DEFAULT_NOTIFICATION_PREFS.email_po_status_change;
-    if (emailPref) {
+    if (!emailPref) {
+      console.log(
+        `[email po status → ${user.email}] skipped — user opted out (prefs=${JSON.stringify(prefs)})`,
+      );
+    } else {
+      console.log(
+        `[email po status] PO=${emailContext.poNumber} kind=${emailContext.emailKind} → ${user.email}`,
+      );
       try {
         const { sendPoUpdateEmail } = await import("@/lib/email");
-        await sendPoUpdateEmail({
+        const result = await sendPoUpdateEmail({
           to: user.email,
           recipientName: user.full_name,
           poId,
@@ -186,8 +225,16 @@ async function notifyUser(
           supplierName: emailContext.supplierName,
           expectedDate: emailContext.expectedDate,
         });
+        if (!result.ok) {
+          console.error(
+            `[email po status → ${user.email}] sendEmail returned ok=false:`,
+            { errorKind: result.errorKind, error: result.error, detail: result.errorDetail },
+          );
+        } else {
+          console.log(`[email po status → ${user.email}] sent ✓`);
+        }
       } catch (e) {
-        console.warn("[email po status] failed:", e);
+        console.error("[email po status] threw:", e);
       }
     }
   }
