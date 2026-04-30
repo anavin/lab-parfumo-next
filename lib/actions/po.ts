@@ -279,17 +279,16 @@ async function _updateStatus(
   // Notifications + email (5 transitions ส่ง email หา creator ตาม pref)
   try {
     if (newStatus === "กำลังขนส่ง" && po.created_by) {
-      const tk = trackingNumber ? ` • Tracking: ${trackingNumber}` : "";
       await notifyUser(
         po.created_by, poId,
         `🚚 ${po.po_number} กำลังขนส่ง`,
-        `Supplier ส่งของแล้ว${tk} — เตรียมรับของได้`,
+        `Supplier ส่งของแล้ว — เตรียมรับของได้`,
         "po_status_change",
         {
           poNumber: po.po_number,
           emailKind: "shipping",
           by: user.full_name,
-          trackingNumber: trackingNumber || undefined,
+          // Note: ไม่ส่ง trackingNumber ใน email/noti — แจ้งแค่ว่าจัดส่งแล้ว
         },
       );
     } else if (newStatus === "เสร็จสมบูรณ์" && po.created_by) {

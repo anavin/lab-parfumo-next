@@ -481,7 +481,8 @@ const PO_EMAIL_TEMPLATES: Record<PoEmailKind, PoEmailTemplate> = {
     icon: "🚚", title: "กำลังขนส่ง",
     headline: "Supplier ส่งของแล้ว — เตรียมรับของได้",
     color: "#8B5CF6",
-    body: (o) => o.trackingNumber ? `Tracking: ${o.trackingNumber}` : "",
+    // Note: ไม่แสดง tracking number ใน email — แจ้งแค่ว่าจัดส่งแล้ว
+    body: () => "",
   },
   completed: {
     icon: "🎉", title: "เสร็จสมบูรณ์",
