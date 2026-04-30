@@ -150,6 +150,7 @@ export function CustomItemForm({
               <Input
                 type="number" min="1"
                 value={qty}
+                onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => setQty(e.target.value)}
                 disabled={pending}
               />
