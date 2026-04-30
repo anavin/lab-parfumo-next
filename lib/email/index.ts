@@ -221,7 +221,7 @@ export async function sendWelcomeEmail(opts: {
   companyName: string;
   loginUrl?: string;
 }): Promise<SendResult> {
-  const url = opts.loginUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000/login";
+  const url = opts.loginUrl ?? resolveBaseUrl();
   const subject = `🔐 บัญชีใหม่ใน ${opts.companyName} — เริ่มใช้งาน Lab Parfumo PO Pro`;
 
   const html = `<!doctype html>
@@ -309,7 +309,7 @@ export async function sendDailyDigest(opts: {
   date: string; // formatted date e.g. "27 เมษายน 2026"
   appUrl?: string;
 }): Promise<SendResult> {
-  const url = opts.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const url = resolveBaseUrl(opts.appUrl);
   const d = opts.data;
   const fmt = (n: number) => `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`;
 
@@ -412,6 +412,21 @@ function escHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * หา base URL สำหรับใช้ในลิงก์อีเมล
+ * Priority:
+ *   1) opts.appUrl (override)
+ *   2) NEXT_PUBLIC_APP_URL (custom domain — ตั้งใน Vercel)
+ *   3) VERCEL_URL (production deployment URL — auto-set โดย Vercel)
+ *   4) localhost (dev fallback)
+ */
+function resolveBaseUrl(override?: string): string {
+  if (override) return override;
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 // ==================================================================
 // PO update email — ส่งหา creator (5 transitions) + admin (PO ใหม่)
 // ==================================================================
@@ -437,12 +452,7 @@ const PO_EMAIL_TEMPLATES: Record<PoEmailKind, PoEmailTemplate> = {
     icon: "✅", title: "สั่งซื้อแล้ว",
     headline: "PO ของคุณถูกสั่งซื้อแล้ว",
     color: "#3B82F6",
-    body: (o) => {
-      const parts: string[] = [];
-      if (o.supplierName) parts.push(`สั่งกับ ${o.supplierName}`);
-      if (o.expectedDate) parts.push(`คาดได้ ${o.expectedDate}`);
-      return parts.join(" • ");
-    },
+    body: (o) => o.expectedDate ? `คาดว่าจะได้รับ ${o.expectedDate}` : "",
   },
   shipping: {
     icon: "🚚", title: "กำลังขนส่ง",
@@ -504,7 +514,7 @@ export interface PoUpdateEmailOpts {
 }
 
 export async function sendPoUpdateEmail(opts: PoUpdateEmailOpts): Promise<SendResult> {
-  const baseUrl = opts.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseUrl = resolveBaseUrl(opts.appUrl);
   const poUrl = `${baseUrl}/po/${opts.poId}`;
   const prefsUrl = `${baseUrl}/preferences`;
 

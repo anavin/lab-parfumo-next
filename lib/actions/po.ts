@@ -988,13 +988,13 @@ export async function updateProcurementAction(
       await notifyUser(
         po.created_by, poId,
         `✅ ${po.po_number} สั่งซื้อแล้ว`,
-        `แอดมินสั่งกับ ${input.supplierName} • คาดว่าจะได้รับ ${input.expectedDate}`,
+        `คาดว่าจะได้รับ ${input.expectedDate}`,
         "po_status_change",
         {
           poNumber: po.po_number,
           emailKind: "ordered",
           by: user.full_name,
-          supplierName: input.supplierName,
+          // Note: ไม่ส่ง supplierName ไปยัง email — อยากให้แจ้งแค่ "สั่งซื้อแล้ว"
           expectedDate: input.expectedDate,
         },
       );
