@@ -20,6 +20,7 @@ function makePo(overrides: Partial<PurchaseOrder>): PurchaseOrder {
     notes: null,
     supplier_name: null,
     supplier_contact: null,
+    supplier_id: null,
     subtotal: null,
     discount: null,
     shipping_fee: null,

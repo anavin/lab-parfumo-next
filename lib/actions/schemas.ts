@@ -82,6 +82,33 @@ export const withdrawSchema = z.object({
 });
 
 // ==================================================================
+// Suppliers
+// ==================================================================
+const optionalText = (max: number) =>
+  z.string().trim().max(max).optional().or(z.literal(""));
+
+export const createSupplierSchema = z.object({
+  name: z.string().trim().min(1, "กรุณากรอกชื่อ Supplier").max(120),
+  code: optionalText(40),
+  tax_id: optionalText(20),
+  category: optionalText(60),
+  contact_person: optionalText(120),
+  phone: optionalText(40),
+  email: z.string().trim().max(120)
+    .refine((v) => !v || z.string().email().safeParse(v).success, "อีเมลไม่ถูกต้อง")
+    .optional()
+    .or(z.literal("")),
+  address: optionalText(500),
+  bank_name: optionalText(60),
+  bank_account: optionalText(40),
+  payment_terms: optionalText(120),
+  notes: optionalText(1000),
+  is_active: z.boolean().optional(),
+});
+
+export const updateSupplierSchema = createSupplierSchema.partial();
+
+// ==================================================================
 // Helper: format zod errors as Thai-friendly string
 // ==================================================================
 export function formatZodError(err: z.ZodError): string {

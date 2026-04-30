@@ -53,6 +53,56 @@ export interface SupplierEntry {
   lastPo: string;
 }
 
+/** Categories ของ Supplier (default — admin จะแก้ใน UI ได้) */
+export const SUPPLIER_CATEGORIES = [
+  "บรรจุภัณฑ์",
+  "สารเคมี",
+  "อุปกรณ์",
+  "บริการ",
+  "อื่นๆ",
+] as const;
+
+/** Supplier — ผู้ผลิต / ผู้ขาย */
+export interface Supplier {
+  id: string;
+  name: string;
+  code: string | null;             // รหัสภายใน เช่น "S001"
+  tax_id: string | null;           // เลขผู้เสียภาษี
+  category: string;                // หมวดหมู่ (free text — ดู SUPPLIER_CATEGORIES สำหรับ default)
+
+  // Contact
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+
+  // Payment
+  bank_name: string;
+  bank_account: string;
+  payment_terms: string;           // เครดิตเทอม
+
+  // Internal
+  notes: string;
+  is_active: boolean;
+
+  // Audit
+  created_at: string;
+  updated_at: string;
+  created_by_name: string;
+  updated_by_name: string;
+}
+
+/** Supplier + stats — ใช้ใน list page + detail */
+export interface SupplierWithStats extends Supplier {
+  poCount: number;          // จำนวน PO ทั้งหมด
+  totalSpend: number;       // ยอดรวมของ PO ที่ counted-for-spend
+  poCountThisYear: number;
+  totalSpendThisYear: number;
+  pendingPoCount: number;   // PO ที่ยังไม่ปิด
+  lastPoDate: string | null;
+  lastPoNumber: string | null;
+}
+
 // ==================================================================
 // Row types
 // ==================================================================
@@ -135,6 +185,8 @@ export interface PurchaseOrder {
   notes: string | null;
   supplier_name: string | null;
   supplier_contact: string | null;
+  /** FK → suppliers.id — null ถ้า PO เก่าไม่ได้ link / supplier ถูกลบ */
+  supplier_id: string | null;
   subtotal: number | null;
   discount: number | null;
   shipping_fee: number | null;
