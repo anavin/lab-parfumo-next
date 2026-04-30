@@ -38,10 +38,6 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-function ageDays(iso: string): number {
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400_000);
-}
-
 type Filter = "all" | "active" | "inactive" | "no-po-this-year";
 
 export function SuppliersClient({
@@ -419,9 +415,6 @@ function SupplierRow({
             <div className="text-muted-foreground inline-flex items-center gap-1">
               <span className="text-muted-foreground/70">PO ล่าสุด:</span>
               <span>{fmtDate(s.lastPoDate)}</span>
-              <span className="text-muted-foreground/50">
-                ({ageDays(s.lastPoDate)} วัน)
-              </span>
             </div>
           )}
         </div>
