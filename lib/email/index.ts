@@ -416,13 +416,20 @@ function escHtml(s: string): string {
  * หา base URL สำหรับใช้ในลิงก์อีเมล
  * Priority:
  *   1) opts.appUrl (override)
- *   2) NEXT_PUBLIC_APP_URL (custom domain — ตั้งใน Vercel)
- *   3) VERCEL_URL (production deployment URL — auto-set โดย Vercel)
- *   4) localhost (dev fallback)
+ *   2) NEXT_PUBLIC_APP_URL (custom domain — ตั้งเองใน Vercel env)
+ *   3) VERCEL_PROJECT_PRODUCTION_URL (Vercel auto: production alias เช่น xxx.vercel.app)
+ *   4) VERCEL_URL (Vercel auto: deployment-specific URL — มี SSO protection)
+ *   5) localhost (dev fallback)
+ *
+ * ⚠️ VERCEL_URL = deployment-specific URL ทุก deploy เปลี่ยนตลอด + ถูก SSO protect
+ *    บน preview deployments → ใช้ VERCEL_PROJECT_PRODUCTION_URL ก่อนเสมอ
  */
 function resolveBaseUrl(override?: string): string {
   if (override) return override;
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:3000";
 }
