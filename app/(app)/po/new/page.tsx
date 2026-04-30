@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Copy } from "lucide-react";
 import { getEquipmentList, getCategories } from "@/lib/db/equipment";
 import { getPoById } from "@/lib/db/po";
+import { getLookups } from "@/lib/db/lookups";
 import type { PoItem } from "@/lib/types/db";
 import { PoCreateClient } from "./_components/po-create-client";
 
@@ -24,11 +25,12 @@ export default async function PoCreatePage({
   const sp = await searchParams;
   const cloneFromId = sp.clone;
 
-  // Pre-fetch equipment, categories, and (optionally) source PO for cloning
-  const [equipment, categories, sourcePo] = await Promise.all([
+  // Pre-fetch equipment, categories, units, and (optionally) source PO for cloning
+  const [equipment, categories, sourcePo, units] = await Promise.all([
     getEquipmentList({ activeOnly: true }),
     getCategories(),
     cloneFromId ? getPoById(cloneFromId) : Promise.resolve(null),
+    getLookups("equipment_unit"),
   ]);
 
   // Build initial items + notes from source PO (strip prices)
@@ -96,6 +98,7 @@ export default async function PoCreatePage({
       <PoCreateClient
         equipment={equipment}
         categories={categories}
+        units={units}
         initialItems={initialItems}
         initialNotes={initialNotes}
       />

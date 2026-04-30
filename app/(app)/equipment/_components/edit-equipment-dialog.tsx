@@ -11,7 +11,8 @@ import {
   ImageCompressProgress, ImageCompressSummary,
   type CompressionProgress,
 } from "@/components/ui/image-compress-progress";
-import type { Equipment } from "@/lib/types/db";
+import { LookupCombobox } from "@/components/ui/lookup-combobox";
+import type { Equipment, Lookup } from "@/lib/types/db";
 import {
   updateEquipmentAction, addEquipmentImageAction, removeEquipmentImageAction,
 } from "@/lib/actions/equipment";
@@ -19,10 +20,11 @@ import { uploadMultipleImagesAction } from "@/lib/actions/upload";
 import { compressImages } from "@/lib/utils/image";
 
 export function EditEquipmentDialog({
-  eq, categories, onClose,
+  eq, categories, units, onClose,
 }: {
   eq: Equipment;
   categories: string[];
+  units?: Lookup[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -298,7 +300,20 @@ export function EditEquipmentDialog({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">หน่วย</label>
-              <Input value={unit} onChange={(e) => setUnit(e.target.value)} disabled={pending} />
+              {units && units.length > 0 ? (
+                <LookupCombobox
+                  type="equipment_unit"
+                  options={units}
+                  value={unit}
+                  onChange={setUnit}
+                  placeholder="เลือก..."
+                  allowCreate
+                  manageHref="/settings"
+                  disabled={pending}
+                />
+              ) : (
+                <Input value={unit} onChange={(e) => setUnit(e.target.value)} disabled={pending} />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ราคาต้นทุน</label>

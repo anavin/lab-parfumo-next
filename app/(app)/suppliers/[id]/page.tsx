@@ -15,6 +15,7 @@ import {
   getSupplierWithStats, getPosBySupplierId,
   getTopItemsForSupplier, getMonthlyTrendForSupplier,
 } from "@/lib/db/suppliers";
+import { getLookups } from "@/lib/db/lookups";
 import { SupplierDetailActions } from "./_components/supplier-detail-actions";
 
 export const dynamic = "force-dynamic";
@@ -59,10 +60,13 @@ export default async function SupplierDetailPage({
   const s = await getSupplierWithStats(id);
   if (!s) notFound();
 
-  const [pos, topItems, trend] = await Promise.all([
+  const [pos, topItems, trend, categories, banks, paymentTerms] = await Promise.all([
     getPosBySupplierId(id, 50),
     getTopItemsForSupplier(id, 10),
     getMonthlyTrendForSupplier(id, 6),
+    getLookups("supplier_category"),
+    getLookups("bank"),
+    getLookups("payment_term"),
   ]);
 
   const initials = (s.name || "?").trim().slice(0, 2).toUpperCase();
@@ -135,7 +139,12 @@ export default async function SupplierDetailPage({
                 )}
               </div>
             </div>
-            <SupplierDetailActions supplier={s} />
+            <SupplierDetailActions
+              supplier={s}
+              categories={categories}
+              banks={banks}
+              paymentTerms={paymentTerms}
+            />
           </div>
         </CardContent>
       </Card>

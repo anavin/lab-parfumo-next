@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requirePrivileged } from "@/lib/auth/require-user";
 import { getSuppliersWithStats } from "@/lib/db/suppliers";
+import { getLookups } from "@/lib/db/lookups";
 import { SuppliersClient } from "./_components/suppliers-client";
 
 export const metadata: Metadata = {
@@ -11,7 +12,12 @@ export const dynamic = "force-dynamic";
 
 export default async function SuppliersPage() {
   const me = await requirePrivileged();
-  const suppliers = await getSuppliersWithStats();
+  const [suppliers, categories, banks, paymentTerms] = await Promise.all([
+    getSuppliersWithStats(),
+    getLookups("supplier_category"),
+    getLookups("bank"),
+    getLookups("payment_term"),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -21,7 +27,13 @@ export default async function SuppliersPage() {
           รายชื่อผู้ผลิต/ผู้ขาย — ใช้ตอนสั่งซื้อ + ดูประวัติ + ยอดสะสม
         </p>
       </div>
-      <SuppliersClient suppliers={suppliers} myRole={me.role} />
+      <SuppliersClient
+        suppliers={suppliers}
+        myRole={me.role}
+        categories={categories}
+        banks={banks}
+        paymentTerms={paymentTerms}
+      />
     </div>
   );
 }

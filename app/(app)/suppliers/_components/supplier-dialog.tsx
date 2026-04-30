@@ -9,7 +9,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
-import { SUPPLIER_CATEGORIES, type Supplier } from "@/lib/types/db";
+import { LookupCombobox } from "@/components/ui/lookup-combobox";
+import type { Supplier, Lookup } from "@/lib/types/db";
 import {
   createSupplierAction, updateSupplierAction,
 } from "@/lib/actions/suppliers";
@@ -34,7 +35,7 @@ const EMPTY_FORM: FormState = {
   name: "",
   code: "",
   tax_id: "",
-  category: SUPPLIER_CATEGORIES[0],
+  category: "",
   contact_person: "",
   phone: "",
   email: "",
@@ -65,10 +66,13 @@ function fromSupplier(s: Supplier): FormState {
 }
 
 export function SupplierDialog({
-  mode, supplier, onClose, onSaved,
+  mode, supplier, categories, banks, paymentTerms, onClose, onSaved,
 }: {
   mode: "create" | "edit";
   supplier?: Supplier;
+  categories: Lookup[];
+  banks: Lookup[];
+  paymentTerms: Lookup[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -156,17 +160,16 @@ export function SupplierDialog({
             </div>
             <div>
               <Label>หมวดหมู่</Label>
-              <select
-                className="h-10 w-full px-3 rounded-lg border border-input bg-background text-sm"
+              <LookupCombobox
+                type="supplier_category"
+                options={categories}
                 value={form.category}
-                onChange={(e) => set("category", e.target.value)}
+                onChange={(v) => set("category", v)}
+                placeholder="เลือกหมวดหมู่... หรือพิมพ์เพื่อสร้างใหม่"
+                allowCreate
+                manageHref="/settings"
                 disabled={pending}
-              >
-                <option value="">— ไม่ระบุ —</option>
-                {SUPPLIER_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              />
             </div>
           </Section>
 
@@ -220,10 +223,14 @@ export function SupplierDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>ธนาคาร</Label>
-                <Input
+                <LookupCombobox
+                  type="bank"
+                  options={banks}
                   value={form.bank_name}
-                  onChange={(e) => set("bank_name", e.target.value)}
-                  placeholder="กรุงเทพ / ไทยพาณิชย์ / กสิกรไทย"
+                  onChange={(v) => set("bank_name", v)}
+                  placeholder="เลือกธนาคาร..."
+                  allowCreate
+                  manageHref="/settings"
                   disabled={pending}
                 />
               </div>
@@ -239,10 +246,14 @@ export function SupplierDialog({
             </div>
             <div>
               <Label>เครดิตเทอม</Label>
-              <Input
+              <LookupCombobox
+                type="payment_term"
+                options={paymentTerms}
                 value={form.payment_terms}
-                onChange={(e) => set("payment_terms", e.target.value)}
-                placeholder="30 วันหลังรับของ / โอนทันที"
+                onChange={(v) => set("payment_terms", v)}
+                placeholder="เลือกเครดิตเทอม... หรือพิมพ์เพื่อสร้างใหม่"
+                allowCreate
+                manageHref="/settings"
                 disabled={pending}
               />
             </div>

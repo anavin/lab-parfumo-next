@@ -11,14 +11,17 @@ import {
   ImageCompressProgress, ImageCompressSummary,
   type CompressionProgress,
 } from "@/components/ui/image-compress-progress";
+import { LookupCombobox } from "@/components/ui/lookup-combobox";
 import { createEquipmentAction } from "@/lib/actions/equipment";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
 import { compressImages } from "@/lib/utils/image";
+import type { Lookup } from "@/lib/types/db";
 
 export function AddEquipmentDialog({
-  categories, onClose,
+  categories, units, onClose,
 }: {
   categories: string[];
+  units?: Lookup[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -163,8 +166,21 @@ export function AddEquipmentDialog({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">หน่วย</label>
-              <Input value={unit} onChange={(e) => setUnit(e.target.value)}
-                     placeholder="ชิ้น" disabled={pending} />
+              {units && units.length > 0 ? (
+                <LookupCombobox
+                  type="equipment_unit"
+                  options={units}
+                  value={unit}
+                  onChange={setUnit}
+                  placeholder="เลือก..."
+                  allowCreate
+                  manageHref="/settings"
+                  disabled={pending}
+                />
+              ) : (
+                <Input value={unit} onChange={(e) => setUnit(e.target.value)}
+                       placeholder="ชิ้น" disabled={pending} />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">ราคาต้นทุน (฿)</label>

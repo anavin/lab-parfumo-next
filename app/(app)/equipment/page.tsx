@@ -3,6 +3,7 @@ import { requirePrivileged } from "@/lib/auth/require-user";
 import {
   getEquipmentList, getCategories, getPendingEquipment,
 } from "@/lib/db/equipment";
+import { getLookups } from "@/lib/db/lookups";
 import { EquipmentClient } from "./_components/equipment-client";
 
 export const metadata: Metadata = {
@@ -14,10 +15,11 @@ export const dynamic = "force-dynamic";
 export default async function EquipmentPage() {
   await requirePrivileged();
 
-  const [equipment, categories, pending] = await Promise.all([
+  const [equipment, categories, pending, units] = await Promise.all([
     getEquipmentList({ activeOnly: false }),
     getCategories(),
     getPendingEquipment(),
+    getLookups("equipment_unit"),
   ]);
 
   // active + approved (ไม่รวม pending/rejected) สำหรับ list หลัก
@@ -38,6 +40,7 @@ export default async function EquipmentPage() {
         equipment={main}
         categories={categories}
         pending={pending}
+        units={units}
       />
     </div>
   );

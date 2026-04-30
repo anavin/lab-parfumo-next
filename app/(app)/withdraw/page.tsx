@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth/require-user";
 import { getEquipmentList, getCategories } from "@/lib/db/equipment";
 import { getWithdrawals } from "@/lib/db/withdraw";
+import { getLookups } from "@/lib/db/lookups";
 import { WithdrawClient } from "./_components/withdraw-client";
 
 export const metadata: Metadata = {
@@ -23,13 +24,14 @@ export default async function WithdrawPage({
   const sp = await searchParams;
   const tab = sp.tab === "history" ? "history" : "form";
 
-  const [equipment, categories, withdrawals] = await Promise.all([
+  const [equipment, categories, withdrawals, purposes] = await Promise.all([
     getEquipmentList({ activeOnly: true }),
     getCategories(),
     getWithdrawals({
       userId: (user.role === "admin" || user.role === "supervisor") ? undefined : user.id,
       limit: 200,
     }),
+    getLookups("withdrawal_purpose"),
   ]);
 
   return (
@@ -46,6 +48,7 @@ export default async function WithdrawPage({
         equipment={equipment}
         categories={categories}
         withdrawals={withdrawals}
+        purposes={purposes}
         currentUserId={user.id}
         isAdmin={(user.role === "admin" || user.role === "supervisor")}
       />

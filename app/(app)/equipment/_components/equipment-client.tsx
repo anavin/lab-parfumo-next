@@ -13,13 +13,15 @@ import { PendingApproval } from "./pending-approval";
 import { EquipmentGrid } from "./equipment-grid";
 import { AddEquipmentDialog } from "./add-equipment-dialog";
 import { CategoryManager } from "./category-manager";
+import type { Lookup } from "@/lib/types/db";
 
 export function EquipmentClient({
-  equipment, categories, pending,
+  equipment, categories, pending, units,
 }: {
   equipment: Equipment[];
   categories: string[];
   pending: Equipment[];
+  units: Lookup[];
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
@@ -240,7 +242,7 @@ export function EquipmentClient({
                 {/* Items */}
                 {!isCollapsed && (
                   <div className="px-4 pb-4 pt-1 border-t border-border/40">
-                    <EquipmentGrid items={group.items} categories={categories} />
+                    <EquipmentGrid items={group.items} categories={categories} units={units} />
                   </div>
                 )}
               </section>
@@ -253,6 +255,7 @@ export function EquipmentClient({
       {showAdd && (
         <AddEquipmentDialog
           categories={categories}
+          units={units}
           onClose={() => setShowAdd(false)}
         />
       )}

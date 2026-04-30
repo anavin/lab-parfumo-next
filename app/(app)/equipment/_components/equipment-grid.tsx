@@ -11,15 +11,16 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/cn";
-import type { Equipment } from "@/lib/types/db";
+import type { Equipment, Lookup } from "@/lib/types/db";
 import { deleteEquipmentAction } from "@/lib/actions/equipment";
 import { EditEquipmentDialog } from "./edit-equipment-dialog";
 
 export function EquipmentGrid({
-  items, categories,
+  items, categories, units,
 }: {
   items: Equipment[];
   categories: string[];
+  units?: Lookup[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -63,6 +64,7 @@ export function EquipmentGrid({
         <EditEquipmentDialog
           eq={editing}
           categories={categories}
+          units={units}
           onClose={() => setEditId(null)}
         />
       )}

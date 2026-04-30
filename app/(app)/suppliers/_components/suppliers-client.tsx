@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
-import type { SupplierWithStats } from "@/lib/types/db";
+import type { SupplierWithStats, Lookup } from "@/lib/types/db";
 import {
   deleteSupplierAction, restoreSupplierAction,
 } from "@/lib/actions/suppliers";
@@ -41,10 +41,13 @@ function fmtDate(iso: string | null): string {
 type Filter = "all" | "active" | "inactive" | "no-po-this-year";
 
 export function SuppliersClient({
-  suppliers, myRole,
+  suppliers, myRole, categories, banks, paymentTerms,
 }: {
   suppliers: SupplierWithStats[];
   myRole: "admin" | "supervisor" | "requester";
+  categories: Lookup[];
+  banks: Lookup[];
+  paymentTerms: Lookup[];
 }) {
   const router = useRouter();
   const [showAdd, setShowAdd] = useState(false);
@@ -254,6 +257,9 @@ export function SuppliersClient({
         {showAdd && (
           <SupplierDialog
             mode="create"
+            categories={categories}
+            banks={banks}
+            paymentTerms={paymentTerms}
             onClose={() => setShowAdd(false)}
             onSaved={() => {
               setShowAdd(false);
@@ -265,6 +271,9 @@ export function SuppliersClient({
           <SupplierDialog
             mode="edit"
             supplier={editing}
+            categories={categories}
+            banks={banks}
+            paymentTerms={paymentTerms}
             onClose={() => setEditId(null)}
             onSaved={() => {
               setEditId(null);

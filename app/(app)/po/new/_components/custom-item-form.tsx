@@ -10,16 +10,19 @@ import {
   ImageCompressProgress, ImageCompressSummary,
   type CompressionProgress,
 } from "@/components/ui/image-compress-progress";
+import { LookupCombobox } from "@/components/ui/lookup-combobox";
 import { uploadMultipleImagesAction } from "@/lib/actions/upload";
 import { compressImages } from "@/lib/utils/image";
+import type { Lookup } from "@/lib/types/db";
 
 export function CustomItemForm({
-  onAdd,
+  onAdd, units,
 }: {
   onAdd: (
     name: string, qty: number, unit: string, notes: string,
     imageUrls: string[],
   ) => void;
+  units?: Lookup[];
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -153,12 +156,24 @@ export function CustomItemForm({
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 หน่วย
               </label>
-              <Input
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder="ชิ้น"
-                disabled={pending}
-              />
+              {units && units.length > 0 ? (
+                <LookupCombobox
+                  type="equipment_unit"
+                  options={units}
+                  value={unit}
+                  onChange={setUnit}
+                  placeholder="เลือก..."
+                  allowCreate
+                  disabled={pending}
+                />
+              ) : (
+                <Input
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  placeholder="ชิ้น"
+                  disabled={pending}
+                />
+              )}
             </div>
           </div>
 

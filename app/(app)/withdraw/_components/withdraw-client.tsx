@@ -3,19 +3,20 @@
 import { useState } from "react";
 import { Plus, History } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { Equipment, Withdrawal } from "@/lib/types/db";
+import type { Equipment, Withdrawal, Lookup } from "@/lib/types/db";
 import { WithdrawForm } from "./withdraw-form";
 import { WithdrawHistory } from "./withdraw-history";
 
 type Tab = "form" | "history";
 
 export function WithdrawClient({
-  initialTab, equipment, categories, withdrawals, currentUserId, isAdmin,
+  initialTab, equipment, categories, withdrawals, purposes, currentUserId, isAdmin,
 }: {
   initialTab: Tab;
   equipment: Equipment[];
   categories: string[];
   withdrawals: Withdrawal[];
+  purposes: Lookup[];
   currentUserId: string;
   isAdmin: boolean;
 }) {
@@ -41,7 +42,7 @@ export function WithdrawClient({
 
       {/* Content */}
       {tab === "form" ? (
-        <WithdrawForm equipment={equipment} categories={categories} />
+        <WithdrawForm equipment={equipment} categories={categories} purposes={purposes} />
       ) : (
         <WithdrawHistory
           withdrawals={withdrawals}

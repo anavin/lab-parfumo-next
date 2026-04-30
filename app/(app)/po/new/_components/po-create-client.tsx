@@ -13,17 +13,18 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { createPoAction } from "@/lib/actions/po";
-import type { Equipment, PoItem } from "@/lib/types/db";
+import type { Equipment, PoItem, Lookup } from "@/lib/types/db";
 import { EquipmentGrid } from "./equipment-grid";
 import { CustomItemForm } from "./custom-item-form";
 import { CartItems } from "./cart-items";
 
 export function PoCreateClient({
-  equipment, categories,
+  equipment, categories, units,
   initialItems, initialNotes,
 }: {
   equipment: Equipment[];
   categories: string[];
+  units?: Lookup[];
   initialItems?: PoItem[];
   initialNotes?: string;
 }) {
@@ -322,7 +323,7 @@ export function PoCreateClient({
       )}
 
       {/* ===== Custom item form ===== */}
-      <CustomItemForm onAdd={addCustomItem} />
+      <CustomItemForm onAdd={addCustomItem} units={units} />
 
       {/* Empty hint at bottom (only when no items) */}
       {items.length === 0 && (

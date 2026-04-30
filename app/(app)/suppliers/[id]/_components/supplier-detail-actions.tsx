@@ -6,16 +6,19 @@ import { Edit2, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
-import type { Supplier } from "@/lib/types/db";
+import type { Supplier, Lookup } from "@/lib/types/db";
 import {
   deleteSupplierAction, restoreSupplierAction,
 } from "@/lib/actions/suppliers";
 import { SupplierDialog } from "../../_components/supplier-dialog";
 
 export function SupplierDetailActions({
-  supplier,
+  supplier, categories, banks, paymentTerms,
 }: {
   supplier: Supplier;
+  categories: Lookup[];
+  banks: Lookup[];
+  paymentTerms: Lookup[];
 }) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
@@ -80,6 +83,9 @@ export function SupplierDetailActions({
         <SupplierDialog
           mode="edit"
           supplier={supplier}
+          categories={categories}
+          banks={banks}
+          paymentTerms={paymentTerms}
           onClose={() => setShowEdit(false)}
           onSaved={() => {
             setShowEdit(false);

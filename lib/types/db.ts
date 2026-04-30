@@ -62,6 +62,44 @@ export const SUPPLIER_CATEGORIES = [
   "อื่นๆ",
 ] as const;
 
+// ==================================================================
+// Lookups — generic table สำหรับ dropdown values ทุกประเภท
+// ==================================================================
+export const LOOKUP_TYPES = [
+  "supplier_category",   // หมวดหมู่ Supplier
+  "bank",                // ธนาคาร
+  "equipment_unit",      // หน่วย เช่น ชิ้น/กล่อง
+  "payment_term",        // เครดิตเทอม
+  "withdrawal_purpose",  // เหตุผลการเบิก
+] as const;
+export type LookupType = (typeof LOOKUP_TYPES)[number];
+
+export const LOOKUP_TYPE_LABEL: Record<LookupType, string> = {
+  supplier_category: "หมวดหมู่ Supplier",
+  bank: "ธนาคาร",
+  equipment_unit: "หน่วย",
+  payment_term: "เครดิตเทอม",
+  withdrawal_purpose: "เหตุผลการเบิก",
+};
+
+export interface Lookup {
+  id: string;
+  type: LookupType;
+  name: string;
+  code: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string;
+  updated_by_name: string;
+}
+
+/** Lookup + จำนวนการใช้งาน — สำหรับหน้าจัดการ */
+export interface LookupWithUsage extends Lookup {
+  usageCount: number;
+}
+
 /** Supplier — ผู้ผลิต / ผู้ขาย */
 export interface Supplier {
   id: string;

@@ -15,14 +15,16 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
-import type { Equipment } from "@/lib/types/db";
+import { LookupCombobox } from "@/components/ui/lookup-combobox";
+import type { Equipment, Lookup } from "@/lib/types/db";
 import { createWithdrawalAction } from "@/lib/actions/withdraw";
 
 export function WithdrawForm({
-  equipment, categories,
+  equipment, categories, purposes,
 }: {
   equipment: Equipment[];
   categories: string[];
+  purposes?: Lookup[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -228,6 +230,7 @@ export function WithdrawForm({
         {selectedEq && (
           <SelectedItemForm
             eq={selectedEq}
+            purposes={purposes}
             onClose={() => setSelectedId(null)}
             onSuccess={() => {
               setSelectedId(null);
@@ -459,9 +462,10 @@ function RichWithdrawCard({
 // Selected item form (sticky bottom)
 // ==================================================================
 function SelectedItemForm({
-  eq, onClose, onSuccess, startTransition, pending,
+  eq, purposes, onClose, onSuccess, startTransition, pending,
 }: {
   eq: Equipment;
+  purposes?: Lookup[];
   onClose: () => void;
   onSuccess: () => void;
   startTransition: React.TransitionStartFunction;
@@ -557,12 +561,25 @@ function SelectedItemForm({
             <label className="block text-xs font-medium text-foreground mb-1">
               ใช้ทำอะไร / ใช้ที่ไหน *
             </label>
-            <Input
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              placeholder="เช่น ผลิต CELEB lot 24, ตัวอย่างลูกค้า"
-              disabled={pending}
-            />
+            {purposes && purposes.length > 0 ? (
+              <LookupCombobox
+                type="withdrawal_purpose"
+                options={purposes}
+                value={purpose}
+                onChange={setPurpose}
+                placeholder="เลือก หรือพิมพ์เพื่อสร้างใหม่..."
+                allowCreate
+                manageHref="/settings"
+                disabled={pending}
+              />
+            ) : (
+              <Input
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                placeholder="เช่น ผลิต CELEB lot 24, ตัวอย่างลูกค้า"
+                disabled={pending}
+              />
+            )}
           </div>
 
           {error && <Alert tone="danger" className="text-sm">❌ {error}</Alert>}
