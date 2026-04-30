@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  Plus, Search, ChevronDown, ChevronRight, FolderOpen,
+  Plus, Search, ChevronDown, ChevronRight, FolderOpen, Upload,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import type { Equipment } from "@/lib/types/db";
 import { PendingApproval } from "./pending-approval";
 import { EquipmentGrid } from "./equipment-grid";
 import { AddEquipmentDialog } from "./add-equipment-dialog";
+import { BulkImportDialog } from "./bulk-import-dialog";
 import { CategoryManager } from "./category-manager";
 import type { Lookup } from "@/lib/types/db";
 
@@ -24,6 +25,7 @@ export function EquipmentClient({
   units: Lookup[];
 }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("ทั้งหมด");
   const [sortBy, setSortBy] = useState<"name" | "stock_low" | "reorder">("name");
@@ -185,6 +187,9 @@ export function EquipmentClient({
                 )}
               </Button>
             )}
+            <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
+              <Upload className="h-3.5 w-3.5" /> Import CSV
+            </Button>
             <Button size="sm" onClick={() => setShowAdd(true)}>
               <Plus className="h-3.5 w-3.5" /> เพิ่มสินค้าใหม่
             </Button>
@@ -258,6 +263,11 @@ export function EquipmentClient({
           units={units}
           onClose={() => setShowAdd(false)}
         />
+      )}
+
+      {/* Bulk import CSV */}
+      {showImport && (
+        <BulkImportDialog onClose={() => setShowImport(false)} />
       )}
     </div>
   );

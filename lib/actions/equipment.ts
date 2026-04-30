@@ -98,6 +98,124 @@ export async function updateEquipmentAction(
   return { ok: true, equipmentId };
 }
 
+// ==================================================================
+// Bulk import (Phase C — CSV)
+// Insert ทีละ batch + skip duplicate name (case-insensitive)
+// ==================================================================
+export interface BulkRowInput {
+  name: string;
+  category?: string;
+  sku?: string;
+  unit?: string;
+  description?: string;
+  lastCost?: number;
+  stock?: number;
+  reorderLevel?: number;
+}
+export interface BulkResult {
+  ok: boolean;
+  error?: string;
+  inserted: number;
+  skipped: number;          // ซ้ำชื่อ
+  failed: number;           // insert ผิดพลาด
+  failedReasons?: string[]; // เก็บ 5 รายแรกพอ
+}
+
+export async function bulkCreateEquipmentAction(
+  rows: BulkRowInput[],
+): Promise<BulkResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor", inserted: 0, skipped: 0, failed: 0 };
+  }
+  if (!rows.length) {
+    return { ok: false, error: "ไม่มีข้อมูล", inserted: 0, skipped: 0, failed: 0 };
+  }
+  if (rows.length > 5000) {
+    return {
+      ok: false,
+      error: "เกิน limit 5,000 แถวต่อรอบ — ลอง split ไฟล์",
+      inserted: 0, skipped: 0, failed: 0,
+    };
+  }
+
+  const sb = getSupabaseAdmin();
+
+  // 1. Pre-fetch existing names (case-insensitive dedupe)
+  const { data: existing } = await sb
+    .from("equipment")
+    .select("name");
+  const existingSet = new Set(
+    ((existing ?? []) as Array<{ name: string }>).map((e) => e.name.trim().toLowerCase()),
+  );
+
+  // 2. Build payload + dedupe within input itself
+  const seenInBatch = new Set<string>();
+  const payload: Record<string, unknown>[] = [];
+  let skipped = 0;
+  for (const r of rows) {
+    const name = (r.name ?? "").trim();
+    if (!name) {
+      skipped++;
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (existingSet.has(key) || seenInBatch.has(key)) {
+      skipped++;
+      continue;
+    }
+    seenInBatch.add(key);
+    payload.push({
+      name,
+      category: (r.category ?? "").trim() || "อุปกรณ์อื่นๆ",
+      sku: (r.sku ?? "").trim() || null,
+      unit: (r.unit ?? "").trim() || "ชิ้น",
+      description: (r.description ?? "").trim(),
+      last_cost: Number(r.lastCost ?? 0) || 0,
+      stock: Math.max(0, Math.floor(Number(r.stock ?? 0)) || 0),
+      reorder_level: Math.max(0, Math.floor(Number(r.reorderLevel ?? 0)) || 0),
+      is_active: true,
+      approval_status: "approved",
+    });
+  }
+
+  if (!payload.length) {
+    return {
+      ok: true,
+      inserted: 0,
+      skipped,
+      failed: 0,
+    };
+  }
+
+  // 3. Insert in chunks of 100
+  const CHUNK = 100;
+  let inserted = 0;
+  let failed = 0;
+  const failedReasons: string[] = [];
+  for (let i = 0; i < payload.length; i += CHUNK) {
+    const slice = payload.slice(i, i + CHUNK);
+    const { error, count } = await sb
+      .from("equipment")
+      .insert(slice as never, { count: "exact" });
+    if (error) {
+      failed += slice.length;
+      if (failedReasons.length < 5) failedReasons.push(error.message);
+    } else {
+      inserted += count ?? slice.length;
+    }
+  }
+
+  revalidatePath("/equipment");
+  return {
+    ok: true,
+    inserted,
+    skipped,
+    failed,
+    failedReasons: failedReasons.length ? failedReasons : undefined,
+  };
+}
+
 export async function deleteEquipmentAction(
   equipmentId: string,
 ): Promise<ActionResult> {
