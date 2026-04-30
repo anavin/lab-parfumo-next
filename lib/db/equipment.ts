@@ -30,6 +30,27 @@ export const getEquipmentList = cache(async (opts: {
   return (data ?? []) as Equipment[];
 });
 
+/**
+ * Equipment ที่ stock ≤ reorder_level — ใช้ใน Dashboard low-stock alert
+ * + ต้อง active + approved + reorder_level > 0
+ */
+export const getLowStockEquipment = cache(async (): Promise<Equipment[]> => {
+  const sb = getSupabaseAdmin();
+  const { data } = await sb
+    .from("equipment")
+    .select("*")
+    .eq("is_active", true)
+    .gt("reorder_level", 0)
+    .or("approval_status.eq.approved,approval_status.is.null")
+    .order("stock", { ascending: true });
+
+  // Filter ใน JS เพราะ Supabase ไม่ support column-to-column compare
+  // (stock <= reorder_level)
+  return ((data ?? []) as Equipment[]).filter(
+    (e) => (e.stock ?? 0) <= (e.reorder_level ?? 0),
+  );
+});
+
 export const getEquipmentById = cache(
   async (id: string): Promise<Equipment | null> => {
     const sb = getSupabaseAdmin();

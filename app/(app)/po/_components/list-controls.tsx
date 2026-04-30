@@ -6,7 +6,7 @@
  */
 import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SORT_LABELS, type PoSortKey } from "@/lib/types/db";
 
@@ -89,6 +89,15 @@ export function ListControls({
             <ChevronDown className={`h-4 w-4 transition-transform ${advOpen ? "rotate-180" : ""}`} />
           </button>
         )}
+        {/* Export CSV — ใช้ filter ปัจจุบัน */}
+        <a
+          href={`/api/po/export?${params.toString()}`}
+          className="h-11 px-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:border-emerald-600 hover:text-emerald-700"
+          title="Download CSV ตาม filter ปัจจุบัน"
+        >
+          <Download className="size-4" />
+          Export CSV
+        </a>
       </div>
 
       {showAdvanced && advOpen && (

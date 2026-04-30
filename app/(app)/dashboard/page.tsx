@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AlertTriangle, Clock, Plus, FileText, Package,
+  AlertTriangle, Clock, Plus, FileText, Package, PackageX,
   TrendingUp, TrendingDown, Trophy, AlertCircle, ArrowRight,
   ClipboardEdit, ShoppingBag, Truck, PackageCheck,
   CheckCircle2, XCircle, type LucideIcon,
@@ -14,9 +14,10 @@ import {
   getPos, getPosPendingReceipt, computeStats, pickActionItems,
   buildMonthlyTrend, topSuppliers,
 } from "@/lib/db/po";
+import { getLowStockEquipment } from "@/lib/db/equipment";
 import { TrendChart, SuppliersChart } from "./_components/lazy-charts";
 import { StaffDashboard } from "./_components/staff-dashboard";
-import type { PoStatus, PurchaseOrder } from "@/lib/types/db";
+import type { PoStatus, PurchaseOrder, Equipment } from "@/lib/types/db";
 
 export const metadata: Metadata = {
   title: "Dashboard — Lab Parfumo PO",
@@ -114,7 +115,10 @@ export default async function DashboardPage() {
   }
 
   // === Admin path ===
-  const pos = await getPos({ userId: user.id, role: user.role });
+  const [pos, lowStockEquipment] = await Promise.all([
+    getPos({ userId: user.id, role: user.role }),
+    getLowStockEquipment(),
+  ]);
 
   // === Empty state ===
   if (!pos.length) {
@@ -188,6 +192,11 @@ export default async function DashboardPage() {
           </Alert>
         )}
       </div>
+
+      {/* Low stock alert (admin/supervisor only) */}
+      {lowStockEquipment.length > 0 && (
+        <LowStockAlert items={lowStockEquipment} />
+      )}
 
       {/* KPI Hero (admin) */}
       {isAdmin && <KpiHero stats={stats} />}
@@ -340,6 +349,91 @@ export default async function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ==================================================================
+// Low Stock Alert — Admin/Supervisor only
+// ==================================================================
+function LowStockAlert({ items }: { items: Equipment[] }) {
+  const top = items.slice(0, 5);
+  const more = items.length - top.length;
+
+  return (
+    <Card className="border-red-200 bg-gradient-to-br from-red-50 via-orange-50 to-red-50/40">
+      <CardContent className="p-5">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 size-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 text-white flex items-center justify-center shadow-md ring-2 ring-red-200">
+            <PackageX className="size-6" strokeWidth={2.25} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <h3 className="font-bold text-red-900">
+                ⚠️ Stock ใกล้หมด — {items.length} รายการ
+              </h3>
+              <span className="text-xs font-medium text-red-700/80 bg-red-100 px-2 py-0.5 rounded-full">
+                ต่ำกว่า reorder level
+              </span>
+            </div>
+            <div className="space-y-1 mb-3">
+              {top.map((eq) => {
+                const stock = eq.stock ?? 0;
+                const reorder = eq.reorder_level ?? 0;
+                const need = Math.max(reorder - stock, 1);
+                return (
+                  <div
+                    key={eq.id}
+                    className="flex items-center justify-between gap-2 text-sm py-1 border-b border-red-200/40 last:border-0"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Package className="size-3.5 text-red-700 flex-shrink-0" />
+                      <span className="font-medium text-foreground truncate">
+                        {eq.name}
+                      </span>
+                      {eq.unit && (
+                        <span className="text-[11px] text-muted-foreground">
+                          ({eq.unit})
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs flex-shrink-0 inline-flex items-center gap-1.5">
+                      <span className={`tabular-nums font-bold ${stock === 0 ? "text-red-700" : "text-red-600"}`}>
+                        {stock}
+                      </span>
+                      <span className="text-muted-foreground">/</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {reorder}
+                      </span>
+                      <span className="ml-2 text-emerald-700 font-semibold">
+                        +{need}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              {more > 0 && (
+                <div className="text-xs text-red-700/70 pt-1">
+                  + อีก {more} รายการ
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/po/new?from=low-stock">
+                <Button size="sm" className="bg-red-600 hover:bg-red-700">
+                  <ShoppingBag className="size-3.5" />
+                  สร้าง PO ทันที ({items.length} รายการ)
+                </Button>
+              </Link>
+              <Link href="/equipment?lowOnly=1">
+                <Button size="sm" variant="outline">
+                  ดูรายการทั้งหมด <ArrowRight className="size-3" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
