@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FileText, PackageOpen, Send, Box,
-  Wallet, BarChart3, Users, Settings, Building2,
+  Wallet, BarChart3, Users, Settings, Building2, ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,7 @@ const ITEMS: NavItem[] = [
   { href: "/budget", label: "งบ", icon: Wallet, privileged: true },
   { href: "/reports", label: "รายงาน", icon: BarChart3, privileged: true },
   { href: "/users", label: "ผู้ใช้", icon: Users, privileged: true },
+  { href: "/audit", label: "Audit", icon: ScrollText, adminOnly: true },
   // /settings มีไว้ใน dropdown menu ของ user — ไม่ใส่ใน nav bar หลัก
 ];
 
