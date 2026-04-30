@@ -205,9 +205,15 @@ export function ReceiveForm({
                       value={received === 0 ? "" : received}
                       placeholder="0"
                       onFocus={(e) => e.currentTarget.select()}
-                      onChange={(e) => updateItem(i, {
-                        qty_received: Math.max(0, parseInt(e.target.value, 10) || 0),
-                      })}
+                      onChange={(e) => {
+                        const newReceived = Math.max(0, parseInt(e.target.value, 10) || 0);
+                        // ถ้า damaged ปัจจุบัน > newReceived → clamp damaged ลงมาด้วย
+                        const update: Partial<{ qty_received: number; qty_damaged: number }> = {
+                          qty_received: newReceived,
+                        };
+                        if (damaged > newReceived) update.qty_damaged = newReceived;
+                        updateItem(i, update);
+                      }}
                       disabled={pending}
                       className="h-9 w-full px-2 rounded-lg border border-slate-300 bg-white text-sm tabular-nums text-right"
                     />

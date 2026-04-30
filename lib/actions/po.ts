@@ -1056,6 +1056,24 @@ export async function addDeliveryAction(
     };
   }
 
+  // Validation: qty_damaged ห้ามมากกว่า qty_received
+  for (const it of input.itemsReceived) {
+    const received = Math.floor(it.qty_received ?? 0);
+    const damaged = Math.floor(it.qty_damaged ?? 0);
+    if (damaged > received) {
+      return {
+        ok: false,
+        error: `จำนวนเสียหายของ "${it.name}" (${damaged}) มากกว่าจำนวนที่ได้รับ (${received}) ไม่ได้`,
+      };
+    }
+    if (received < 0 || damaged < 0) {
+      return {
+        ok: false,
+        error: `จำนวนของ "${it.name}" ติดลบไม่ได้`,
+      };
+    }
+  }
+
   // หา delivery_no + insert แบบทนต่อ race condition
   // - พยายาม atomic ผ่าน RPC ก่อน (advisory lock + unique constraint)
   // - ถ้า RPC ไม่มี (migration ยังไม่รัน) → fallback select-max + retry
