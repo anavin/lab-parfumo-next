@@ -20,11 +20,12 @@ import type { Equipment, Lookup } from "@/lib/types/db";
 import { createWithdrawalAction } from "@/lib/actions/withdraw";
 
 export function WithdrawForm({
-  equipment, categories, purposes,
+  equipment, categories, purposes, canCreateLookup,
 }: {
   equipment: Equipment[];
   categories: string[];
   purposes?: Lookup[];
+  canCreateLookup?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -231,6 +232,7 @@ export function WithdrawForm({
           <SelectedItemForm
             eq={selectedEq}
             purposes={purposes}
+            canCreateLookup={canCreateLookup}
             onClose={() => setSelectedId(null)}
             onSuccess={() => {
               setSelectedId(null);
@@ -462,10 +464,11 @@ function RichWithdrawCard({
 // Selected item form (sticky bottom)
 // ==================================================================
 function SelectedItemForm({
-  eq, purposes, onClose, onSuccess, startTransition, pending,
+  eq, purposes, canCreateLookup, onClose, onSuccess, startTransition, pending,
 }: {
   eq: Equipment;
   purposes?: Lookup[];
+  canCreateLookup?: boolean;
   onClose: () => void;
   onSuccess: () => void;
   startTransition: React.TransitionStartFunction;
@@ -567,9 +570,9 @@ function SelectedItemForm({
                 options={purposes}
                 value={purpose}
                 onChange={setPurpose}
-                placeholder="เลือก หรือพิมพ์เพื่อสร้างใหม่..."
-                allowCreate
-                manageHref="/settings"
+                placeholder={canCreateLookup ? "เลือก หรือพิมพ์เพื่อสร้างใหม่..." : "เลือก..."}
+                allowCreate={canCreateLookup}
+                manageHref={canCreateLookup ? "/settings" : undefined}
                 disabled={pending}
               />
             ) : (

@@ -32,10 +32,13 @@ export async function GET(req: Request) {
   const to = url.searchParams.get("to") ?? "";
 
   // Fetch — staff เห็นแค่ของตัวเอง (ตาม role logic เดิม)
+  // จำกัด 1000 แถว เพื่อกัน DoS + ทำให้ Excel เปิดไหว
+  // ถ้าต้องการ export มากกว่านี้ → ใช้ filter ลดลง (date range / status)
+  const EXPORT_LIMIT = 1000;
   const all = await getPos({
     userId: user.id,
     role: user.role,
-    limit: 5000,
+    limit: EXPORT_LIMIT,
   });
 
   // Filter (re-use logic จาก PO list)

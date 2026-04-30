@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/equipment";
 import { getPoById } from "@/lib/db/po";
 import { getLookups } from "@/lib/db/lookups";
+import { requireUser } from "@/lib/auth/require-user";
 import type { PoItem } from "@/lib/types/db";
 import { PoCreateClient } from "./_components/po-create-client";
 
@@ -26,6 +27,8 @@ export default async function PoCreatePage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+  const user = await requireUser();
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
   const cloneFromId = sp.clone;
   const fromLowStock = sp.from === "low-stock";
 
@@ -142,6 +145,7 @@ export default async function PoCreatePage({
         equipment={equipment}
         categories={categories}
         units={units}
+        canCreateLookup={isPrivileged}
         initialItems={initialItems}
         initialNotes={initialNotes}
       />

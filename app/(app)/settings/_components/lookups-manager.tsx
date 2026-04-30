@@ -88,15 +88,66 @@ export function LookupsManager({
     });
   }
 
+  // Compute summary stats per type
+  const totalActive = Object.values(lookupsByType).reduce(
+    (s, list) => s + list.filter((l) => l.is_active).length, 0,
+  );
+  const totalUsage = Object.values(lookupsByType).reduce(
+    (s, list) => s + list.reduce((u, l) => u + l.usageCount, 0), 0,
+  );
+
   return (
+    <div className="space-y-4">
+      {/* KPI summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        {types.map((t) => {
+          const items = lookupsByType[t] ?? [];
+          const active = items.filter((l) => l.is_active).length;
+          const isOpen = openSet.has(t);
+          const Icon = TYPE_ICON[t];
+          const label = LOOKUP_TYPE_LABEL[t];
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => toggle(t)}
+              aria-pressed={isOpen}
+              className={`bg-card border rounded-xl p-3 transition-all text-left ${
+                isOpen
+                  ? "border-primary ring-2 ring-primary/30 shadow-md"
+                  : "border-border hover:shadow-sm hover:-translate-y-0.5 hover:border-primary/40"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-sm flex-shrink-0">
+                  <Icon className="size-4" strokeWidth={2.5} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold text-muted-foreground truncate">
+                    {label}
+                  </div>
+                  <div className="text-base font-extrabold tabular-nums text-foreground leading-none">
+                    {active}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
     <Card>
       <CardContent className="p-5 space-y-3">
         <div className="space-y-1">
-          <h3 className="text-sm font-bold text-foreground">
+          <h3 className="text-sm font-bold text-foreground inline-flex items-center gap-2">
             🔧 จัดการ Dropdown
+            <span className="text-[11px] font-medium text-muted-foreground">
+              ({totalActive} active • ใช้ใน {totalUsage} ที่)
+            </span>
           </h3>
           <p className="text-xs text-muted-foreground">
-            จัดการค่าที่ใช้ใน dropdown ของฟอร์มต่างๆ — เพิ่ม/แก้/ลบ/sort ได้
+            จัดการค่าที่ใช้ใน dropdown ของฟอร์มต่างๆ — เพิ่ม/แก้/ลบ/sort ได้.
+            กด KPI ด้านบนเพื่อกระโดดไป section
           </p>
         </div>
 
@@ -113,6 +164,7 @@ export function LookupsManager({
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }
 

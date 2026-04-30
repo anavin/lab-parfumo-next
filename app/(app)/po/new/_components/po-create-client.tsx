@@ -19,12 +19,13 @@ import { CustomItemForm } from "./custom-item-form";
 import { CartItems } from "./cart-items";
 
 export function PoCreateClient({
-  equipment, categories, units,
+  equipment, categories, units, canCreateLookup,
   initialItems, initialNotes,
 }: {
   equipment: Equipment[];
   categories: string[];
   units?: Lookup[];
+  canCreateLookup?: boolean;
   initialItems?: PoItem[];
   initialNotes?: string;
 }) {
@@ -323,7 +324,11 @@ export function PoCreateClient({
       )}
 
       {/* ===== Custom item form ===== */}
-      <CustomItemForm onAdd={addCustomItem} units={units} />
+      <CustomItemForm
+        onAdd={addCustomItem}
+        units={units}
+        canCreateLookup={canCreateLookup}
+      />
 
       {/* Empty hint at bottom (only when no items) */}
       {items.length === 0 && (

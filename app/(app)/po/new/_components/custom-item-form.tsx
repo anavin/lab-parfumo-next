@@ -16,13 +16,15 @@ import { compressImages } from "@/lib/utils/image";
 import type { Lookup } from "@/lib/types/db";
 
 export function CustomItemForm({
-  onAdd, units,
+  onAdd, units, canCreateLookup,
 }: {
   onAdd: (
     name: string, qty: number, unit: string, notes: string,
     imageUrls: string[],
   ) => void;
   units?: Lookup[];
+  /** ผู้ใช้ปัจจุบันมีสิทธิ์สร้าง lookup ใหม่ได้มั้ย (admin/supervisor) */
+  canCreateLookup?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -163,7 +165,7 @@ export function CustomItemForm({
                   value={unit}
                   onChange={setUnit}
                   placeholder="เลือก..."
-                  allowCreate
+                  allowCreate={canCreateLookup}
                   disabled={pending}
                 />
               ) : (

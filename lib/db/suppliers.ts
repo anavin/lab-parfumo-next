@@ -17,14 +17,23 @@ const PENDING_STATUSES: PoStatus[] = [
   "รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว", "กำลังขนส่ง",
 ];
 
+// Explicit column list — defense in depth ป้องกัน leak ถ้าเพิ่ม column sensitive ในอนาคต
+const SUPPLIER_COLUMNS = [
+  "id", "name", "code", "tax_id", "category",
+  "contact_person", "phone", "email", "address",
+  "bank_name", "bank_account", "payment_terms",
+  "notes", "is_active",
+  "created_at", "updated_at", "created_by_name", "updated_by_name",
+].join(", ");
+
 /** ทุก supplier (ทั้ง active + inactive) */
 export const getAllSuppliers = cache(async (): Promise<Supplier[]> => {
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("suppliers" as never)
-    .select("*")
+    .select(SUPPLIER_COLUMNS)
     .order("name", { ascending: true });
-  return (data ?? []) as Supplier[];
+  return (data as unknown as Supplier[] | null) ?? [];
 });
 
 /** Supplier เดียวด้วย id */
@@ -33,10 +42,10 @@ export const getSupplierById = cache(
     const sb = getSupabaseAdmin();
     const { data } = await sb
       .from("suppliers" as never)
-      .select("*")
+      .select(SUPPLIER_COLUMNS)
       .eq("id", id)
       .maybeSingle();
-    return (data as Supplier | null) ?? null;
+    return (data as unknown as Supplier | null) ?? null;
   },
 );
 
@@ -48,14 +57,14 @@ export const getSuppliersWithStats = cache(async (): Promise<SupplierWithStats[]
   const sb = getSupabaseAdmin();
   const [suppliersRes, posRes] = await Promise.all([
     sb.from("suppliers" as never)
-      .select("*")
+      .select(SUPPLIER_COLUMNS)
       .order("name", { ascending: true }),
     sb.from("purchase_orders")
       .select("supplier_id, status, total, ordered_date, po_number, created_at")
       .not("supplier_id", "is", null),
   ]);
 
-  const suppliers = (suppliersRes.data ?? []) as Supplier[];
+  const suppliers = (suppliersRes.data as unknown as Supplier[] | null) ?? [];
   const pos = (posRes.data ?? []) as Array<{
     supplier_id: string;
     status: PoStatus;

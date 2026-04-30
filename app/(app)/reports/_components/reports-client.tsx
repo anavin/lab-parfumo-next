@@ -5,6 +5,7 @@
  * Filter pills + colored KPI hero + clean charts + sortable tables
  */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Download, FileText, CheckCircle2, Banknote, BarChart3,
   Calendar, TrendingUp, TrendingDown, Building2, Package,
@@ -447,9 +448,11 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
                 {supplierData.map((s, i) => {
                   const pct = totalSpend > 0 ? (s.total / totalSpend) * 100 : 0;
                   return (
-                    <div
+                    <Link
                       key={s.name}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors"
+                      href={`/po?search=${encodeURIComponent(s.name)}`}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors group"
+                      title={`ดู PO ทั้งหมดของ ${s.name}`}
                     >
                       <span
                         className="size-7 rounded-md flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
@@ -458,7 +461,7 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
                         {i + 1}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-foreground truncate" title={s.name}>
+                        <div className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors" title={s.name}>
                           {s.name}
                         </div>
                         <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
@@ -479,7 +482,7 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
                           {pct.toFixed(0)}% · {s.count} ใบ
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

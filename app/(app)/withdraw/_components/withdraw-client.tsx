@@ -42,7 +42,12 @@ export function WithdrawClient({
 
       {/* Content */}
       {tab === "form" ? (
-        <WithdrawForm equipment={equipment} categories={categories} purposes={purposes} />
+        <WithdrawForm
+          equipment={equipment}
+          categories={categories}
+          purposes={purposes}
+          canCreateLookup={isAdmin}
+        />
       ) : (
         <WithdrawHistory
           withdrawals={withdrawals}
