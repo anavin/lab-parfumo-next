@@ -459,6 +459,7 @@ export type PoEmailKind =
   | "completed"      // → "เสร็จสมบูรณ์" (creator)
   | "cancelled"      // → "ยกเลิก" (creator)
   | "issue"          // → "มีปัญหา" (creator)
+  | "close_reminder" // 🔔 รับของแล้วเกิน 1 วันยังไม่ปิดงาน (creator)
   | "new_for_admin"; // PO ใหม่ — แจ้ง admin/supervisor
 
 interface PoEmailTemplate {
@@ -510,6 +511,15 @@ const PO_EMAIL_TEMPLATES: Record<PoEmailKind, PoEmailTemplate> = {
       return parts.join(" • ");
     },
   },
+  close_reminder: {
+    icon: "🔔", title: "อย่าลืมปิดงาน",
+    headline: "PO ของคุณรับของแล้ว — กรุณากดปิดงาน",
+    color: "#0EA5E9",
+    body: (o) => {
+      const days = o.daysSinceReceived ?? 1;
+      return `รับของมาแล้ว ${days} วัน ยังไม่ปิดงาน — กดปุ่ม "ปิดงาน" เพื่อบันทึกเสร็จสมบูรณ์`;
+    },
+  },
   new_for_admin: {
     icon: "📥", title: "PO ใหม่",
     headline: "มี PO ใหม่รออนุมัติ",
@@ -534,6 +544,7 @@ export interface PoUpdateEmailOpts {
   supplierName?: string;
   expectedDate?: string;
   itemCount?: number;
+  daysSinceReceived?: number;  // for close_reminder
   appUrl?: string;
 }
 
