@@ -543,7 +543,10 @@ async function rollbackPoStock(poId: string): Promise<{
         .maybeSingle();
       const cur = (eq?.stock ?? 0) as number;
       await sb.from("equipment")
-        .update({ stock: Math.max(0, cur - qty) })
+        .update({
+          stock: Math.max(0, cur - qty),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", eqId);
     }
     totalUnits += qty;
@@ -703,6 +706,22 @@ export async function revertStatusAction(
   //   - Delete last delivery + lots
   // ──────────────────────────────────────────────
   if (currentStatus === "รับของแล้ว" || currentStatus === "มีปัญหา") {
+    // 3.0) Check จำนวน delivery — ถ้ามี >1 รอบ ห้าม revert (asymmetric rollback)
+    //      เพราะ revert ลบแค่ delivery ล่าสุด → stock + audit ของ delivery เก่ายังค้าง
+    //      → ไม่สมมาตร อาจเพี้ยน → force ใช้ cancel แทน (rollback ครบทุก delivery)
+    const { count: deliveryCount } = await sb
+      .from("po_deliveries" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("po_id", poId);
+    if ((deliveryCount ?? 0) > 1) {
+      return {
+        ok: false,
+        error: `ย้อนสถานะไม่ได้ — PO นี้รับของ ${deliveryCount} รอบแล้ว ` +
+               `(ลบเฉพาะรอบสุดท้ายจะทำให้ stock เพี้ยน). ` +
+               `ใช้ "ยกเลิก" PO แทนถ้าต้องการ rollback ทั้งหมด`,
+      };
+    }
+
     // 3.1) Check withdrawals — block ถ้ามีการเบิกจาก lot ของ PO นี้
     let withdrawalCount = 0;
     try {
@@ -854,6 +873,19 @@ export async function clonePoAction(sourcePoId: string): Promise<void> {
     redirect("/po");
   }
 
+  // Permission gate: ผู้ใช้ต้องมีสิทธิ์เห็น PO ต้นทาง
+  //  - Privileged: ทุก PO
+  //  - Requester: เฉพาะ PO ที่ตัวเองสร้าง หรือ status >= "สั่งซื้อแล้ว" (team-visible)
+  const sourcePoForPerm = source as PurchaseOrder;
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  const isCreator = sourcePoForPerm.created_by === user.id;
+  const TEAM_VISIBLE: PoStatus[] = [
+    "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์",
+  ];
+  if (!isPrivileged && !isCreator && !TEAM_VISIBLE.includes(sourcePoForPerm.status as PoStatus)) {
+    redirect("/po");
+  }
+
   // สร้าง items ใหม่ (clone โดยตัด price/subtotal ออก)
   const sourcePo = source as PurchaseOrder;
   const newItems: PoItem[] = (sourcePo.items ?? []).map((it) => ({
@@ -889,6 +921,7 @@ export async function clonePoAction(sourcePoId: string): Promise<void> {
     `คัดลอกจาก ${sourcePo.po_number}`,
   );
   revalidatePath("/po");
+  revalidatePath("/po/pending-receipt");
   revalidatePath("/dashboard");
   redirect(`/po/${newPo!.id}`);
 }
@@ -1610,7 +1643,10 @@ export async function addDeliveryAction(
       const cur = (eq?.stock ?? 0) as number;
       await sb
         .from("equipment")
-        .update({ stock: cur + qty })
+        .update({
+          stock: cur + qty,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", it.equipment_id);
     }
     stockUpdatedCount++;

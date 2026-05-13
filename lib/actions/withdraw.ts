@@ -77,7 +77,10 @@ export async function createWithdrawalAction(input: {
     }
     await sb
       .from("equipment")
-      .update({ stock: currentStock - input.qty })
+      .update({
+        stock: currentStock - input.qty,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", input.equipmentId);
     eqName = eq.name ?? "";
     eqUnit = eq.unit ?? "ชิ้น";
@@ -170,7 +173,10 @@ export async function deleteWithdrawalAction(
       const cur = eq?.stock ?? 0;
       await sb
         .from("equipment")
-        .update({ stock: cur + (w.qty ?? 0) })
+        .update({
+          stock: cur + (w.qty ?? 0),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", w.equipment_id);
     }
   }

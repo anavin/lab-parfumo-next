@@ -111,8 +111,13 @@ function buildCsv(pos: PurchaseOrder[], role: string): string {
   ]);
 
   // Escape CSV: " → "" และ wrap ด้วย " ถ้ามี comma/quote/newline
+  // + Formula injection guard: prepend ' ถ้า text ขึ้นต้นด้วย =/+/-/@
+  //   (กัน Excel/Sheets exec formula ตอน user เปิดไฟล์ — สำคัญสำหรับ
+  //    ฟิลด์ที่มาจาก user input เช่น supplier_name, notes, procurement_notes)
   const escape = (v: unknown): string => {
-    const s = String(v ?? "");
+    let s = String(v ?? "");
+    // Formula injection guard
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     if (s.includes(",") || s.includes('"') || s.includes("\n")) {
       return `"${s.replace(/"/g, '""')}"`;
     }

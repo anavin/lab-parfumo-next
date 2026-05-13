@@ -149,13 +149,36 @@ export async function bulkCreateEquipmentAction(
     ((existing ?? []) as Array<{ name: string }>).map((e) => e.name.trim().toLowerCase()),
   );
 
-  // 2. Build payload + dedupe within input itself
+  // 2. Validation rules per row (Zod-like + formula injection guard)
+  const NAME_MAX = 200;
+  const TEXT_MAX = 80;
+  const DESC_MAX = 1000;
+  const NUM_MAX = 99_999_999;
+
+  // กัน CSV formula injection (Excel/Sheets) — strip leading =,+,-,@ จาก text fields
+  function safeText(s: string | undefined): string {
+    if (!s) return "";
+    const trimmed = s.trim();
+    if (/^[=+\-@]/.test(trimmed)) return `'${trimmed}`;  // prepend quote → ปลอดภัย
+    return trimmed;
+  }
+
+  // 3. Build payload + dedupe within input itself
   const seenInBatch = new Set<string>();
   const payload: Record<string, unknown>[] = [];
+  const validationErrors: string[] = [];
   let skipped = 0;
-  for (const r of rows) {
-    const name = (r.name ?? "").trim();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNo = i + 2; // +1 header, +1 1-indexed
+
+    const name = safeText(r.name);
     if (!name) {
+      skipped++;
+      continue;
+    }
+    if (name.length > NAME_MAX) {
+      validationErrors.push(`row ${rowNo}: name ยาวเกิน ${NAME_MAX} ตัวอักษร`);
       skipped++;
       continue;
     }
@@ -164,16 +187,25 @@ export async function bulkCreateEquipmentAction(
       skipped++;
       continue;
     }
+    // Validate other fields
+    const category = safeText(r.category).slice(0, TEXT_MAX) || "อุปกรณ์อื่นๆ";
+    const sku = safeText(r.sku).slice(0, 50) || null;
+    const unit = safeText(r.unit).slice(0, 20) || "ชิ้น";
+    const description = safeText(r.description).slice(0, DESC_MAX);
+    const lastCost = Math.max(0, Math.min(NUM_MAX, Number(r.lastCost ?? 0) || 0));
+    const stock = Math.max(0, Math.min(NUM_MAX, Math.floor(Number(r.stock ?? 0)) || 0));
+    const reorderLevel = Math.max(0, Math.min(NUM_MAX, Math.floor(Number(r.reorderLevel ?? 0)) || 0));
+
     seenInBatch.add(key);
     payload.push({
       name,
-      category: (r.category ?? "").trim() || "อุปกรณ์อื่นๆ",
-      sku: (r.sku ?? "").trim() || null,
-      unit: (r.unit ?? "").trim() || "ชิ้น",
-      description: (r.description ?? "").trim(),
-      last_cost: Number(r.lastCost ?? 0) || 0,
-      stock: Math.max(0, Math.floor(Number(r.stock ?? 0)) || 0),
-      reorder_level: Math.max(0, Math.floor(Number(r.reorderLevel ?? 0)) || 0),
+      category,
+      sku,
+      unit,
+      description,
+      last_cost: lastCost,
+      stock,
+      reorder_level: reorderLevel,
       is_active: true,
       approval_status: "approved",
     });
@@ -207,12 +239,14 @@ export async function bulkCreateEquipmentAction(
   }
 
   revalidatePath("/equipment");
+  // Merge validation errors into failedReasons (deduplicate)
+  const allReasons = [...validationErrors, ...failedReasons].slice(0, 10);
   return {
     ok: true,
     inserted,
     skipped,
     failed,
-    failedReasons: failedReasons.length ? failedReasons : undefined,
+    failedReasons: allReasons.length ? allReasons : undefined,
   };
 }
 
