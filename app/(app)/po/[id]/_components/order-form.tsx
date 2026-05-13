@@ -4,6 +4,7 @@
  * Order form (admin) — กรอก supplier + ราคาแต่ละรายการ + VAT/discount
  */
 import { useState, useTransition, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   ShoppingCart, X, Paperclip, FileText, Loader2, Trash2, Upload,
 } from "lucide-react";
@@ -32,6 +33,7 @@ export function OrderForm({
   initialContact: string | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [budgetWarning, setBudgetWarning] = useState<{
@@ -205,6 +207,8 @@ export function OrderForm({
         `✅ ส่งคำสั่งซื้อ ${poNumber} ไปยัง ${supplierName.trim()}` +
           (pendingFiles.length > 0 ? ` พร้อม ${pendingFiles.length} ไฟล์` : ""),
       );
+      // Refresh page เพื่อให้ดึงข้อมูลใหม่ (status + attachments + items)
+      router.refresh();
       onClose();
     });
   }

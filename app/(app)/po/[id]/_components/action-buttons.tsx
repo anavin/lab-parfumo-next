@@ -70,6 +70,7 @@ export function ActionButtons({
       if (res.ok) {
         toast.success(`✅ ปิดงาน ${po.po_number} สำเร็จ`);
         setConfirmCloseOpen(false);
+        router.refresh();
       } else {
         toast.error(res.error ?? "ปิดงานไม่สำเร็จ");
       }
@@ -87,6 +88,7 @@ export function ActionButtons({
         toast.success(`✅ ยกเลิก ${po.po_number} สำเร็จ`);
         setConfirmCancelOpen(false);
         setCancelReason("");
+        router.refresh();
       } else {
         toast.error(res.error ?? "ยกเลิกไม่สำเร็จ");
       }

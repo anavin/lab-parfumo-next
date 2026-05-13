@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Truck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ export function ShipForm({
   initialTracking: string | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [tracking, setTracking] = useState(initialTracking ?? "");
@@ -26,7 +28,10 @@ export function ShipForm({
     startTransition(async () => {
       const res = await shipPoAction(poId, tracking.trim(), note.trim());
       if (!res.ok) setError(res.error ?? "บันทึกไม่สำเร็จ");
-      else onClose();
+      else {
+        router.refresh();
+        onClose();
+      }
     });
   }
 

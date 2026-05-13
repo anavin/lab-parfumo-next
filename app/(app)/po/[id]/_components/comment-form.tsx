@@ -1,12 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { addCommentAction } from "@/lib/actions/po";
 
 export function CommentForm({ poId }: { poId: string }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -21,7 +23,10 @@ export function CommentForm({ poId }: { poId: string }) {
     startTransition(async () => {
       const res = await addCommentAction(poId, message);
       if (!res.ok) setError(res.error ?? "ส่งไม่สำเร็จ");
-      else if (ref.current) ref.current.value = "";
+      else {
+        if (ref.current) ref.current.value = "";
+        router.refresh();
+      }
     });
   }
 

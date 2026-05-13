@@ -5,6 +5,7 @@
  * Features: qty received + qty damaged + condition + รูปประกอบ
  */
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { PackageOpen, X, Upload, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -42,6 +43,7 @@ export function ReceiveForm({
   deliveries?: PoDelivery[];
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -169,6 +171,7 @@ export function ReceiveForm({
         setError(res.error ?? "บันทึกไม่สำเร็จ");
         return;
       }
+      router.refresh();
       onClose();
     });
   }
