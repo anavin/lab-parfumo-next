@@ -53,6 +53,36 @@ export interface SupplierEntry {
   lastPo: string;
 }
 
+/**
+ * Supplier option for combobox in order form (Phase X)
+ * รวมข้อมูลจาก 2 ที่มา:
+ *  - "registered" — ตาราง suppliers (admin เพิ่มผ่าน /suppliers)
+ *  - "history"    — supplier_name ใน purchase_orders เท่านั้น (ยังไม่ได้ register)
+ *
+ * Registered ทับ history ถ้าชื่อเดียวกัน (preferred source)
+ */
+export interface SupplierOption {
+  name: string;
+  source: "registered" | "history";
+
+  // จาก suppliers table (registered)
+  id?: string;
+  category?: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  bank_name?: string;
+  bank_account?: string;
+  payment_terms?: string;
+
+  // จาก PO history
+  poCount: number;
+  lastUsed?: string;      // ISO date — ordered_date
+  lastPo?: string;
+  lastContact?: string;   // PO's supplier_contact field
+}
+
 /** Categories ของ Supplier (default — admin จะแก้ใน UI ได้) */
 export const SUPPLIER_CATEGORIES = [
   "บรรจุภัณฑ์",

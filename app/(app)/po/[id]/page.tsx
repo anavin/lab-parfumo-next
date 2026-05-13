@@ -13,8 +13,8 @@ import { WorkflowTimeline } from "@/components/po/workflow-timeline";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   getPoById, getPoActivities, getPoComments, getPoDeliveries,
-  getSupplierHistory,
 } from "@/lib/db/po";
+import { getSupplierOptions } from "@/lib/db/suppliers";
 import { getEquipmentById } from "@/lib/db/equipment";
 import type { Equipment } from "@/lib/types/db";
 import { ItemsList } from "./_components/items-list";
@@ -77,11 +77,11 @@ export default async function PoViewPage({
     ),
   );
 
-  const [activities, comments, deliveries, suppliers, equipmentList] = await Promise.all([
+  const [activities, comments, deliveries, supplierOptions, equipmentList] = await Promise.all([
     getPoActivities(po.id),
     getPoComments(po.id),
     getPoDeliveries(po.id),
-    isAdmin ? getSupplierHistory() : Promise.resolve([]),
+    isAdmin ? getSupplierOptions() : Promise.resolve([]),
     Promise.all(eqIds.map((id) => getEquipmentById(id))),
   ]);
 
@@ -170,7 +170,7 @@ export default async function PoViewPage({
             }}
             isAdmin={isAdmin}
             canCancel={isAdmin || po.created_by === user.id}
-            suppliers={suppliers}
+            supplierOptions={supplierOptions}
             deliveries={deliveries}
           />
         </CardContent>

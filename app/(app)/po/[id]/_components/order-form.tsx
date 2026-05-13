@@ -16,20 +16,18 @@ import {
   updateProcurementAction, addPoAttachmentsAction,
 } from "@/lib/actions/po";
 import { uploadSingleAttachmentAction, type UploadedAttachment } from "@/lib/actions/upload";
-import type { PoItem } from "@/lib/types/db";
-import type { SupplierEntry } from "@/lib/types/db";
-
-const NEW_SUPPLIER = "+ พิมพ์ supplier ใหม่";
+import type { PoItem, SupplierOption } from "@/lib/types/db";
+import { SupplierCombobox } from "@/components/ui/supplier-combobox";
 
 export function OrderForm({
-  poId, poNumber, items, suppliers,
+  poId, poNumber, items, supplierOptions,
   initialSupplier, initialContact,
   onClose,
 }: {
   poId: string;
   poNumber: string;
   items: PoItem[];
-  suppliers: SupplierEntry[];
+  supplierOptions: SupplierOption[];
   initialSupplier: string | null;
   initialContact: string | null;
   onClose: () => void;
@@ -77,33 +75,54 @@ export function OrderForm({
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // Supplier autocomplete
-  const supNames = useMemo(() => suppliers.map((s) => s.name), [suppliers]);
-  const [supChoice, setSupChoice] = useState<string>(() => {
-    if (initialSupplier && supNames.includes(initialSupplier)) return initialSupplier;
-    return NEW_SUPPLIER;
-  });
-  const [customSup, setCustomSup] = useState(
-    initialSupplier && !supNames.includes(initialSupplier) ? initialSupplier : "",
-  );
+  // Supplier — searchable combobox + optional free-text mode
+  const [supplierName, setSupplierName] = useState<string>(initialSupplier ?? "");
   const [supplierContact, setSupplierContact] = useState(initialContact ?? "");
+  const [freeText, setFreeText] = useState<boolean>(
+    !!(initialSupplier && !supplierOptions.some((o) => o.name === initialSupplier)),
+  );
+  const [selectedOption, setSelectedOption] = useState<SupplierOption | null>(() => {
+    if (!initialSupplier) return null;
+    return supplierOptions.find((o) => o.name === initialSupplier) ?? null;
+  });
 
-  // Auto-fill ข้อมูลติดต่อเมื่อเลือก supplier เก่า
-  // (always overwrite — user explicitly picked this supplier from history)
-  function handleSupplierChange(v: string) {
-    setSupChoice(v);
-    if (v !== NEW_SUPPLIER) {
-      const found = suppliers.find((s) => s.name === v);
-      if (found) {
-        setSupplierContact(found.lastContact ?? "");
-        if (found.lastContact) {
-          toast.success(`ดึงข้อมูลติดต่อล่าสุดของ ${found.name}`);
+  /**
+   * Build contact text from registered supplier — combine multiple fields
+   * เลือกเฉพาะที่มีค่าจริง คั่นด้วย newline
+   */
+  function buildContactFromOption(opt: SupplierOption): string {
+    const lines: string[] = [];
+    if (opt.contact_person) lines.push(`ติดต่อ: ${opt.contact_person}`);
+    if (opt.phone) lines.push(`โทร: ${opt.phone}`);
+    if (opt.email) lines.push(`Email: ${opt.email}`);
+    if (opt.address) lines.push(`ที่อยู่: ${opt.address}`);
+    return lines.join("\n");
+  }
+
+  function handleSupplierSelect(name: string, opt: SupplierOption | null) {
+    setSupplierName(name);
+    setSelectedOption(opt);
+    setFreeText(false);
+    if (opt) {
+      // Auto-fill contact
+      if (opt.source === "registered") {
+        const built = buildContactFromOption(opt);
+        if (built) {
+          setSupplierContact(built);
+          toast.success(`ดึงข้อมูลจาก Supplier ที่ register แล้ว`);
         }
+      } else if (opt.lastContact) {
+        setSupplierContact(opt.lastContact);
+        toast.success(`ดึงข้อมูลติดต่อล่าสุดของ ${opt.name}`);
       }
     }
   }
 
-  const supplierName = supChoice === NEW_SUPPLIER ? customSup : supChoice;
+  function handleFreeText() {
+    setFreeText(true);
+    setSelectedOption(null);
+    setSupplierName("");
+  }
 
   // Item prices
   const [prices, setPrices] = useState<number[]>(() =>
@@ -200,57 +219,51 @@ export function OrderForm({
         </div>
       </div>
 
-      {/* Supplier selector */}
+      {/* Supplier selector — searchable combobox */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          🏭 Supplier <span className="text-slate-400 text-xs">— เลือกจากประวัติ ({suppliers.length}) หรือพิมพ์ใหม่</span>
+          🏭 Supplier <span className="text-slate-400 text-xs">— ค้นหา ({supplierOptions.length}) หรือเพิ่ม supplier ใหม่</span>
         </label>
-        <select
-          className="h-11 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
-          value={supChoice}
-          onChange={(e) => handleSupplierChange(e.target.value)}
-          disabled={pending}
-        >
-          <option value={NEW_SUPPLIER}>{NEW_SUPPLIER}</option>
-          {suppliers.map((s) => {
-            const meta: string[] = [];
-            if (s.poCount > 0) meta.push(`${s.poCount} ใบ`);
-            if (s.lastUsed) {
-              const d = new Date(s.lastUsed);
-              if (!isNaN(d.getTime())) {
-                meta.push(`ล่าสุด ${d.toLocaleDateString("th-TH", {
-                  day: "2-digit", month: "short", year: "2-digit",
-                })}`);
-              }
-            }
-            const label = meta.length > 0 ? `${s.name} — ${meta.join(" · ")}` : s.name;
-            return (
-              <option key={s.name} value={s.name}>{label}</option>
-            );
-          })}
-        </select>
-        {supChoice === NEW_SUPPLIER && (
-          <Input
-            value={customSup}
-            onChange={(e) => setCustomSup(e.target.value)}
-            placeholder="ชื่อ Supplier *"
-            className="mt-2"
+        {freeText ? (
+          // Free-text mode — typing new supplier name
+          <>
+            <Input
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder="ชื่อ Supplier ใหม่ *"
+              disabled={pending}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setFreeText(false)}
+              disabled={pending}
+              className="mt-1.5 text-xs text-primary hover:underline"
+            >
+              ← กลับไปค้นหา
+            </button>
+          </>
+        ) : (
+          <SupplierCombobox
+            options={supplierOptions}
+            value={supplierName}
+            onChange={handleSupplierSelect}
+            onFreeText={handleFreeText}
             disabled={pending}
           />
         )}
-        {/* Show preview of pulled-in contact when picking from history */}
-        {supChoice !== NEW_SUPPLIER && (() => {
-          const found = suppliers.find((s) => s.name === supChoice);
-          if (!found) return null;
-          return (
-            <div className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1.5 bg-emerald-50 ring-1 ring-emerald-200 rounded-md px-2 py-1">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              <span>
-                ดึงข้อมูลติดต่อจาก PO ล่าสุด ({found.lastPo || "—"}) แล้ว — แก้ไขได้
-              </span>
-            </div>
-          );
-        })()}
+        {/* Preview badge — show when picked option */}
+        {selectedOption && !freeText && (
+          <div className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1.5 bg-emerald-50 ring-1 ring-emerald-200 rounded-md px-2 py-1">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span>
+              {selectedOption.source === "registered"
+                ? `ดึงข้อมูลจาก Supplier registered`
+                : `ดึงข้อมูลจาก PO ล่าสุด (${selectedOption.lastPo || "—"})`}
+              {" — แก้ไขได้"}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Two-column: contact + dates */}

@@ -8,6 +8,7 @@ import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type {
   Supplier, SupplierWithStats, PurchaseOrder, PoStatus,
+  SupplierOption,
 } from "@/lib/types/db";
 
 const COUNTED_FOR_SPEND: PoStatus[] = [
@@ -230,3 +231,112 @@ export const getMonthlyTrendForSupplier = cache(
     });
   },
 );
+
+// ==================================================================
+// Supplier search options — รวม registered + PO history สำหรับ combobox ใน OrderForm
+// ==================================================================
+
+/**
+ * Supplier options สำหรับ combobox — merge 2 sources:
+ *  1. ตาราง suppliers (registered) — full record + bank info
+ *  2. supplier_name ใน purchase_orders (history) — สำหรับ supplier ที่ยังไม่ register
+ *
+ * ถ้าชื่อซ้ำกัน → registered ทับ history (registered มีข้อมูลครบกว่า)
+ * เรียงตาม: registered ก่อน → poCount มาก → ตามตัวอักษร
+ */
+export const getSupplierOptions = cache(async (): Promise<SupplierOption[]> => {
+  const sb = getSupabaseAdmin();
+
+  const [suppliersRes, posRes] = await Promise.all([
+    sb.from("suppliers" as never)
+      .select(SUPPLIER_COLUMNS)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
+    sb.from("purchase_orders")
+      .select("supplier_name, supplier_contact, ordered_date, po_number")
+      .not("supplier_name", "is", null)
+      .order("ordered_date", { ascending: false })
+      .limit(1000),
+  ]);
+
+  // 1) Index PO history by name → poCount, lastUsed, lastPo, lastContact
+  type HistoryRow = {
+    supplier_name: string | null;
+    supplier_contact: string | null;
+    ordered_date: string | null;
+    po_number: string | null;
+  };
+  const historyMap = new Map<string, {
+    name: string;
+    poCount: number;
+    lastUsed?: string;
+    lastPo?: string;
+    lastContact?: string;
+  }>();
+  for (const row of ((posRes.data ?? []) as HistoryRow[])) {
+    const name = (row.supplier_name ?? "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const cur = historyMap.get(key);
+    if (!cur) {
+      historyMap.set(key, {
+        name,
+        poCount: 1,
+        lastUsed: row.ordered_date ?? undefined,
+        lastPo: row.po_number ?? undefined,
+        lastContact: row.supplier_contact ?? undefined,
+      });
+    } else {
+      cur.poCount += 1;
+      if (row.supplier_contact && !cur.lastContact) cur.lastContact = row.supplier_contact;
+    }
+  }
+
+  // 2) Build options — registered suppliers first (with history merged in if same name)
+  const options: SupplierOption[] = [];
+  const usedKeys = new Set<string>();
+  for (const s of ((suppliersRes.data ?? []) as unknown as Supplier[])) {
+    const key = s.name.trim().toLowerCase();
+    const h = historyMap.get(key);
+    options.push({
+      name: s.name,
+      source: "registered",
+      id: s.id,
+      category: s.category,
+      contact_person: s.contact_person,
+      phone: s.phone,
+      email: s.email,
+      address: s.address,
+      bank_name: s.bank_name,
+      bank_account: s.bank_account,
+      payment_terms: s.payment_terms,
+      poCount: h?.poCount ?? 0,
+      lastUsed: h?.lastUsed,
+      lastPo: h?.lastPo,
+      lastContact: h?.lastContact,
+    });
+    usedKeys.add(key);
+  }
+
+  // 3) Add history-only suppliers (not in registered table)
+  for (const [key, h] of historyMap) {
+    if (usedKeys.has(key)) continue;
+    options.push({
+      name: h.name,
+      source: "history",
+      poCount: h.poCount,
+      lastUsed: h.lastUsed,
+      lastPo: h.lastPo,
+      lastContact: h.lastContact,
+    });
+  }
+
+  // 4) Sort: registered first, then by poCount desc, then alphabetical
+  options.sort((a, b) => {
+    if (a.source !== b.source) return a.source === "registered" ? -1 : 1;
+    if (a.poCount !== b.poCount) return b.poCount - a.poCount;
+    return a.name.localeCompare(b.name, "th");
+  });
+
+  return options;
+});

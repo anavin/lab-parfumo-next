@@ -17,7 +17,7 @@ import {
   closePoAction, cancelPoAction,
 } from "@/lib/actions/po";
 import type { PoStatus, PoItem } from "@/lib/types/db";
-import type { SupplierEntry } from "@/lib/types/db";
+import type { SupplierOption } from "@/lib/types/db";
 import { OrderForm } from "./order-form";
 import { ShipForm } from "./ship-form";
 import { ReceiveForm } from "./receive-form";
@@ -36,12 +36,12 @@ interface PoSummary {
 }
 
 export function ActionButtons({
-  po, isAdmin, canCancel, suppliers, deliveries = [],
+  po, isAdmin, canCancel, supplierOptions, deliveries = [],
 }: {
   po: PoSummary;
   isAdmin: boolean;
   canCancel: boolean;
-  suppliers: SupplierEntry[];
+  supplierOptions: SupplierOption[];
   /** ประวัติการรับของ — ใช้คำนวณจำนวนคงเหลือใน ReceiveForm */
   deliveries?: import("@/lib/types/db").PoDelivery[];
 }) {
@@ -240,7 +240,7 @@ export function ActionButtons({
           poId={po.id}
           poNumber={po.po_number}
           items={po.items}
-          suppliers={suppliers}
+          supplierOptions={supplierOptions}
           initialSupplier={po.supplier_name}
           initialContact={po.supplier_contact}
           onClose={() => setFormMode(null)}
