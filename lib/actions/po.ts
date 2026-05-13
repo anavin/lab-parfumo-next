@@ -927,17 +927,32 @@ export async function addPoAttachmentsAction(
   newAttachments: PoAttachment[],
   category: "order" | "shipping" | "general" = "general",
 ): Promise<ActionResult> {
+  console.log(`[po addPoAttachmentsAction] ENTER — poId=${poId} files=${newAttachments.length} category=${category}`);
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
   if (!newAttachments.length) return { ok: false, error: "ไม่มีไฟล์" };
 
+  // Validate poId — UUID 36 chars
+  if (!poId || typeof poId !== "string" || poId.length < 32) {
+    console.error(`[po addPoAttachmentsAction] invalid poId: ${JSON.stringify(poId)}`);
+    return { ok: false, error: `poId ไม่ถูกต้อง (${poId?.length ?? 0} chars)` };
+  }
+
   const sb = getSupabaseAdmin();
-  const { data: po } = await sb
+  const { data: po, error: selectErr } = await sb
     .from("purchase_orders")
-    .select("attachment_urls, po_number")
+    .select("id, attachment_urls, po_number")
     .eq("id", poId)
     .maybeSingle();
-  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (selectErr) {
+    console.error("[po addPoAttachmentsAction] select error:", selectErr);
+    return { ok: false, error: `Query error: ${selectErr.message}` };
+  }
+  if (!po) {
+    console.error(`[po addPoAttachmentsAction] PO not found with id=${poId}`);
+    return { ok: false, error: `ไม่พบใบ PO (id=${poId.slice(0, 8)}...)` };
+  }
+  console.log(`[po addPoAttachmentsAction] found PO ${po.po_number}, existing attachments=${(po.attachment_urls ?? []).length}`);
 
   const existing: PoAttachment[] = (po.attachment_urls ?? []) as PoAttachment[];
   const enriched = newAttachments.map((a) => ({
@@ -947,13 +962,19 @@ export async function addPoAttachmentsAction(
   }));
   const merged = [...existing, ...enriched];
 
-  await sb
+  const { error: updateErr } = await sb
     .from("purchase_orders")
     .update({
       attachment_urls: merged,
       updated_at: new Date().toISOString(),
     })
     .eq("id", poId);
+  if (updateErr) {
+    console.error("[po addPoAttachmentsAction] update error:", updateErr);
+    return { ok: false, error: `บันทึกไม่สำเร็จ: ${updateErr.message}` };
+  }
+
+  console.log(`[po addPoAttachmentsAction] SUCCESS — total attachments now=${merged.length}`);
 
   await logActivity(
     poId, user.full_name, user.role, "attached",
