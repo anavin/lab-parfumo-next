@@ -20,7 +20,7 @@ import { PoRow } from "@/components/po/po-row";
 import { bulkDeletePoAction } from "@/lib/actions/po";
 import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
 
-const DELETABLE_STATUSES: PoStatus[] = ["รอจัดซื้อดำเนินการ", "เสร็จสมบูรณ์", "ยกเลิก"];
+const DELETABLE_STATUSES: PoStatus[] = ["รอจัดซื้อดำเนินการ", "ยกเลิก"];
 
 export function PoListClient({
   pos,
