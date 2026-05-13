@@ -234,4 +234,13 @@
   .animate-backdrop {
     animation: fade-in 0.15s ease-out;
   }
+
+  /* Slideshow progress bar — width 0 → 100% over interval */
+  @keyframes slideshow-bar {
+    from { width: 0%; }
+    to { width: 100%; }
+  }
+  .animate-slideshow-bar {
+    animation: slideshow-bar linear forwards;
+  }
 }

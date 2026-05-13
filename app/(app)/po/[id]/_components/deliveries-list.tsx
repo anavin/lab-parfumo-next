@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * ประวัติการรับของ (delivery history) — full details + photos + lightbox
+ * ประวัติการรับของ (delivery history) — full details + photos + lightbox+slideshow
  */
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import {
   Package, CheckCircle2, AlertTriangle, User, Calendar,
-  MessageSquare, ImageOff, X, ChevronLeft, ChevronRight,
+  MessageSquare, ImageOff,
 } from "lucide-react";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import type { PoDelivery, PoDeliveryItem } from "@/lib/types/db";
 
 function fmtDate(d: string | null | undefined): string {
@@ -46,8 +47,8 @@ export function DeliveriesList({ deliveries }: { deliveries: PoDelivery[] }) {
       </div>
 
       {preview && (
-        <ImagePreview
-          images={preview.images}
+        <ImageLightbox
+          images={preview.images.map((url) => ({ url }))}
           index={preview.index}
           title={preview.title}
           onClose={() => setPreview(null)}
@@ -282,95 +283,4 @@ function ItemRow({ item }: { item: PoDeliveryItem }) {
   );
 }
 
-// ==================================================================
-// Lightbox preview
-// ==================================================================
-function ImagePreview({
-  images, index, title, onClose, onIndex,
-}: {
-  images: string[];
-  index: number;
-  title: string;
-  onClose: () => void;
-  onIndex: (i: number) => void;
-}) {
-  const current = images[index];
-  const hasNav = images.length > 1;
-
-  function prev(e: React.MouseEvent) {
-    e.stopPropagation();
-    onIndex((index - 1 + images.length) % images.length);
-  }
-  function next(e: React.MouseEvent) {
-    e.stopPropagation();
-    onIndex((index + 1) % images.length);
-  }
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft" && hasNav) onIndex((index - 1 + images.length) % images.length);
-      if (e.key === "ArrowRight" && hasNav) onIndex((index + 1) % images.length);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, images.length, hasNav, onClose, onIndex]);
-
-  return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-4 right-4 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-        aria-label="ปิด"
-      >
-        <X className="size-5" />
-      </button>
-
-      <div className="absolute top-4 left-4 text-white">
-        <div className="text-sm font-bold">{title}</div>
-        {hasNav && (
-          <div className="text-xs text-white/60 mt-0.5 tabular-nums">
-            {index + 1} / {images.length}
-          </div>
-        )}
-      </div>
-
-      {hasNav && (
-        <button
-          type="button"
-          onClick={prev}
-          className="absolute left-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-          aria-label="ก่อนหน้า"
-        >
-          <ChevronLeft className="size-6" />
-        </button>
-      )}
-
-      <div onClick={(e) => e.stopPropagation()} className="relative max-w-[90vw] max-h-[85vh]">
-        <Image
-          src={current}
-          alt={title}
-          width={1200}
-          height={1200}
-          unoptimized
-          className="rounded-lg object-contain max-w-[90vw] max-h-[85vh] w-auto h-auto"
-        />
-      </div>
-
-      {hasNav && (
-        <button
-          type="button"
-          onClick={next}
-          className="absolute right-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-          aria-label="ถัดไป"
-        >
-          <ChevronRight className="size-6" />
-        </button>
-      )}
-    </div>
-  );
-}
+// Lightbox moved to shared component: @/components/ui/image-lightbox

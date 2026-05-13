@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useTransition, useEffect, useMemo } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   FileText, Download, Trash2, Upload, Plus,
-  ImageIcon, FileSpreadsheet, FileArchive,
-  X, ChevronLeft, ChevronRight, ZoomIn,
+  ImageIcon, FileSpreadsheet, FileArchive, ZoomIn,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { cn } from "@/lib/cn";
 import type { PoAttachment } from "@/lib/types/db";
 import {
@@ -323,125 +323,27 @@ export function AttachmentsSection({
         )}
       </CardContent>
 
-      {/* Lightbox — รูปเต็มจอ */}
+      {/* Lightbox — รูปเต็มจอ + slideshow */}
       {lightboxIdx !== null && imageAttachments[lightboxIdx] && (
-        <ImagePreview
-          images={imageAttachments}
+        <ImageLightbox
+          images={imageAttachments.map((a) => ({
+            url: a.url,
+            name: a.name,
+            meta: (
+              <>
+                {a.size && <span>{fmtSize(a.size)}</span>}
+                {a.uploaded_by && <span> • โดย {a.uploaded_by}</span>}
+              </>
+            ),
+          }))}
           index={lightboxIdx}
           onClose={() => setLightboxIdx(null)}
           onIndex={setLightboxIdx}
+          title="ไฟล์แนบ"
         />
       )}
     </Card>
   );
 }
 
-// ==================================================================
-// Lightbox component (inline — image attachments)
-// ==================================================================
-function ImagePreview({
-  images, index, onClose, onIndex,
-}: {
-  images: PoAttachment[];
-  index: number;
-  onClose: () => void;
-  onIndex: (i: number) => void;
-}) {
-  const current = images[index];
-  const hasNav = images.length > 1;
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft" && hasNav) onIndex((index - 1 + images.length) % images.length);
-      if (e.key === "ArrowRight" && hasNav) onIndex((index + 1) % images.length);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, images.length, hasNav, onClose, onIndex]);
-
-  function prev(e: React.MouseEvent) {
-    e.stopPropagation();
-    onIndex((index - 1 + images.length) % images.length);
-  }
-  function next(e: React.MouseEvent) {
-    e.stopPropagation();
-    onIndex((index + 1) % images.length);
-  }
-
-  return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-    >
-      {/* Close button */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-4 right-4 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-        aria-label="ปิด"
-      >
-        <X className="size-5" />
-      </button>
-
-      {/* Filename + index */}
-      <div className="absolute top-4 left-4 text-white max-w-[60vw]">
-        <div className="text-sm font-bold truncate">{current.name}</div>
-        <div className="text-xs text-white/60 mt-0.5 tabular-nums flex items-center gap-2">
-          {hasNav && <span>{index + 1} / {images.length}</span>}
-          {current.size && <span>{fmtSize(current.size)}</span>}
-          {current.uploaded_by && <span>โดย {current.uploaded_by}</span>}
-        </div>
-      </div>
-
-      {/* Prev */}
-      {hasNav && (
-        <button
-          type="button"
-          onClick={prev}
-          className="absolute left-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-          aria-label="ก่อนหน้า"
-        >
-          <ChevronLeft className="size-6" />
-        </button>
-      )}
-
-      {/* Image */}
-      <div onClick={(e) => e.stopPropagation()} className="relative max-w-[90vw] max-h-[85vh]">
-        <Image
-          src={current.url}
-          alt={current.name}
-          width={1600}
-          height={1600}
-          unoptimized
-          className="rounded-lg object-contain max-w-[90vw] max-h-[85vh] w-auto h-auto"
-        />
-      </div>
-
-      {/* Next */}
-      {hasNav && (
-        <button
-          type="button"
-          onClick={next}
-          className="absolute right-4 size-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
-          aria-label="ถัดไป"
-        >
-          <ChevronRight className="size-6" />
-        </button>
-      )}
-
-      {/* Download (bottom-right) */}
-      <a
-        href={current.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        download={current.name}
-        onClick={(e) => e.stopPropagation()}
-        className="absolute bottom-4 right-4 inline-flex items-center gap-1.5 px-3 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-sm transition-colors"
-      >
-        <Download className="size-4" />
-        ดาวน์โหลด
-      </a>
-    </div>
-  );
-}
+// Lightbox moved to shared component: @/components/ui/image-lightbox
