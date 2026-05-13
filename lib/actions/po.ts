@@ -601,6 +601,226 @@ export async function cancelPoAction(
 }
 
 // ==================================================================
+// Revert status (privileged) — ย้อนสถานะกลับไป step ก่อนหน้า
+// แก้กรณีกดผิดหรือต้องแก้ข้อมูล
+// ==================================================================
+
+/** Map: status → status ก่อนหน้า (null ถ้า revert ไม่ได้) */
+const STATUS_PREDECESSORS: Partial<Record<PoStatus, PoStatus>> = {
+  "สั่งซื้อแล้ว": "รอจัดซื้อดำเนินการ",
+  "กำลังขนส่ง": "สั่งซื้อแล้ว",
+  "รับของแล้ว": "กำลังขนส่ง",
+  "มีปัญหา": "กำลังขนส่ง",
+  "เสร็จสมบูรณ์": "รับของแล้ว",
+  // "ยกเลิก" → ไม่ revert (ไม่รู้ status ก่อนถูก cancel)
+  // "รอจัดซื้อดำเนินการ" → initial state ไม่มีก่อนหน้า
+};
+
+export async function revertStatusAction(
+  poId: string,
+  reason: string,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("*")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+
+  const currentStatus = po.status as PoStatus;
+  const prevStatus = STATUS_PREDECESSORS[currentStatus];
+  if (!prevStatus) {
+    return {
+      ok: false,
+      error: currentStatus === "รอจัดซื้อดำเนินการ"
+        ? "อยู่ที่ขั้นแรกแล้ว — ย้อนกลับไม่ได้"
+        : currentStatus === "ยกเลิก"
+          ? "PO ถูกยกเลิกแล้ว — ใช้ Clone สร้างใหม่แทน"
+          : `ย้อนกลับจาก "${currentStatus}" ไม่ได้`,
+    };
+  }
+
+  // Build update + apply rollback per transition
+  const update: Record<string, unknown> = {
+    status: prevStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Track special handling
+  let rollbackNote = "";
+
+  // ──────────────────────────────────────────────
+  // Case 1: สั่งซื้อแล้ว → รอจัดซื้อ
+  //   - Clear supplier + dates + prices + totals
+  //   - Reset items prices
+  // ──────────────────────────────────────────────
+  if (currentStatus === "สั่งซื้อแล้ว") {
+    update.supplier_name = null;
+    update.supplier_contact = null;
+    update.supplier_id = null;
+    update.ordered_date = null;
+    update.expected_date = null;
+    update.subtotal = null;
+    update.discount = null;
+    update.shipping_fee = null;
+    update.vat = null;
+    update.total = null;
+    update.procurement_notes = null;
+    // Reset prices in items[]
+    const items = (po.items ?? []) as PoItem[];
+    const cleanItems = items.map((it) => ({
+      ...it,
+      unit_price: 0,
+      subtotal: 0,
+    }));
+    update.items = cleanItems;
+    rollbackNote = " | ล้างข้อมูล supplier + ราคา";
+  }
+
+  // ──────────────────────────────────────────────
+  // Case 2: กำลังขนส่ง → สั่งซื้อแล้ว
+  //   - Clear tracking
+  // ──────────────────────────────────────────────
+  if (currentStatus === "กำลังขนส่ง") {
+    update.tracking_number = null;
+    rollbackNote = " | ล้าง tracking";
+  }
+
+  // ──────────────────────────────────────────────
+  // Case 3: รับของแล้ว/มีปัญหา → กำลังขนส่ง
+  //   - Check: ห้ามมี withdrawals ที่ใช้ lot จาก PO นี้
+  //   - Rollback stock จาก last delivery
+  //   - Delete last delivery + lots
+  // ──────────────────────────────────────────────
+  if (currentStatus === "รับของแล้ว" || currentStatus === "มีปัญหา") {
+    // 3.1) Check withdrawals — block ถ้ามีการเบิกจาก lot ของ PO นี้
+    let withdrawalCount = 0;
+    try {
+      const { data: lots } = await sb
+        .from("lots" as never)
+        .select("id")
+        .eq("po_id", poId);
+      const lotIds = ((lots ?? []) as Array<{ id: string }>).map((l) => l.id);
+      if (lotIds.length > 0) {
+        const { count } = await sb
+          .from("withdrawals")
+          .select("id", { count: "exact", head: true })
+          .in("lot_id", lotIds);
+        withdrawalCount = count ?? 0;
+      }
+    } catch { /* lots table may not exist if migration not run */ }
+
+    if (withdrawalCount > 0) {
+      return {
+        ok: false,
+        error: `ย้อนสถานะไม่ได้ — มีการเบิก ${withdrawalCount} รายการจาก lot ของ PO นี้แล้ว`,
+      };
+    }
+
+    // 3.2) Get last delivery
+    const { data: deliveries } = await sb
+      .from("po_deliveries" as never)
+      .select("id, delivery_no, items_received")
+      .eq("po_id", poId)
+      .order("delivery_no", { ascending: false })
+      .limit(1);
+    type DRow = {
+      id: string;
+      delivery_no: number;
+      items_received: Array<{
+        equipment_id: string | null;
+        qty_received: number;
+      }>;
+    };
+    const lastDelivery = ((deliveries ?? []) as unknown as DRow[])[0];
+
+    let stockRollbackCount = 0;
+    if (lastDelivery) {
+      // 3.3) Rollback stock for each equipment item in last delivery
+      for (const item of lastDelivery.items_received ?? []) {
+        if (!item.equipment_id) continue;
+        const qty = Math.floor(item.qty_received ?? 0);
+        if (qty <= 0) continue;
+        try {
+          await sb.rpc("increment_equipment_stock", {
+            p_id: item.equipment_id,
+            p_qty: -qty,
+          });
+          stockRollbackCount++;
+        } catch (e) {
+          console.warn("[revert] stock rollback failed:", e);
+        }
+      }
+
+      // 3.4) Delete lots from this delivery (no withdrawals ref'd — already checked)
+      try {
+        await sb.from("lots" as never).delete().eq("po_delivery_id", lastDelivery.id);
+      } catch { /* skip if lots table missing */ }
+
+      // 3.5) Delete the delivery row
+      await sb
+        .from("po_deliveries" as never)
+        .delete()
+        .eq("id", lastDelivery.id);
+    }
+
+    // Clear received_date ของ PO เพราะอาจถูกตั้งโดย delivery ล่าสุดที่เพิ่งลบ
+    update.received_date = null;
+
+    rollbackNote = lastDelivery
+      ? ` | ยกเลิก delivery #${lastDelivery.delivery_no} (rollback stock ${stockRollbackCount} รายการ)`
+      : " | ไม่พบ delivery";
+  }
+
+  // ──────────────────────────────────────────────
+  // Case 4: เสร็จสมบูรณ์ → รับของแล้ว
+  //   - แค่เปลี่ยน status (received_date ยังเก็บไว้)
+  // ──────────────────────────────────────────────
+  if (currentStatus === "เสร็จสมบูรณ์") {
+    rollbackNote = " | reopen งาน";
+  }
+
+  // Apply update
+  const { error } = await sb
+    .from("purchase_orders")
+    .update(update)
+    .eq("id", poId);
+  if (error) {
+    console.error("[revert] update failed:", error);
+    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  // Activity log
+  await logActivity(
+    poId, user.full_name, user.role, "status_reverted",
+    `ย้อน: ${currentStatus} → ${prevStatus}${reason ? ` | ${reason}` : ""}${rollbackNote}`,
+  );
+
+  // Notify creator
+  if (po.created_by) {
+    try {
+      await notifyUser(
+        po.created_by, poId,
+        `↩️ ${po.po_number} ถูกย้อนสถานะ`,
+        `${currentStatus} → ${prevStatus} • โดย ${user.full_name}${reason ? ` • ${reason}` : ""}`,
+        "po_status_change",
+      );
+    } catch { /* ok */ }
+  }
+
+  revalidatePath(`/po/${poId}`);
+  revalidatePath("/po");
+  revalidatePath("/dashboard");
+  return { ok: true, poId, poNumber: po.po_number };
+}
+
+// ==================================================================
 // Ship (admin) — update tracking + status to กำลังขนส่ง
 // ==================================================================
 export async function shipPoAction(

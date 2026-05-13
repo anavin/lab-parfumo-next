@@ -7,14 +7,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Copy, X, CheckCircle2,
+  Copy, X, CheckCircle2, Undo2,
   ShoppingCart, Truck, PackageOpen, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
 import {
-  closePoAction, cancelPoAction,
+  closePoAction, cancelPoAction, revertStatusAction,
 } from "@/lib/actions/po";
 import type { PoStatus, PoItem } from "@/lib/types/db";
 import type { SupplierOption } from "@/lib/types/db";
@@ -49,7 +49,9 @@ export function ActionButtons({
   const [pending, startTransition] = useTransition();
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [confirmRevertOpen, setConfirmRevertOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [revertReason, setRevertReason] = useState("");
   const [formMode, setFormMode] = useState<FormMode>(null);
 
   const canClose = ["รับของแล้ว", "มีปัญหา"].includes(po.status);
@@ -63,6 +65,18 @@ export function ActionButtons({
   // แสดง hint เมื่อยังกดรับไม่ได้ (status ยังเป็น "สั่งซื้อแล้ว")
   const receiveBlockedHint = po.status === "สั่งซื้อแล้ว";
   const showCancelBtn = canCancel && !["เสร็จสมบูรณ์", "ยกเลิก"].includes(po.status);
+
+  // ย้อนสถานะ (admin/supervisor) — แสดงเฉพาะ status ที่ revert ได้
+  const REVERTIBLE: PoStatus[] = ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"];
+  const canRevert = isAdmin && REVERTIBLE.includes(po.status);
+  const REVERT_TARGET: Partial<Record<PoStatus, PoStatus>> = {
+    "สั่งซื้อแล้ว": "รอจัดซื้อดำเนินการ",
+    "กำลังขนส่ง": "สั่งซื้อแล้ว",
+    "รับของแล้ว": "กำลังขนส่ง",
+    "มีปัญหา": "กำลังขนส่ง",
+    "เสร็จสมบูรณ์": "รับของแล้ว",
+  };
+  const revertTarget = REVERT_TARGET[po.status];
 
   function handleClose() {
     startTransition(async () => {
@@ -91,6 +105,24 @@ export function ActionButtons({
         router.refresh();
       } else {
         toast.error(res.error ?? "ยกเลิกไม่สำเร็จ");
+      }
+    });
+  }
+
+  function handleRevert() {
+    if (!revertReason.trim()) {
+      toast.error("กรุณากรอกเหตุผลที่ย้อน");
+      return;
+    }
+    startTransition(async () => {
+      const res = await revertStatusAction(po.id, revertReason);
+      if (res.ok) {
+        toast.success(`↩️ ย้อนสถานะ ${po.po_number} → ${revertTarget}`);
+        setConfirmRevertOpen(false);
+        setRevertReason("");
+        router.refresh();
+      } else {
+        toast.error(res.error ?? "ย้อนไม่สำเร็จ");
       }
     });
   }
@@ -191,6 +223,19 @@ export function ActionButtons({
             <X className="h-3.5 w-3.5" /> ยกเลิก
           </Button>
         )}
+
+        {/* Revert (admin only) — ย้อนสถานะ 1 step */}
+        {canRevert && revertTarget && (
+          <Button
+            variant="secondary" size="sm" fullWidth
+            onClick={() => setConfirmRevertOpen(true)}
+            disabled={pending}
+            className="h-10 !text-amber-700 hover:!bg-amber-50 hover:!border-amber-300"
+            title={`ย้อนกลับเป็น "${revertTarget}"`}
+          >
+            <Undo2 className="h-3.5 w-3.5" /> ย้อนสถานะ
+          </Button>
+        )}
       </div>
 
       {/* Hint when receive is blocked (status is สั่งซื้อแล้ว — needs admin to ship first) */}
@@ -234,6 +279,52 @@ export function ActionButtons({
         reasonValue={cancelReason}
         onReasonChange={setCancelReason}
         onConfirm={handleCancel}
+      />
+
+      <ConfirmDialog
+        open={confirmRevertOpen}
+        onOpenChange={(o) => {
+          setConfirmRevertOpen(o);
+          if (!o) setRevertReason("");
+        }}
+        title={`ย้อนสถานะ ${po.po_number}?`}
+        description={
+          <div className="space-y-1.5">
+            <div>
+              ย้อนจาก <strong className="text-amber-700">{po.status}</strong>
+              {" → "}
+              <strong className="text-amber-700">{revertTarget}</strong>
+            </div>
+            {po.status === "สั่งซื้อแล้ว" && (
+              <div className="text-xs text-muted-foreground">
+                ⚠️ จะล้างข้อมูล supplier + ราคา + วันที่ทั้งหมด
+              </div>
+            )}
+            {po.status === "กำลังขนส่ง" && (
+              <div className="text-xs text-muted-foreground">
+                ⚠️ จะล้าง tracking number
+              </div>
+            )}
+            {(po.status === "รับของแล้ว" || po.status === "มีปัญหา") && (
+              <div className="text-xs text-muted-foreground">
+                ⚠️ จะลบ delivery รอบล่าสุด + ถอย stock กลับ (block ถ้ามีการเบิก lot นี้แล้ว)
+              </div>
+            )}
+            {po.status === "เสร็จสมบูรณ์" && (
+              <div className="text-xs text-muted-foreground">
+                ↩️ เปิดงานใหม่ — รับของเพิ่ม / ปิดงานอีกครั้งได้
+              </div>
+            )}
+          </div>
+        }
+        confirmText="ยืนยันย้อนสถานะ"
+        variant="warning"
+        loading={pending}
+        requireReason
+        reasonPlaceholder="เช่น: กดผิด / ต้องแก้ข้อมูล / supplier โทรกลับ"
+        reasonValue={revertReason}
+        onReasonChange={setRevertReason}
+        onConfirm={handleRevert}
       />
 
       {/* Inline forms */}
