@@ -51,7 +51,7 @@ export default async function PendingReceiptPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
           label="เลยกำหนด"
-          subtitle="เลยวันคาดได้รับ"
+          subtitle="เลยวันที่คาดว่าจะได้รับ"
           value={buckets.overdue.length}
           unit="ใบ"
           icon={AlertTriangle}

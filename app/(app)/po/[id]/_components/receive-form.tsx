@@ -188,7 +188,7 @@ export function ReceiveForm({
           <div className="text-xs text-white/85 truncate">
             {supplier ?? "—"} • {items.length} รายการ
             {tracking && ` • Tracking: ${tracking}`}
-            {expectedDate && ` • คาดได้รับ: ${fmtDate(expectedDate)}`}
+            {expectedDate && ` • คาดว่าจะได้รับ: ${fmtDate(expectedDate)}`}
           </div>
         </div>
       </div>

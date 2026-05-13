@@ -65,7 +65,7 @@ function urgencyState(expectedDate: string | null): UrgencyState {
       borderColor: "border-border",
       bigText: "—",
       bigTextColor: "text-muted-foreground",
-      contextLabel: "ยังไม่กรอกวันคาดได้รับ",
+      contextLabel: "ยังไม่กรอกวันที่คาดว่าจะได้รับ",
     };
   }
 

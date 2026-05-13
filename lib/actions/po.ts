@@ -1344,7 +1344,7 @@ export async function updateProcurementAction(
     : "";
   await logActivity(
     poId, user.full_name, user.role, "ordered",
-    `สั่งกับ ${input.supplierName} | คาดได้ ${input.expectedDate}${qtyChangeNote}`,
+    `สั่งกับ ${input.supplierName} | คาดว่าจะได้รับ ${input.expectedDate}${qtyChangeNote}`,
   );
 
   if (po.created_by) {

@@ -82,7 +82,7 @@ function buildCsv(pos: PurchaseOrder[], role: string): string {
     "ผู้สร้าง",
     "วันที่สร้าง",
     "วันที่สั่ง supplier",
-    "วันคาดได้รับ",
+    "วันที่คาดว่าจะได้รับ",
     "วันรับของ",
     "Tracking Number",
     "หมายเหตุ",

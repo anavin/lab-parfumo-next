@@ -223,7 +223,7 @@ export function OrderForm({
         <div>
           <div className="font-bold">สั่งซื้อกับ Supplier — {poNumber}</div>
           <div className="text-xs text-white/85">
-            กรอก supplier + ราคาแต่ละรายการ + วันที่คาดได้รับ
+            กรอก supplier + ราคาแต่ละรายการ + วันที่คาดว่าจะได้รับ
           </div>
         </div>
       </div>

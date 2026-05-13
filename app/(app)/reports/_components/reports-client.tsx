@@ -198,7 +198,7 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
     const headers = [
       "PO", "วันสร้าง", "ผู้สร้าง", "Supplier", "รายการ",
       "ยอดรวม", "ส่วนลด", "ค่าส่ง", "VAT", "รวมสุทธิ",
-      "สถานะ", "คาดได้รับ", "ได้รับจริง",
+      "สถานะ", "คาดว่าจะได้รับ", "ได้รับจริง",
     ];
     const rows = filtered.map((p) => [
       p.po_number,
