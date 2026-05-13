@@ -21,6 +21,34 @@ function safeExt(filename: string): string {
   return ALLOWED_IMG_EXT.has(e) ? e : "jpg";
 }
 
+/**
+ * Verify magic bytes ของไฟล์ — ป้องกัน user rename .exe → .jpg แล้ว upload
+ * Returns true ถ้าไฟล์เป็นรูปจริงตาม signature
+ */
+function verifyImageMagicBytes(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 &&
+    buffer[2] === 0x4e && buffer[3] === 0x47
+  ) return true;
+  // GIF: 47 49 46 38 ("GIF8")
+  if (
+    buffer[0] === 0x47 && buffer[1] === 0x49 &&
+    buffer[2] === 0x46 && buffer[3] === 0x38
+  ) return true;
+  // WEBP: 52 49 46 46 ?? ?? ?? ?? 57 45 42 50 ("RIFF....WEBP")
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 &&
+    buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 &&
+    buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return true;
+  return false;
+}
+
 interface UploadResult {
   ok: boolean;
   url?: string;
@@ -47,6 +75,14 @@ export async function uploadImageAction(
 
   const arr = await file.arrayBuffer();
   const buffer = Buffer.from(arr);
+
+  // Magic bytes verify — ป้องกัน rename .exe → .jpg
+  if (!verifyImageMagicBytes(buffer)) {
+    return {
+      ok: false,
+      error: "ไฟล์ไม่ใช่รูปภาพ (header ไม่ตรงกับ JPEG/PNG/GIF/WEBP)",
+    };
+  }
 
   const sb = getSupabaseAdmin();
 

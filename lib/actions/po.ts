@@ -1302,8 +1302,13 @@ export async function updateProcurementAction(
   if (!input.supplierName.trim()) {
     return { ok: false, error: "กรุณากรอกชื่อ supplier" };
   }
-  if (!input.expectedDate) {
-    return { ok: false, error: "กรุณาเลือกวันที่คาดว่าจะได้รับ" };
+  // Validate expected date — strict ISO YYYY-MM-DD format
+  if (!input.expectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.expectedDate)) {
+    return { ok: false, error: "วันที่คาดว่าจะได้รับ format ไม่ถูกต้อง (ต้องเป็น YYYY-MM-DD)" };
+  }
+  const parsedDate = new Date(input.expectedDate + "T00:00:00.000Z");
+  if (isNaN(parsedDate.getTime())) {
+    return { ok: false, error: "วันที่ไม่ถูกต้อง (parse ไม่ได้)" };
   }
 
   const sb = getSupabaseAdmin();

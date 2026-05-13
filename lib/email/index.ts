@@ -222,7 +222,7 @@ export async function sendWelcomeEmail(opts: {
   loginUrl?: string;
 }): Promise<SendResult> {
   const url = opts.loginUrl ?? `${resolveBaseUrl()}/login`;
-  const subject = `🔐 บัญชีใหม่ใน ${opts.companyName} — เริ่มใช้งาน Lab Parfumo PO Pro`;
+  const subject = sanitizeSubject(`🔐 บัญชีใหม่ใน ${opts.companyName} — เริ่มใช้งาน Lab Parfumo PO Pro`);
 
   const html = `<!doctype html>
 <html lang="th">
@@ -313,7 +313,7 @@ export async function sendDailyDigest(opts: {
   const d = opts.data;
   const fmt = (n: number) => `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`;
 
-  const subject = `📊 สรุปประจำวัน ${opts.date} — ${opts.companyName}`;
+  const subject = sanitizeSubject(`📊 สรุปประจำวัน ${opts.date} — ${opts.companyName}`);
 
   const itemsHtml = d.topItems.length === 0
     ? '<tr><td style="padding:8px 0; color:#94A3B8; font-size:13px;">— ไม่มีรายการ —</td></tr>'
@@ -401,6 +401,20 @@ ${d.topItems.slice(0, 5).map((it) => `  • ${it.name} ×${it.qty}`).join("\n") 
 `;
 
   return sendEmail({ to: opts.to, subject, html, text });
+}
+
+/**
+ * Sanitize email subject — strip CRLF + control chars + trim
+ * ป้องกัน header injection (\n, \r) + excessive length
+ *
+ * Note: ไม่ HTML-escape เพราะ email subject เป็น plain text (RFC 5322 header)
+ */
+function sanitizeSubject(s: string): string {
+  return String(s ?? "")
+    .replace(/[\r\n\t\v\f\0]/g, " ")     // strip line breaks + control chars
+    .replace(/\s+/g, " ")                 // collapse whitespace
+    .trim()
+    .slice(0, 200);                        // max 200 chars (Outlook truncates ~150)
 }
 
 function escHtml(s: string): string {
@@ -555,7 +569,7 @@ export async function sendPoUpdateEmail(opts: PoUpdateEmailOpts): Promise<SendRe
 
   const t = PO_EMAIL_TEMPLATES[opts.kind];
   const detail = t.body(opts);
-  const subject = `${t.icon} ${opts.poNumber} — ${t.title}`;
+  const subject = sanitizeSubject(`${t.icon} ${opts.poNumber} — ${t.title}`);
 
   const detailHtml = detail
     ? `<div style="font-size:13px; color:#475569; margin-top:12px;">${escHtml(detail)}</div>`

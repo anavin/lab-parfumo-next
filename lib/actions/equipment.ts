@@ -462,6 +462,7 @@ export async function addCategoryAction(
     return { ok: false, error: "เพิ่มหมวดไม่สำเร็จ" };
   }
   revalidatePath("/equipment");
+  revalidatePath("/po/new"); // category dropdown ใน equipment grid
   return { ok: true };
 }
 
@@ -480,6 +481,7 @@ export async function updateCategoryAction(
   await sb.from("equipment_categories").update({ name: trimmed }).eq("name", oldName);
   await sb.from("equipment").update({ category: trimmed }).eq("category", oldName);
   revalidatePath("/equipment");
+  revalidatePath("/po/new"); // category dropdown ใน equipment grid
   return { ok: true };
 }
 
@@ -502,6 +504,7 @@ export async function deleteCategoryAction(
   }
   await sb.from("equipment_categories").delete().eq("name", name);
   revalidatePath("/equipment");
+  revalidatePath("/po/new"); // category dropdown ใน equipment grid
   return { ok: true };
 }
 
@@ -535,6 +538,7 @@ export async function moveCategoryAction(
   await sb.from("equipment_categories").update({ display_order: orderB }).eq("id", a.id);
   await sb.from("equipment_categories").update({ display_order: orderA }).eq("id", b.id);
   revalidatePath("/equipment");
+  revalidatePath("/po/new"); // category dropdown ใน equipment grid
   return { ok: true };
 }
 
