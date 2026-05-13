@@ -83,23 +83,55 @@ export async function createWithdrawalAction(input: {
     eqUnit = eq.unit ?? "ชิ้น";
   }
 
-  // 2) Insert withdrawal record
+  // 2) FIFO: หา lot ที่จะใช้ — ดึง active lots ของ equipment นี้ เรียงตาม received_date asc
+  //    (best-effort — ถ้า lots table ยังไม่ migrate หรือไม่มี active lot → skip lot tracking)
+  let primaryLotId: string | null = null;
+  try {
+    const { data: lots } = await sb
+      .from("lots" as never)
+      .select("id, qty_remaining")
+      .eq("equipment_id", input.equipmentId)
+      .eq("status", "active")
+      .gt("qty_remaining", 0)
+      .order("received_date", { ascending: true });
+    type LotRow = { id: string; qty_remaining: number };
+    let remaining = input.qty;
+    for (const lot of ((lots ?? []) as unknown as LotRow[])) {
+      if (remaining <= 0) break;
+      const used = Math.min(remaining, lot.qty_remaining);
+      const newQty = lot.qty_remaining - used;
+      const newStatus = newQty <= 0 ? "depleted" : "active";
+      await sb
+        .from("lots" as never)
+        .update({ qty_remaining: newQty, status: newStatus })
+        .eq("id", lot.id);
+      if (!primaryLotId) primaryLotId = lot.id;  // record first lot used
+      remaining -= used;
+    }
+  } catch (e) {
+    console.warn("[withdraw] lots FIFO skipped:", e);
+  }
+
+  // 3) Insert withdrawal record (link to primary lot if available)
   const withdrawnAt = input.withdrawnAt
     ? new Date(input.withdrawnAt).toISOString()
     : new Date().toISOString();
+  const insertPayload: Record<string, unknown> = {
+    equipment_id: input.equipmentId,
+    equipment_name: eqName,
+    qty: input.qty,
+    unit: eqUnit,
+    purpose: input.purpose.trim(),
+    withdrawn_by: user.id,
+    withdrawn_by_name: user.full_name,
+    withdrawn_at: withdrawnAt,
+    notes: input.notes?.trim() ?? "",
+  };
+  if (primaryLotId) insertPayload.lot_id = primaryLotId;
+
   const { data, error } = await sb
     .from("withdrawals")
-    .insert({
-      equipment_id: input.equipmentId,
-      equipment_name: eqName,
-      qty: input.qty,
-      unit: eqUnit,
-      purpose: input.purpose.trim(),
-      withdrawn_by: user.id,
-      withdrawn_by_name: user.full_name,
-      withdrawn_at: withdrawnAt,
-      notes: input.notes?.trim() ?? "",
-    })
+    .insert(insertPayload as never)
     .select()
     .maybeSingle();
   if (error || !data) {
@@ -110,6 +142,7 @@ export async function createWithdrawalAction(input: {
   revalidatePath("/withdraw");
   revalidatePath("/equipment");
   revalidatePath("/dashboard");
+  revalidatePath("/lots");
   return { ok: true, withdrawalId: data.id };
 }
 

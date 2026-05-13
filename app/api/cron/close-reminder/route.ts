@@ -37,16 +37,22 @@ export async function GET(req: Request) {
 
   const sb = getSupabaseAdmin();
 
-  // PO ที่ต้องเตือน — รับของแล้วเกิน 1 วัน + ยังไม่ปิด/ยังไม่ยกเลิก
+  // PO ที่ต้องเตือน:
+  //   1) status ∈ {"รับของแล้ว", "มีปัญหา"}
+  //   2) received_date <= today - 1 day
+  //   3) last_close_reminder_sent_at IS NULL หรือ <= now() - 3 days (throttle)
+  //      → กัน spam: ส่งทุก 3 วันสูงสุด (PO ค้าง 30 วัน → 10 emails ไม่ใช่ 30)
   const cutoffDate = new Date(Date.now() - 86_400_000) // 24 ชม. ที่แล้ว
     .toISOString()
     .slice(0, 10);
+  const reminderCutoff = new Date(Date.now() - 3 * 86_400_000).toISOString();
 
   const { data: posRaw } = await sb
     .from("purchase_orders")
     .select("*")
     .in("status", ["รับของแล้ว", "มีปัญหา"])
-    .lte("received_date", cutoffDate);
+    .lte("received_date", cutoffDate)
+    .or(`last_close_reminder_sent_at.is.null,last_close_reminder_sent_at.lte.${reminderCutoff}`);
 
   const pos = (posRaw ?? []) as PurchaseOrder[];
 
@@ -134,6 +140,11 @@ export async function GET(req: Request) {
           errorKind: r.errorKind,
         };
       }
+      // Mark sent — throttle ครั้งต่อไปอีก 3 วัน
+      await sb
+        .from("purchase_orders")
+        .update({ last_close_reminder_sent_at: new Date().toISOString() })
+        .eq("id", po.id);
       return { po: po.po_number, status: "sent" as const, daysSince };
     }),
   );

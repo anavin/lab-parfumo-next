@@ -444,7 +444,11 @@ export async function bulkDeletePoAction(
   );
 
   revalidatePath("/po");
+  revalidatePath("/po/pending-receipt");
   revalidatePath("/dashboard");
+  revalidatePath("/audit");
+  revalidatePath("/reports");
+  revalidatePath("/lots");
 
   return {
     ok: true,
@@ -898,10 +902,33 @@ export async function addCommentAction(
   if (!message.trim()) {
     return { ok: false, error: "ข้อความว่าง — กรุณาพิมพ์ข้อความ" };
   }
+  // Message size guard
+  if (message.length > 2000) {
+    return { ok: false, error: "ข้อความยาวเกินไป (จำกัด 2000 ตัวอักษร)" };
+  }
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
   const sb = getSupabaseAdmin();
+
+  // Permission gate: ต้องเห็น PO ได้ก่อนถึงจะคอมเมนต์ได้
+  //  - Privileged: ทุก PO
+  //  - Requester: เฉพาะ PO ของตัวเอง หรือ PO ที่ status >= "สั่งซื้อแล้ว" (team-visible)
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("created_by, status")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  const isCreator = po.created_by === user.id;
+  const TEAM_VISIBLE = ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"];
+  const canSee = isPrivileged || isCreator || TEAM_VISIBLE.includes(po.status);
+  if (!canSee) {
+    return { ok: false, error: "ไม่มีสิทธิ์คอมเมนต์ใน PO นี้" };
+  }
+
   const { error } = await sb.from("po_comments" as never).insert({
     po_id: poId,
     user_name: user.full_name,
@@ -941,7 +968,7 @@ export async function addPoAttachmentsAction(
   const sb = getSupabaseAdmin();
   const { data: po, error: selectErr } = await sb
     .from("purchase_orders")
-    .select("id, attachment_urls, po_number")
+    .select("id, attachment_urls, po_number, created_by, status")
     .eq("id", poId)
     .maybeSingle();
   if (selectErr) {
@@ -951,6 +978,16 @@ export async function addPoAttachmentsAction(
   if (!po) {
     console.error(`[po addPoAttachmentsAction] PO not found with id=${poId}`);
     return { ok: false, error: `ไม่พบใบ PO (id=${poId.slice(0, 8)}...)` };
+  }
+
+  // Permission gate: privileged หรือ creator เท่านั้น
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  if (!isPrivileged && po.created_by !== user.id) {
+    return { ok: false, error: "คุณไม่ใช่เจ้าของ PO นี้" };
+  }
+  // ห้ามเพิ่มไฟล์เมื่อ PO อยู่ใน terminal state
+  if (po.status === "เสร็จสมบูรณ์" || po.status === "ยกเลิก") {
+    return { ok: false, error: `แนบไฟล์ไม่ได้ — PO ${po.status} แล้ว` };
   }
   console.log(`[po addPoAttachmentsAction] found PO ${po.po_number}, existing attachments=${(po.attachment_urls ?? []).length}`);
 
@@ -994,10 +1031,20 @@ export async function removePoAttachmentAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("attachment_urls")
+    .select("attachment_urls, created_by, status")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+
+  // Permission gate: privileged หรือ creator เท่านั้น
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  if (!isPrivileged && po.created_by !== user.id) {
+    return { ok: false, error: "คุณไม่ใช่เจ้าของ PO นี้" };
+  }
+  // ห้ามลบไฟล์เมื่อ PO อยู่ใน terminal state (preserve audit trail)
+  if (po.status === "เสร็จสมบูรณ์" || po.status === "ยกเลิก") {
+    return { ok: false, error: `ลบไฟล์ไม่ได้ — PO ${po.status} แล้ว` };
+  }
 
   const existing: PoAttachment[] = (po.attachment_urls ?? []) as PoAttachment[];
   const removed = existing.find((a) => a.url === attachmentUrl);
@@ -1572,6 +1619,25 @@ export async function addDeliveryAction(
   // Phase E: สร้าง lot อัตโนมัติ (best-effort — ไม่ block flow ถ้า lots table ยังไม่ migrate)
   if (insertedDeliveryId) {
     try {
+      // ดึง equipment unit ไปด้วย (ไม่งั้น lots.unit เป็น null)
+      const eqIds = Array.from(
+        new Set(
+          input.itemsReceived
+            .map((it) => it.equipment_id)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      const unitMap = new Map<string, string>();
+      if (eqIds.length > 0) {
+        const { data: equipments } = await sb
+          .from("equipment")
+          .select("id, unit")
+          .in("id", eqIds);
+        for (const eq of ((equipments ?? []) as Array<{ id: string; unit: string | null }>)) {
+          if (eq.unit) unitMap.set(eq.id, eq.unit);
+        }
+      }
+
       const { createLotsForDelivery } = await import("./lots");
       await createLotsForDelivery({
         poId,
@@ -1584,7 +1650,7 @@ export async function addDeliveryAction(
           equipment_id: it.equipment_id,
           name: it.name,
           qty_received: it.qty_received,
-          unit: undefined, // อาจจะดึงจาก equipment.unit ทีหลัง
+          unit: it.equipment_id ? unitMap.get(it.equipment_id) : undefined,
         })),
       });
     } catch (e) {
