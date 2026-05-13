@@ -945,7 +945,10 @@ export async function createPoAction(
 export interface ProcurementInput {
   supplierName: string;
   supplierContact: string;
-  itemPrices: Array<{ unit_price: number }>;  // ตรงตำแหน่งกับ po.items
+  /** Admin แก้ qty + ราคา ได้ที่ตำแหน่งเดียวกับ po.items
+   *  qty: ถ้าไม่ส่งหรือเป็น undefined → ใช้ qty เดิม
+   */
+  itemUpdates: Array<{ qty: number; unit_price: number }>;
   discount: number;
   shippingFee: number;
   vatRate: number;          // 0 หรือ 0.07
@@ -991,17 +994,38 @@ export async function updateProcurementAction(
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
 
   const items = (po.items ?? []) as PoItem[];
-  if (input.itemPrices.length !== items.length) {
+  if (input.itemUpdates.length !== items.length) {
     return { ok: false, error: "จำนวน items ไม่ตรงกับฟอร์ม" };
   }
 
-  // Build new items with prices
+  // Validate qty — ห้าม 0 หรือติดลบ
+  for (let i = 0; i < items.length; i++) {
+    const newQty = Math.floor(input.itemUpdates[i]?.qty ?? 0);
+    if (newQty < 1) {
+      return {
+        ok: false,
+        error: `จำนวนของ "${items[i].name}" ต้อง ≥ 1`,
+      };
+    }
+  }
+
+  // Track qty changes for activity log
+  const qtyChanges: string[] = [];
+
+  // Build new items with updated qty + prices
   const newItems = items.map((it, idx) => {
-    const unitPrice = Math.max(0, input.itemPrices[idx]?.unit_price ?? 0);
+    const update = input.itemUpdates[idx];
+    const newQty = Math.max(1, Math.floor(update?.qty ?? it.qty ?? 1));
+    const unitPrice = Math.max(0, update?.unit_price ?? 0);
+    // ถ้า admin แก้ qty → log
+    if (newQty !== (it.qty ?? 0)) {
+      qtyChanges.push(`${it.name}: ${it.qty} → ${newQty}`);
+    }
     return {
       ...it,
+      qty: newQty,
       unit_price: unitPrice,
-      subtotal: unitPrice * (it.qty ?? 0),
+      subtotal: unitPrice * newQty,
     };
   });
 
@@ -1094,9 +1118,13 @@ export async function updateProcurementAction(
     }
   }
 
+  // Activity log — ใส่ qty changes ถ้ามี
+  const qtyChangeNote = qtyChanges.length > 0
+    ? ` | แก้จำนวน: ${qtyChanges.join(", ")}`
+    : "";
   await logActivity(
     poId, user.full_name, user.role, "ordered",
-    `สั่งกับ ${input.supplierName} | คาดได้ ${input.expectedDate}`,
+    `สั่งกับ ${input.supplierName} | คาดได้ ${input.expectedDate}${qtyChangeNote}`,
   );
 
   if (po.created_by) {

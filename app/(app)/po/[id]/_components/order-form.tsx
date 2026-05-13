@@ -124,10 +124,15 @@ export function OrderForm({
     setSupplierName("");
   }
 
-  // Item prices
+  // Item qty (editable by admin) + prices
+  const originalQtys = useMemo(() => items.map((it) => it.qty ?? 1), [items]);
+  const [qtys, setQtys] = useState<number[]>(() => items.map((it) => it.qty ?? 1));
   const [prices, setPrices] = useState<number[]>(() =>
     items.map((it) => it.unit_price ?? 0),
   );
+  function updateQty(idx: number, value: number) {
+    setQtys((cur) => cur.map((q, i) => (i === idx ? Math.max(1, Math.floor(value)) : q)));
+  }
   function updatePrice(idx: number, value: number) {
     setPrices((cur) => cur.map((p, i) => (i === idx ? Math.max(0, value) : p)));
   }
@@ -143,10 +148,10 @@ export function OrderForm({
   });
   const [procNotes, setProcNotes] = useState("");
 
-  // Compute totals
+  // Compute totals — ใช้ qty ที่อาจถูก admin แก้แล้ว
   const subtotal = useMemo(
-    () => items.reduce((s, it, i) => s + (it.qty ?? 0) * (prices[i] ?? 0), 0),
-    [items, prices],
+    () => qtys.reduce((s, q, i) => s + q * (prices[i] ?? 0), 0),
+    [qtys, prices],
   );
   const vatRate = vatPct === "7" ? 0.07 : 0;
   const vat = subtotal * vatRate;
@@ -162,7 +167,7 @@ export function OrderForm({
       const res = await updateProcurementAction(poId, {
         supplierName,
         supplierContact,
-        itemPrices: prices.map((p) => ({ unit_price: p })),
+        itemUpdates: prices.map((p, i) => ({ qty: qtys[i], unit_price: p })),
         discount,
         shippingFee,
         vatRate,
@@ -298,26 +303,62 @@ export function OrderForm({
         </div>
       </div>
 
-      {/* Item prices */}
+      {/* Item qty + prices */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-2">
-          💰 ราคาต่อรายการ
+          💰 จำนวน + ราคาต่อรายการ
+          <span className="text-slate-400 text-xs ml-1">— admin แก้จำนวนได้</span>
         </label>
         <div className="space-y-2">
           {items.map((it, i) => {
-            const lineTotal = (prices[i] ?? 0) * (it.qty ?? 0);
+            const currentQty = qtys[i] ?? (it.qty ?? 1);
+            const qtyChanged = currentQty !== originalQtys[i];
+            const lineTotal = (prices[i] ?? 0) * currentQty;
             return (
               <div
                 key={i}
-                className="grid grid-cols-12 gap-2 items-center bg-slate-50 border border-slate-200 rounded-lg p-2.5"
+                className={`grid grid-cols-12 gap-2 items-center border rounded-lg p-2.5 ${
+                  qtyChanged
+                    ? "bg-amber-50 border-amber-300 ring-1 ring-amber-200"
+                    : "bg-slate-50 border-slate-200"
+                }`}
               >
-                <div className="col-span-12 sm:col-span-5 text-sm font-semibold text-slate-900 truncate">
-                  {it.name}
+                {/* Name + unit */}
+                <div className="col-span-12 sm:col-span-4 min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">
+                    {it.name}
+                  </div>
+                  {qtyChanged && (
+                    <div className="text-[10px] text-amber-700 font-medium mt-0.5">
+                      เดิม {originalQtys[i].toLocaleString("th-TH")} → {currentQty.toLocaleString("th-TH")} {it.unit}
+                    </div>
+                  )}
                 </div>
-                <div className="col-span-3 sm:col-span-2 text-xs text-slate-500">
-                  {it.qty.toLocaleString("th-TH")} {it.unit}
+
+                {/* Qty input — editable */}
+                <div className="col-span-4 sm:col-span-2">
+                  <label className="block text-[10px] text-slate-500 mb-0.5 sm:hidden">จำนวน</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={currentQty === 0 ? "" : currentQty}
+                      onChange={(e) => updateQty(i, parseInt(e.target.value, 10) || 1)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      placeholder="1"
+                      disabled={pending}
+                      className={`h-9 w-full px-2 rounded-lg border bg-white text-sm focus:outline-none focus:border-brand-600 text-right tabular-nums font-semibold ${
+                        qtyChanged ? "border-amber-400 text-amber-900" : "border-slate-300"
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-500 flex-shrink-0">{it.unit}</span>
+                  </div>
                 </div>
+
+                {/* Price input */}
                 <div className="col-span-5 sm:col-span-3">
+                  <label className="block text-[10px] text-slate-500 mb-0.5 sm:hidden">ราคา/หน่วย</label>
                   <input
                     type="number"
                     min="0"
@@ -330,7 +371,9 @@ export function OrderForm({
                     className="h-9 w-full px-3 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-brand-600 text-right tabular-nums"
                   />
                 </div>
-                <div className="col-span-4 sm:col-span-2 text-right text-sm font-semibold text-brand-700 tabular-nums">
+
+                {/* Line total */}
+                <div className="col-span-3 sm:col-span-3 text-right text-sm font-semibold text-brand-700 tabular-nums">
                   ฿{lineTotal.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
