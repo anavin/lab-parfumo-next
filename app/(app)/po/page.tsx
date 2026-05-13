@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PoRow } from "@/components/po/po-row";
+import { PoListClient } from "./_components/po-list-client";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   getPos, applyPoFilters, type PoFilters, type PoSortKey,
@@ -218,11 +218,11 @@ export default async function PoListPage({
         />
       ) : (
         <>
-          <div className="space-y-2">
-            {pageItems.map((po) => (
-              <PoRow key={po.id} po={po} isAdmin={isAdmin} />
-            ))}
-          </div>
+          <PoListClient
+            pos={pageItems}
+            isPrivileged={isAdmin}
+            isAdmin={isAdmin}
+          />
           <Pagination
             page={safePage}
             totalPages={totalPages}

@@ -339,6 +339,123 @@ async function _updateStatus(
 // ==================================================================
 const CLOSEABLE_STATUSES: PoStatus[] = ["รับของแล้ว", "มีปัญหา"];
 
+// ==================================================================
+// Bulk delete (privileged) — hard delete + cascade related rows
+// ==================================================================
+const DELETABLE_STATUSES: PoStatus[] = [
+  "รอจัดซื้อดำเนินการ",  // ยังไม่ได้ทำอะไร — ลบได้
+  "เสร็จสมบูรณ์",        // ปิดงานแล้ว — archive
+  "ยกเลิก",              // ยกเลิกแล้ว — archive
+];
+
+export interface BulkDeleteResult {
+  ok: boolean;
+  error?: string;
+  deleted: number;
+  blocked: number;          // PO ที่อยู่ใน status ไม่ใช่ deletable
+  blockedDetails?: Array<{ poNumber: string; status: PoStatus }>;
+}
+
+export async function bulkDeletePoAction(
+  poIds: string[],
+): Promise<BulkDeleteResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor", deleted: 0, blocked: 0 };
+  }
+  if (!poIds.length) {
+    return { ok: false, error: "ไม่ได้เลือก PO", deleted: 0, blocked: 0 };
+  }
+  if (poIds.length > 100) {
+    return {
+      ok: false,
+      error: "ลบสูงสุดได้ครั้งละ 100 ใบ",
+      deleted: 0, blocked: 0,
+    };
+  }
+
+  const sb = getSupabaseAdmin();
+
+  // 1) ดึง PO ทั้งหมด — ตรวจ status
+  const { data: pos } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status")
+    .in("id", poIds);
+
+  type Row = { id: string; po_number: string; status: PoStatus };
+  const rows = (pos ?? []) as Row[];
+
+  const deletable = rows.filter((p) => DELETABLE_STATUSES.includes(p.status));
+  const blocked = rows.filter((p) => !DELETABLE_STATUSES.includes(p.status));
+
+  if (deletable.length === 0) {
+    return {
+      ok: false,
+      error: `ลบไม่ได้ — PO ที่เลือกทั้ง ${blocked.length} ใบอยู่ใน workflow ที่ active`,
+      deleted: 0,
+      blocked: blocked.length,
+      blockedDetails: blocked.map((p) => ({ poNumber: p.po_number, status: p.status })),
+    };
+  }
+
+  const deletableIds = deletable.map((p) => p.id);
+
+  // 2) Cascade delete related rows (กัน FK constraint error)
+  //    ลำดับ: child tables ก่อน → parent table
+  try {
+    // 2a) po_activities
+    await sb.from("po_activities" as never).delete().in("po_id", deletableIds);
+    // 2b) po_comments
+    await sb.from("po_comments" as never).delete().in("po_id", deletableIds);
+    // 2c) po_deliveries (NOT cascading stock — POs that affected stock can't be deleted directly)
+    await sb.from("po_deliveries" as never).delete().in("po_id", deletableIds);
+    // 2d) notifications referencing PO
+    await sb.from("notifications").delete().in("po_id", deletableIds);
+    // 2e) lots created by these PO deliveries (จาก Phase E)
+    //     ใช้ ON DELETE SET NULL ใน lots.po_id แล้ว → row ยังอยู่ แค่ unset
+    //     (เก็บ lot history ไว้ แม้ PO ถูกลบ — ของยังอยู่ในคลังจริง)
+  } catch (e) {
+    console.warn("[bulkDelete] cascade delete partial fail:", e);
+    // ดำเนินการต่อ — main PO delete จะ FK error ถ้ามีของค้าง
+  }
+
+  // 3) Delete the POs themselves
+  const { error } = await sb
+    .from("purchase_orders")
+    .delete()
+    .in("id", deletableIds);
+
+  if (error) {
+    console.error("[bulkDelete] failed:", error);
+    return {
+      ok: false,
+      error: `ลบไม่สำเร็จ: ${error.message}`,
+      deleted: 0,
+      blocked: blocked.length,
+    };
+  }
+
+  // 4) Audit log — ใส่ log ใน po_activities ของ PO ที่ลบ... ไม่ได้แล้วเพราะลบไปแล้ว
+  //    ใช้ console.log แทน (Sentry/Vercel logs จับ)
+  console.log(
+    `[bulkDelete] user=${user.full_name} (${user.role}) deleted ${deletable.length} POs: ${
+      deletable.map((p) => p.po_number).join(", ")
+    }${blocked.length ? ` | blocked: ${blocked.map((p) => `${p.po_number}(${p.status})`).join(", ")}` : ""}`,
+  );
+
+  revalidatePath("/po");
+  revalidatePath("/dashboard");
+
+  return {
+    ok: true,
+    deleted: deletable.length,
+    blocked: blocked.length,
+    blockedDetails: blocked.length
+      ? blocked.map((p) => ({ poNumber: p.po_number, status: p.status }))
+      : undefined,
+  };
+}
+
 export async function closePoAction(poId: string): Promise<ActionResult> {
   // Workflow gate: ปิดงานได้เฉพาะหลังจากรับของแล้วเท่านั้น
   // ก่อนหน้า: ปิดได้จากทุก state (แม้ draft) → audit "BROKEN"
