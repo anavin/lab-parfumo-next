@@ -177,6 +177,7 @@ Image upload verifies magic bytes (JPEG/PNG/GIF/WEBP) — prevents rename attack
 | `purchase_orders.attachment_urls` + missing columns | discount/shipping_fee/vat/etc. | `202605_po_missing_columns.sql` |
 | `purchase_orders.last_close_reminder_sent_at` | Throttle close-reminder cron | `202605_close_reminder_throttle.sql` |
 | `withdraw_stock` RPC + `po_counters` + `next_po_number` RPC | Atomic stock + PO number | `202605_atomic_rpcs.sql` |
+| **Data API grants to service_role + RLS enable + future defaults** | Prep for Supabase 30-Oct-2026 enforcement | `202605_data_api_grants.sql` |
 
 **FK link**: `purchase_orders.supplier_id → suppliers.id` (auto-set by orderPoAction via name lookup)
 **Sequence**: `lot_no_seq` — generates `LOT-YYYY-NNNNN` via `next_lot_no()` RPC
@@ -579,6 +580,14 @@ NEXT_PUBLIC_SENTRY_DSN            # Sentry — graceful no-op if missing
 - Toast / ConfirmDialog patterns consistent.
 - Thai UI labels except eyebrow labels (PO PRO, SUPPLIER, etc.).
 - **Migration files: idempotent** (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION`, `DO $$ IF NOT EXISTS $$`).
+- **New tables ใน migrations** — ต้องเพิ่ม GRANT + RLS หลัง CREATE (Supabase 30-Oct-2026):
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.new_table (...);
+  GRANT ALL ON public.new_table TO service_role;
+  ALTER TABLE public.new_table ENABLE ROW LEVEL SECURITY;
+  -- หรือพึ่ง ALTER DEFAULT PRIVILEGES ใน 202605_data_api_grants.sql
+  -- (default privileges จะใช้กับ table ที่สร้างใหม่หลัง migration นั้นรัน)
+  ```
 - Server actions: best-effort secondary actions (email, lot creation) wrapped in try/catch — never block primary flow.
 - Diagnostic logs: `console.log("[module name]")` for grep filter in Vercel logs.
 - Defense in depth: validate at client AND server (e.g., qty_damaged > qty_received).
