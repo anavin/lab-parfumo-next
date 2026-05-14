@@ -1,7 +1,7 @@
 # Lab Parfumo PO Pro — Claude Context
 
 > Memory file for future Claude sessions. Read this first.
-> Last updated: 2026-05-13 (after comprehensive audit + 13 fixes)
+> Last updated: 2026-05-14 (after audit round 2 + ALL Future Iterations F1-F6)
 
 ## Project Overview
 
@@ -178,6 +178,8 @@ Image upload verifies magic bytes (JPEG/PNG/GIF/WEBP) — prevents rename attack
 | `purchase_orders.last_close_reminder_sent_at` | Throttle close-reminder cron | `202605_close_reminder_throttle.sql` |
 | `withdraw_stock` RPC + `po_counters` + `next_po_number` RPC | Atomic stock + PO number | `202605_atomic_rpcs.sql` |
 | **Data API grants to service_role + RLS enable + future defaults** | Prep for Supabase 30-Oct-2026 enforcement | `202605_data_api_grants.sql` |
+| **`lot_status_enforce` trigger + backfill** | Auto-update lots.status (F2) | `202605_lots_auto_status.sql` |
+| **`withdrawal_lot_usage` table + `withdraw_atomic` RPC** | Multi-lot FIFO trace + true atomic withdraw (F1+F3) | `202605_withdraw_atomic.sql` |
 
 **FK link**: `purchase_orders.supplier_id → suppliers.id` (auto-set by orderPoAction via name lookup)
 **Sequence**: `lot_no_seq` — generates `LOT-YYYY-NNNNN` via `next_lot_no()` RPC
@@ -186,8 +188,10 @@ Image upload verifies magic bytes (JPEG/PNG/GIF/WEBP) — prevents rename attack
 
 | Function | Purpose | Migration |
 |---|---|---|
-| `withdraw_stock(p_equipment_id, p_qty)` | **Atomic** check + decrement (returns JSONB) | `202605_atomic_rpcs.sql` |
+| `withdraw_stock(p_equipment_id, p_qty)` | **Atomic** check + decrement (returns JSONB) — fallback | `202605_atomic_rpcs.sql` |
+| `withdraw_atomic(p_equipment_id, p_qty, p_user_id, ...)` | **F1 — true atomic**: stock + withdrawal + FIFO lots ใน tx เดียว | `202605_withdraw_atomic.sql` |
 | `next_po_number(year_int)` | **Atomic** PO number via counter table + advisory lock | `202605_atomic_rpcs.sql` |
+| `lot_status_enforce()` | **Trigger function** auto status='depleted/expired/active' | `202605_lots_auto_status.sql` |
 | `increment_equipment_stock(p_id, p_qty)` | Atomic stock +/- (signed qty) | `202604_workflow_atomic.sql` |
 | `next_po_delivery_no(p_po_id)` | Atomic delivery_no via advisory lock | `202604_workflow_atomic.sql` |
 | `next_lot_no()` | Returns `LOT-YYYY-NNNNN` | `202604_lots.sql` |
@@ -212,7 +216,7 @@ Idle timeout: 60 min. Cookie max-age: 7 days. Account lockout: 5 failed / 15 min
 ### Functions in `lib/email/index.ts`
 1. **`sendWelcomeEmail`** — new user creation (Username + temp password)
 2. **`sendDailyDigest`** — admin daily summary (cron 08:00 ICT, filter by `email_daily_digest` pref)
-3. **`sendPoUpdateEmail`** — PO transitions (6 kinds: ordered/shipping/completed/cancelled/issue/new_for_admin/close_reminder)
+3. **`sendPoUpdateEmail`** — PO transitions (8 kinds: ordered/shipping/completed/cancelled/issue/close_reminder/**reverted**/new_for_admin)
 
 ### `resolveBaseUrl()` priority
 ```
@@ -237,6 +241,7 @@ Used in ALL email subjects (defense in depth against header injection).
 | → "ยกเลิก" | `cancelled` | "โดย {user} • {reason}" |
 | → "มีปัญหา" | `issue` | "แจ้งโดย {user} • {issue}" |
 | (cron) ค้างไม่ปิด > 1 วัน | `close_reminder` | "ค้าง {N} วัน — กรุณาปิดงาน" (throttle 3 days) |
+| **↩️ Revert status** | **`reverted`** | "{from} → {to} • โดย {user} • {reason}" (F6) |
 
 ### Admin email trigger
 - **New PO created** → `new_for_admin` template → all admin/supervisor with `email_new_po=true`
@@ -278,6 +283,43 @@ After successful delivery insert → `createLotsForDelivery()` creates 1 `lot` r
 
 ---
 
+## Withdrawal Flow (atomic — F1 + F3)
+
+### Primary path: `withdraw_atomic` RPC
+Single Postgres transaction:
+```
+withdraw_atomic(equipment_id, qty, user_id, ...)
+├─ UPDATE equipment.stock (atomic check + decrement)
+├─ INSERT withdrawals (without lot_id)
+├─ FIFO LOOP:
+│  ├─ UPDATE lots.qty_remaining (trigger handles status — F2)
+│  └─ INSERT withdrawal_lot_usage (F3 — track each lot)
+└─ UPDATE withdrawals.lot_id = primary (backward compat)
+```
+
+Returns JSONB `{ success, withdrawal_id, lot_usages[], unallocated, ... }`
+
+If any step fails → rollback ทั้งหมด (true atomicity)
+
+### Fallback path
+ถ้า `withdraw_atomic` ไม่อยู่ (migration ยังไม่รัน):
+→ ใช้ legacy `withdraw_stock` RPC + manual FIFO ใน app code
+
+### `withdrawal_lot_usage` table (F3)
+Multi-lot consumption tracking:
+- 1 withdrawal → N rows (each lot used)
+- `deleteWithdrawalAction` คืน qty ให้ทุก lot ที่ใช้ (ไม่ใช่แค่ primary)
+- Trigger F2 จัดการ status='active'/'depleted' อัตโนมัติ
+
+### Use case
+เบิก 100 ขวด:
+- Lot A เหลือ 60 (รับเข้าก่อน) → กิน 60
+- Lot B เหลือ 50 → กิน 40
+- `withdrawal_lot_usage`: 2 rows
+- ถ้า delete withdrawal → คืน A=60, B=40 อัตโนมัติ ✓
+
+---
+
 ## Lot/Batch Tracking (Phase E — commit ddbd41c)
 
 ### Schema (`migrations/202604_lots.sql`)
@@ -287,12 +329,24 @@ After successful delivery insert → `createLotsForDelivery()` creates 1 `lot` r
 - Status: `active` | `depleted` | `expired` | `discarded`
 - `withdrawals.lot_id` (FK)
 
-### FIFO consumption (withdraw.ts)
-When user withdraws:
+### FIFO consumption
+**Primary (F1 — atomic RPC):** `withdraw_atomic()` handles end-to-end in transaction
+**Fallback:** app-side FIFO loop in `withdraw.ts`
+
+Both paths:
 1. Query active lots of equipment, sorted by `received_date` ASC
 2. Decrement `qty_remaining` across lots (oldest first)
-3. Set status='depleted' when reaches 0
-4. Store first lot_id in `withdrawals.lot_id` (for audit linking)
+3. **F2 trigger** auto-sets status='depleted' when reaches 0
+4. **F3** stores ALL lots used in `withdrawal_lot_usage` table (not just primary)
+
+### Auto status enforcement (F2 — trigger)
+`BEFORE INSERT OR UPDATE ON lots` trigger enforces:
+- `qty_remaining <= 0` → 'depleted'
+- `qty_remaining > 0 + status=depleted` → 'active' (restore)
+- `expiry_date < today + status=active` → 'expired'
+- `status=discarded` → keep (admin override)
+
+Daily cron `/api/cron/close-reminder` also flips expired lots ที่นิ่ง
 
 ### Pages
 - **`/lots`** — list with 4 KPI cards (by status) + filter: status / search / expiring 7d / 30d
@@ -316,8 +370,20 @@ Admin/Supervisor สามารถย้อนสถานะกลับ 1 ste
 ### Safety
 - Privileged only
 - Check withdrawals.lot_id references before revert (block)
+- Check delivery count > 1 → block (asymmetric rollback prevention)
 - Require reason text
-- Audit log: `"ย้อน: X → Y | reason | details"`
+- Audit log: `"ย้อน: X → Y | reason | details | snapshot={...JSON}"` (F4)
+- Email notify creator: kind="reverted" (F6)
+
+### F4 — Audit snapshot
+Before clearing data, pre-revert values stored as JSON in activity description:
+```
+Case 1 (สั่งซื้อแล้ว → รอจัดซื้อ):
+  supplier_name, contact, dates, totals, item_prices[]
+Case 2 (กำลังขนส่ง → สั่งซื้อแล้ว):
+  tracking_number
+```
+Admin สามารถ trace ค่าเก่า + manual recover ได้ใน /audit page
 
 ---
 
@@ -474,6 +540,13 @@ Fixes: leading-zero React quirk ("01" displayed because input.valueAsNumber == s
 - **Promise.all on multi-fetch pages**
 - **Vercel sin1 region** (closer to Thai users + Supabase ap-southeast-1)
 - **Loading skeletons** for every route
+- **F5 — unstable_cache + revalidateTag** for global dropdown data:
+  ```
+  getCategories  → tag "categories"  (5 min TTL, invalidate on add/update/delete/move)
+  getLookups     → tag "lookups"     (5 min TTL, invalidate on create/update/delete)
+  getAllSuppliers → tag "suppliers"  (5 min TTL, invalidate on CRUD)
+  ```
+  → reduces Supabase load on /po/new, /suppliers, /equipment, /withdraw
 
 ### Keyboard shortcuts
 ```
@@ -518,18 +591,27 @@ Risk: low — file names are random hash, hard to guess.
 
 ## Pending / open work
 
-### TODO: Future iterations
-- **M6: po-attachments signed URL migration** — careful migration needed (rewrite stored URLs)
-- **M3: Hardcoded colors** — 191 จุด — design system v2 refactor
-- **L1: Test coverage** — server actions ไม่มี unit test (po/equipment/lot)
-- **L3: ISR migration** — force-dynamic → revalidate 60s on dashboard/budget/reports
+### ✅ Completed (Audit rounds 1+2 + Future Iterations F1-F6)
+- All Critical (5) + High (12) + Medium (7) audit issues resolved
+- F1: Atomic withdraw RPC ✓
+- F2: Lot status auto-enforce trigger ✓
+- F3: withdrawal_lot_usage multi-lot trace ✓
+- F4: Revert audit JSON snapshot ✓
+- F5: unstable_cache + revalidateTag pattern ✓
+- F6: PoEmailKind="reverted" + email notify ✓
 
-### Performance audit findings (TOP 5 not yet fixed)
-1. 🔴 Force-dynamic → ISR on dashboard/budget/reports (-40% Supabase load)
-2. 🔴 `select("*")` on hot paths → explicit columns (-25% bandwidth)
-3. 🔴 N+1 in `calculateActualSpending` (budget) → SQL JOIN
-4. 🟡 Suspense boundaries on PO detail (stream activities/comments)
-5. 🟡 `optimizePackageImports` in next.config (@radix-ui, lucide-react, recharts)
+### Still pending (refactor work — design sprint candidates)
+- **M3: Hardcoded colors** — 191 จุด — design system v2
+- **M6: po-attachments signed URL migration** — careful migration needed (rewrite stored URLs in DB)
+- **L1: Test coverage** — server actions ไม่มี unit test (po/equipment/lot/withdraw)
+- **L3: ISR migration** — force-dynamic → revalidate 60s on dashboard/budget/reports
+  (note: cookies() blocks ISR — would need refactor to use unstable_cache more aggressively)
+
+### Performance audit findings (TOP not yet fixed)
+1. 🔴 `select("*")` on hot paths → explicit columns (-25% bandwidth)
+2. 🔴 N+1 in `calculateActualSpending` (budget) → SQL JOIN
+3. 🟡 Suspense boundaries on PO detail (stream activities/comments)
+4. 🟡 `optimizePackageImports` in next.config (@radix-ui, lucide-react, recharts)
 
 ### Nice-to-have
 - Print-friendly route `/po/[id]/print`
@@ -537,7 +619,7 @@ Risk: low — file names are random hash, hard to guess.
 - Rate limiting (Upstash KV) on login + create PO
 - Submit Safe Browsing review for the deployed URL
 - Expiring lots dashboard alert (`getExpiringSoonCount()`)
-- FIFO suggestion UI in withdraw form (show which lot will be consumed)
+- FIFO suggestion UI in withdraw form (preview lots that will be consumed)
 
 ---
 
