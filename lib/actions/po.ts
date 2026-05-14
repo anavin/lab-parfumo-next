@@ -66,12 +66,14 @@ function isAllowed(prefs: NotificationPrefs | null | undefined, kind: NotifyKind
  */
 interface EmailContext {
   poNumber: string;
-  emailKind: "ordered" | "shipping" | "completed" | "cancelled" | "issue";
+  emailKind: "ordered" | "shipping" | "completed" | "cancelled" | "issue" | "reverted";
   by: string;
   trackingNumber?: string;
   reason?: string;
   supplierName?: string;
   expectedDate?: string;
+  fromStatus?: string;   // for reverted
+  toStatus?: string;
 }
 
 /**
@@ -224,6 +226,8 @@ async function notifyUser(
           reason: emailContext.reason,
           supplierName: emailContext.supplierName,
           expectedDate: emailContext.expectedDate,
+          fromStatus: emailContext.fromStatus,
+          toStatus: emailContext.toStatus,
         });
         if (!result.ok) {
           console.error(
@@ -736,12 +740,33 @@ export async function revertStatusAction(
   // Track special handling
   let rollbackNote = "";
 
+  // F4 — Pre-revert snapshot สำหรับ audit log
+  //      เก็บค่าเก่าก่อน clear → ใส่ใน activity log สำหรับ trace + recover ภายหลัง
+  const preRevertSnapshot: Record<string, unknown> = {};
+
   // ──────────────────────────────────────────────
   // Case 1: สั่งซื้อแล้ว → รอจัดซื้อ
   //   - Clear supplier + dates + prices + totals
   //   - Reset items prices
   // ──────────────────────────────────────────────
   if (currentStatus === "สั่งซื้อแล้ว") {
+    // F4: snapshot ค่าก่อน clear
+    preRevertSnapshot.supplier_name = po.supplier_name;
+    preRevertSnapshot.supplier_contact = po.supplier_contact;
+    preRevertSnapshot.ordered_date = po.ordered_date;
+    preRevertSnapshot.expected_date = po.expected_date;
+    preRevertSnapshot.subtotal = po.subtotal;
+    preRevertSnapshot.discount = po.discount;
+    preRevertSnapshot.shipping_fee = po.shipping_fee;
+    preRevertSnapshot.vat = po.vat;
+    preRevertSnapshot.total = po.total;
+    preRevertSnapshot.procurement_notes = po.procurement_notes;
+    // เก็บราคา per item (เก็บแบบสรุป — name + unit_price)
+    const itemPrices = ((po.items ?? []) as PoItem[])
+      .filter((it) => (it.unit_price ?? 0) > 0)
+      .map((it) => ({ name: it.name, unit_price: it.unit_price }));
+    if (itemPrices.length > 0) preRevertSnapshot.item_prices = itemPrices;
+
     update.supplier_name = null;
     update.supplier_contact = null;
     update.supplier_id = null;
@@ -769,6 +794,7 @@ export async function revertStatusAction(
   //   - Clear tracking
   // ──────────────────────────────────────────────
   if (currentStatus === "กำลังขนส่ง") {
+    if (po.tracking_number) preRevertSnapshot.tracking_number = po.tracking_number;
     update.tracking_number = null;
     rollbackNote = " | ล้าง tracking";
   }
@@ -895,13 +921,17 @@ export async function revertStatusAction(
     return { ok: false, error: "บันทึกไม่สำเร็จ" };
   }
 
-  // Activity log
+  // Activity log + F4 snapshot ของข้อมูลก่อน revert
+  const snapshotKeys = Object.keys(preRevertSnapshot);
+  const snapshotNote = snapshotKeys.length > 0
+    ? ` | snapshot=${JSON.stringify(preRevertSnapshot)}`
+    : "";
   await logActivity(
     poId, user.full_name, user.role, "status_reverted",
-    `ย้อน: ${currentStatus} → ${prevStatus}${reason ? ` | ${reason}` : ""}${rollbackNote}`,
+    `ย้อน: ${currentStatus} → ${prevStatus}${reason ? ` | ${reason}` : ""}${rollbackNote}${snapshotNote}`,
   );
 
-  // Notify creator
+  // F6: Notify creator — ส่ง email kind="reverted" (privacy: ไม่ส่ง snapshot ใน email)
   if (po.created_by) {
     try {
       await notifyUser(
@@ -909,6 +939,14 @@ export async function revertStatusAction(
         `↩️ ${po.po_number} ถูกย้อนสถานะ`,
         `${currentStatus} → ${prevStatus} • โดย ${user.full_name}${reason ? ` • ${reason}` : ""}`,
         "po_status_change",
+        {
+          poNumber: po.po_number,
+          emailKind: "reverted",
+          by: user.full_name,
+          reason: reason || undefined,
+          fromStatus: currentStatus,
+          toStatus: prevStatus,
+        },
       );
     } catch { /* ok */ }
   }

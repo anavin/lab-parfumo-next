@@ -474,6 +474,7 @@ export type PoEmailKind =
   | "cancelled"      // → "ยกเลิก" (creator)
   | "issue"          // → "มีปัญหา" (creator)
   | "close_reminder" // 🔔 รับของแล้วเกิน 1 วันยังไม่ปิดงาน (creator)
+  | "reverted"       // ↩️ status ถูกย้อน (creator)
   | "new_for_admin"; // PO ใหม่ — แจ้ง admin/supervisor
 
 interface PoEmailTemplate {
@@ -534,6 +535,20 @@ const PO_EMAIL_TEMPLATES: Record<PoEmailKind, PoEmailTemplate> = {
       return `รับของมาแล้ว ${days} วัน ยังไม่ปิดงาน — กดปุ่ม "ปิดงาน" เพื่อบันทึกเสร็จสมบูรณ์`;
     },
   },
+  reverted: {
+    icon: "↩️", title: "สถานะถูกย้อน",
+    headline: "PO ของคุณถูกย้อนสถานะ",
+    color: "#F59E0B",
+    body: (o) => {
+      const parts = [];
+      if (o.fromStatus && o.toStatus) {
+        parts.push(`${o.fromStatus} → ${o.toStatus}`);
+      }
+      parts.push(`โดย ${o.by}`);
+      if (o.reason) parts.push(o.reason);
+      return parts.join(" • ");
+    },
+  },
   new_for_admin: {
     icon: "📥", title: "PO ใหม่",
     headline: "มี PO ใหม่รออนุมัติ",
@@ -559,6 +574,8 @@ export interface PoUpdateEmailOpts {
   expectedDate?: string;
   itemCount?: number;
   daysSinceReceived?: number;  // for close_reminder
+  fromStatus?: string;          // for reverted (from → to)
+  toStatus?: string;
   appUrl?: string;
 }
 

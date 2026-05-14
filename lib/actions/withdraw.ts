@@ -22,6 +22,17 @@ interface WithdrawStockRpc {
   unit?: string;
 }
 
+interface WithdrawAtomicRpc {
+  success: boolean;
+  error?: string;
+  withdrawal_id?: string;
+  current_stock?: number;
+  name?: string;
+  unit?: string;
+  lot_usages?: Array<{ lot_id: string; qty_used: number }>;
+  unallocated?: number;
+}
+
 export async function createWithdrawalAction(input: {
   equipmentId: string;
   qty: number;
@@ -38,7 +49,60 @@ export async function createWithdrawalAction(input: {
 
   const sb = getSupabaseAdmin();
 
-  // 1) Atomic check + decrement via RPC
+  // ==================================================================
+  // PRIMARY: withdraw_atomic RPC (F1 — single transaction)
+  //   stock + withdrawal + FIFO lots + withdrawal_lot_usage rows ใน tx เดียว
+  // ==================================================================
+  try {
+    const { data: atomicData, error: atomicErr } = await sb.rpc(
+      "withdraw_atomic" as never,
+      {
+        p_equipment_id: input.equipmentId,
+        p_qty: input.qty,
+        p_user_id: user.id,
+        p_user_name: user.full_name,
+        p_purpose: input.purpose.trim(),
+        p_notes: input.notes?.trim() ?? "",
+        p_withdrawn_at: input.withdrawnAt
+          ? new Date(input.withdrawnAt).toISOString()
+          : null,
+      },
+    );
+    if (!atomicErr && atomicData) {
+      const result = (typeof atomicData === "string"
+        ? JSON.parse(atomicData)
+        : atomicData) as WithdrawAtomicRpc;
+      if (result.success && result.withdrawal_id) {
+        revalidatePath("/withdraw");
+        revalidatePath("/equipment");
+        revalidatePath("/dashboard");
+        revalidatePath("/lots");
+        return { ok: true, withdrawalId: result.withdrawal_id };
+      }
+      // RPC ตอบกลับว่า fail (validation, insufficient stock, etc.)
+      if (!result.success) {
+        const err = result.error ?? "unknown";
+        if (err === "insufficient_stock") {
+          return { ok: false, error: `สต็อกไม่พอ — เหลือ ${result.current_stock ?? 0}` };
+        }
+        if (err === "not_found") return { ok: false, error: "ไม่พบสินค้านี้ในระบบ" };
+        if (err === "inactive") return { ok: false, error: "สินค้านี้ถูกปิดใช้งานแล้ว" };
+        if (err === "invalid_qty") return { ok: false, error: "จำนวนไม่ถูกต้อง" };
+        return { ok: false, error: err };
+      }
+    }
+    // RPC ไม่อยู่หรือ error → fall through to legacy path
+    if (atomicErr) {
+      console.warn("[withdraw] atomic RPC unavailable, falling back:", atomicErr.message);
+    }
+  } catch (e) {
+    console.warn("[withdraw] atomic RPC threw, falling back:", e);
+  }
+
+  // ==================================================================
+  // FALLBACK: withdraw_stock RPC + manual lot FIFO (เดิม)
+  //   ใช้เมื่อ withdraw_atomic ยังไม่ migrate
+  // ==================================================================
   let eqName = "";
   let eqUnit = "ชิ้น";
   try {
@@ -189,33 +253,64 @@ export async function deleteWithdrawalAction(
         })
         .eq("id", w.equipment_id);
 
-      // 2) คืน lots.qty_remaining (best-effort)
-      //    Note: ถ้า withdrawal เดิมกิน lots หลายตัว (FIFO across N lots) — เราเก็บแค่
-      //    primary lot_id ใน DB → คืนได้แค่ตัวเดียว. กรณี multi-lot ปัจจุบันต้อง manual.
-      //    Future: เก็บ withdrawal_lot_usage table (ดู Future Iterations ใน CLAUDE.md)
-      const lotId = (w as { lot_id?: string | null }).lot_id;
-      if (lotId) {
-        try {
-          const { data: lot } = await sb
-            .from("lots" as never)
-            .select("qty_remaining, qty_initial, status")
-            .eq("id", lotId)
-            .maybeSingle();
-          if (lot) {
-            const l = lot as { qty_remaining: number; qty_initial: number; status: string };
-            // Clamp ไม่ให้เกิน qty_initial
-            const newRemaining = Math.min(l.qty_initial, l.qty_remaining + (w.qty ?? 0));
-            // Re-activate ถ้าเดิม depleted แต่ตอนนี้มีของแล้ว
-            const newStatus = newRemaining > 0 && l.status === "depleted"
-              ? "active"
-              : l.status;
-            await sb
+      // 2) คืน lots.qty_remaining (F3 — multi-lot traceability)
+      //    Primary path: ใช้ withdrawal_lot_usage table → restore ทุก lot ที่ใช้
+      //    Fallback: ใช้ withdrawal.lot_id (primary only) — สำหรับ legacy data
+      let restoredViaUsageTable = false;
+      try {
+        const { data: usages } = await sb
+          .from("withdrawal_lot_usage" as never)
+          .select("lot_id, qty_used")
+          .eq("withdrawal_id", withdrawalId);
+        type UsageRow = { lot_id: string | null; qty_used: number };
+        const rows = ((usages ?? []) as unknown as UsageRow[]).filter((u) => u.lot_id);
+
+        if (rows.length > 0) {
+          // Multi-lot restore — ใช้ usage table (accurate)
+          for (const u of rows) {
+            if (!u.lot_id) continue;
+            const { data: lot } = await sb
               .from("lots" as never)
-              .update({ qty_remaining: newRemaining, status: newStatus })
-              .eq("id", lotId);
+              .select("qty_remaining, qty_initial")
+              .eq("id", u.lot_id)
+              .maybeSingle();
+            if (lot) {
+              const l = lot as { qty_remaining: number; qty_initial: number };
+              const newRemaining = Math.min(l.qty_initial, l.qty_remaining + u.qty_used);
+              // Trigger จัดการ status อัตโนมัติ (F2)
+              await sb
+                .from("lots" as never)
+                .update({ qty_remaining: newRemaining })
+                .eq("id", u.lot_id);
+            }
           }
-        } catch (e) {
-          console.warn("[deleteWithdrawal] lot restore skipped:", e);
+          restoredViaUsageTable = true;
+        }
+      } catch (e) {
+        console.warn("[deleteWithdrawal] usage table restore skipped:", e);
+      }
+
+      // Fallback: legacy single-lot restore (สำหรับ withdrawal ที่ไม่มี usage rows)
+      if (!restoredViaUsageTable) {
+        const lotId = (w as { lot_id?: string | null }).lot_id;
+        if (lotId) {
+          try {
+            const { data: lot } = await sb
+              .from("lots" as never)
+              .select("qty_remaining, qty_initial")
+              .eq("id", lotId)
+              .maybeSingle();
+            if (lot) {
+              const l = lot as { qty_remaining: number; qty_initial: number };
+              const newRemaining = Math.min(l.qty_initial, l.qty_remaining + (w.qty ?? 0));
+              await sb
+                .from("lots" as never)
+                .update({ qty_remaining: newRemaining })
+                .eq("id", lotId);
+            }
+          } catch (e) {
+            console.warn("[deleteWithdrawal] legacy lot restore skipped:", e);
+          }
         }
       }
     }
