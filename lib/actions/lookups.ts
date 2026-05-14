@@ -9,7 +9,7 @@
  * Inline create จากฟอร์มต่างๆ ใช้ createLookupAction
  * Bulk management จาก /settings → tab Lookups
  */
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -86,12 +86,13 @@ export async function createLookupAction(input: {
     return { ok: false, error: "เพิ่มไม่สำเร็จ" };
   }
 
-  // Revalidate ทุกหน้าที่อาจใช้ lookup
+  // Revalidate ทุกหน้าที่อาจใช้ lookup + invalidate unstable_cache
   revalidatePath("/settings");
   revalidatePath("/suppliers");
   revalidatePath("/equipment");
   revalidatePath("/withdraw");
   revalidatePath("/po/new");
+  revalidateTag("lookups");
 
   const row = data as { id: string; name: string };
   return { ok: true, lookupId: row.id, name: row.name };
@@ -145,6 +146,7 @@ export async function updateLookupAction(
   revalidatePath("/suppliers");
   revalidatePath("/equipment");
   revalidatePath("/withdraw");
+  revalidateTag("lookups");
   return { ok: true, lookupId: id };
 }
 
@@ -168,5 +170,6 @@ export async function deleteLookupAction(id: string): Promise<ActionResult> {
   }
 
   revalidatePath("/settings");
+  revalidateTag("lookups");
   return { ok: true, lookupId: id };
 }

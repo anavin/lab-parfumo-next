@@ -4,26 +4,47 @@
  * Generic dropdown values (categories, banks, units, etc.)
  * เก็บใน table `lookups` แยกตาม `type`
  *
- * ⚡ React.cache() — dedupe ใน same request
+ * ⚡ Caching:
+ *   - active=true: unstable_cache 5 นาที + tag "lookups" (data ไม่ค่อยเปลี่ยน)
+ *   - includeInactive=true: React.cache only (settings management — wants fresh)
+ *   Invalidate ผ่าน revalidateTag("lookups") ใน lookups CRUD actions
  */
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { Lookup, LookupType, LookupWithUsage } from "@/lib/types/db";
+
+/** Active lookups — cached with tag */
+const getLookupsActiveCached = unstable_cache(
+  async (type: LookupType): Promise<Lookup[]> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb.from("lookups" as never)
+      .select("*")
+      .eq("type", type)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+    return (data ?? []) as Lookup[];
+  },
+  ["lookups-active"],
+  { revalidate: 300, tags: ["lookups"] },
+);
 
 /** ดู lookup ทั้งหมดของ type ที่กำหนด (active เท่านั้น) — เรียงตาม sort_order + name */
 export const getLookups = cache(async (
   type: LookupType, includeInactive = false,
 ): Promise<Lookup[]> => {
+  if (!includeInactive) {
+    // Active-only path: use unstable_cache (5 min TTL + tag)
+    return getLookupsActiveCached(type);
+  }
+  // Settings management path: fresh data
   const sb = getSupabaseAdmin();
-  let q = sb.from("lookups" as never)
+  const { data } = await sb.from("lookups" as never)
     .select("*")
     .eq("type", type)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
-  if (!includeInactive) {
-    q = q.eq("is_active", true);
-  }
-  const { data } = await q;
   return (data ?? []) as Lookup[];
 });
 

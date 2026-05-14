@@ -3,7 +3,7 @@
 /**
  * Equipment server actions — create, update, delete, approve, reject, bulk approve
  */
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
@@ -463,6 +463,7 @@ export async function addCategoryAction(
   }
   revalidatePath("/equipment");
   revalidatePath("/po/new"); // category dropdown ใน equipment grid
+  revalidateTag("categories");
   return { ok: true };
 }
 
@@ -482,6 +483,7 @@ export async function updateCategoryAction(
   await sb.from("equipment").update({ category: trimmed }).eq("category", oldName);
   revalidatePath("/equipment");
   revalidatePath("/po/new"); // category dropdown ใน equipment grid
+  revalidateTag("categories");
   return { ok: true };
 }
 
@@ -505,6 +507,7 @@ export async function deleteCategoryAction(
   await sb.from("equipment_categories").delete().eq("name", name);
   revalidatePath("/equipment");
   revalidatePath("/po/new"); // category dropdown ใน equipment grid
+  revalidateTag("categories");
   return { ok: true };
 }
 
@@ -539,6 +542,7 @@ export async function moveCategoryAction(
   await sb.from("equipment_categories").update({ display_order: orderA }).eq("id", b.id);
   revalidatePath("/equipment");
   revalidatePath("/po/new"); // category dropdown ใน equipment grid
+  revalidateTag("categories");
   return { ok: true };
 }
 

@@ -13,7 +13,7 @@
  *   3. Update DB
  *   4. revalidatePath
  */
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -105,6 +105,7 @@ export async function createSupplierAction(input: CreateInput): Promise<ActionRe
   }
 
   revalidatePath("/suppliers");
+  revalidateTag("suppliers");
   return { ok: true, supplierId: (data as { id: string }).id };
 }
 
@@ -151,6 +152,7 @@ export async function updateSupplierAction(
 
   revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${id}`);
+  revalidateTag("suppliers");
   return { ok: true, supplierId: id };
 }
 
@@ -175,6 +177,7 @@ export async function deleteSupplierAction(id: string): Promise<ActionResult> {
   }
 
   revalidatePath("/suppliers");
+  revalidateTag("suppliers");
   return { ok: true, supplierId: id };
 }
 
@@ -200,5 +203,6 @@ export async function restoreSupplierAction(id: string): Promise<ActionResult> {
 
   revalidatePath("/suppliers");
   revalidatePath(`/suppliers/${id}`);
+  revalidateTag("suppliers");
   return { ok: true, supplierId: id };
 }

@@ -5,6 +5,7 @@
  * ⚠️ ห้าม import จาก client component
  */
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type {
   Supplier, SupplierWithStats, PurchaseOrder, PoStatus,
@@ -27,15 +28,19 @@ const SUPPLIER_COLUMNS = [
   "created_at", "updated_at", "created_by_name", "updated_by_name",
 ].join(", ");
 
-/** ทุก supplier (ทั้ง active + inactive) */
-export const getAllSuppliers = cache(async (): Promise<Supplier[]> => {
-  const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("suppliers" as never)
-    .select(SUPPLIER_COLUMNS)
-    .order("name", { ascending: true });
-  return (data as unknown as Supplier[] | null) ?? [];
-});
+/** ทุก supplier (ทั้ง active + inactive) — cached 5 นาที + tag "suppliers" */
+export const getAllSuppliers = unstable_cache(
+  async (): Promise<Supplier[]> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("suppliers" as never)
+      .select(SUPPLIER_COLUMNS)
+      .order("name", { ascending: true });
+    return (data as unknown as Supplier[] | null) ?? [];
+  },
+  ["suppliers-all"],
+  { revalidate: 300, tags: ["suppliers"] },
+);
 
 /** Supplier เดียวด้วย id */
 export const getSupplierById = cache(

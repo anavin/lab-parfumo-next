@@ -37,6 +37,27 @@ export async function GET(req: Request) {
 
   const sb = getSupabaseAdmin();
 
+  // === Daily maintenance: refresh expired lots status ===
+  // (F2 audit — trigger จับเฉพาะ UPDATE → ต้อง periodic refresh ของ lot ที่นิ่ง)
+  // Lots ที่ expiry_date เลย today + ยัง status='active' → flip เป็น 'expired'
+  let lotsExpiredCount = 0;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { count } = await sb
+      .from("lots" as never)
+      .update({ status: "expired" } as never, { count: "exact" })
+      .eq("status", "active")
+      .not("expiry_date", "is", null)
+      .lt("expiry_date", today);
+    lotsExpiredCount = count ?? 0;
+    if (lotsExpiredCount > 0) {
+      console.log(`[cron/close-reminder] flipped ${lotsExpiredCount} lots to 'expired'`);
+    }
+  } catch (e) {
+    console.warn("[cron/close-reminder] lot expiry refresh failed:", e);
+  }
+
+  // === Close reminder ===
   // PO ที่ต้องเตือน:
   //   1) status ∈ {"รับของแล้ว", "มีปัญหา"}
   //   2) received_date <= today - 1 day
@@ -173,6 +194,7 @@ export async function GET(req: Request) {
     sent: sent.length,
     skipped: skipped.length,
     failed: failed.length,
+    lotsExpired: lotsExpiredCount,
     detail: { sent, skipped, failed },
   });
 }
