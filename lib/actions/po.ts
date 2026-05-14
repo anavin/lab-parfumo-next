@@ -376,13 +376,19 @@ export async function bulkDeletePoAction(
 
   const sb = getSupabaseAdmin();
 
-  // 1) ดึง PO ทั้งหมด — ตรวจ status
+  // 1) ดึง PO ทั้งหมด — ตรวจ status + เก็บ URLs ของ attachments + delivery images
+  //    เพื่อ cleanup storage blobs (กัน orphan files + privacy concern)
   const { data: pos } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status")
+    .select("id, po_number, status, attachment_urls")
     .in("id", poIds);
 
-  type Row = { id: string; po_number: string; status: PoStatus };
+  type Row = {
+    id: string;
+    po_number: string;
+    status: PoStatus;
+    attachment_urls: PoAttachment[] | null;
+  };
   const rows = (pos ?? []) as Row[];
 
   const deletable = rows.filter((p) => DELETABLE_STATUSES.includes(p.status));
@@ -400,18 +406,56 @@ export async function bulkDeletePoAction(
 
   const deletableIds = deletable.map((p) => p.id);
 
-  // 2) Cascade delete related rows (กัน FK constraint error)
+  // 2) เก็บ storage paths ของ attachments + delivery images ก่อนลบ rows
+  //    Pattern URL ของ Supabase Storage:
+  //      https://xxx.supabase.co/storage/v1/object/public/<bucket>/<path>
+  //    Extract <path> → ลบจาก bucket หลัง row ถูกลบ
+  function extractStoragePath(url: string, bucket: string): string | null {
+    const marker = `/object/public/${bucket}/`;
+    const idx = url.indexOf(marker);
+    if (idx < 0) return null;
+    return url.substring(idx + marker.length);
+  }
+
+  // 2a) เก็บ attachment paths ของทุก PO ที่จะลบ
+  const attachmentPaths: string[] = [];
+  for (const r of deletable) {
+    for (const a of (r.attachment_urls ?? [])) {
+      const p = extractStoragePath(a.url, "po-attachments");
+      if (p) attachmentPaths.push(p);
+    }
+  }
+
+  // 2b) เก็บ delivery image paths
+  const deliveryImagePaths: string[] = [];
+  try {
+    const { data: deliveries } = await sb
+      .from("po_deliveries" as never)
+      .select("image_urls")
+      .in("po_id", deletableIds);
+    type DRow = { image_urls: string[] | null };
+    for (const d of ((deliveries ?? []) as DRow[])) {
+      for (const url of (d.image_urls ?? [])) {
+        const p = extractStoragePath(url, "delivery-images");
+        if (p) deliveryImagePaths.push(p);
+      }
+    }
+  } catch (e) {
+    console.warn("[bulkDelete] collect delivery images failed:", e);
+  }
+
+  // 3) Cascade delete related rows (กัน FK constraint error)
   //    ลำดับ: child tables ก่อน → parent table
   try {
-    // 2a) po_activities
+    // 3a) po_activities
     await sb.from("po_activities" as never).delete().in("po_id", deletableIds);
-    // 2b) po_comments
+    // 3b) po_comments
     await sb.from("po_comments" as never).delete().in("po_id", deletableIds);
-    // 2c) po_deliveries (NOT cascading stock — POs that affected stock can't be deleted directly)
+    // 3c) po_deliveries (NOT cascading stock — POs that affected stock can't be deleted directly)
     await sb.from("po_deliveries" as never).delete().in("po_id", deletableIds);
-    // 2d) notifications referencing PO
+    // 3d) notifications referencing PO
     await sb.from("notifications").delete().in("po_id", deletableIds);
-    // 2e) lots created by these PO deliveries (จาก Phase E)
+    // 3e) lots created by these PO deliveries (จาก Phase E)
     //     ใช้ ON DELETE SET NULL ใน lots.po_id แล้ว → row ยังอยู่ แค่ unset
     //     (เก็บ lot history ไว้ แม้ PO ถูกลบ — ของยังอยู่ในคลังจริง)
   } catch (e) {
@@ -419,7 +463,7 @@ export async function bulkDeletePoAction(
     // ดำเนินการต่อ — main PO delete จะ FK error ถ้ามีของค้าง
   }
 
-  // 3) Delete the POs themselves
+  // 4) Delete the POs themselves
   const { error } = await sb
     .from("purchase_orders")
     .delete()
@@ -435,12 +479,42 @@ export async function bulkDeletePoAction(
     };
   }
 
-  // 4) Audit log — ใส่ log ใน po_activities ของ PO ที่ลบ... ไม่ได้แล้วเพราะลบไปแล้ว
+  // 5) Cleanup storage blobs (best-effort — แม้ลบไม่หมดก็ไม่กระทบ DB)
+  //    Storage delete max 1000 paths ต่อ call (Supabase limit)
+  if (attachmentPaths.length > 0) {
+    try {
+      const chunks: string[][] = [];
+      for (let i = 0; i < attachmentPaths.length; i += 1000) {
+        chunks.push(attachmentPaths.slice(i, i + 1000));
+      }
+      for (const chunk of chunks) {
+        await sb.storage.from("po-attachments").remove(chunk);
+      }
+    } catch (e) {
+      console.warn("[bulkDelete] cleanup po-attachments failed:", e);
+    }
+  }
+  if (deliveryImagePaths.length > 0) {
+    try {
+      const chunks: string[][] = [];
+      for (let i = 0; i < deliveryImagePaths.length; i += 1000) {
+        chunks.push(deliveryImagePaths.slice(i, i + 1000));
+      }
+      for (const chunk of chunks) {
+        await sb.storage.from("delivery-images").remove(chunk);
+      }
+    } catch (e) {
+      console.warn("[bulkDelete] cleanup delivery-images failed:", e);
+    }
+  }
+
+  // 6) Audit log — ใส่ log ใน po_activities ของ PO ที่ลบ... ไม่ได้แล้วเพราะลบไปแล้ว
   //    ใช้ console.log แทน (Sentry/Vercel logs จับ)
   console.log(
     `[bulkDelete] user=${user.full_name} (${user.role}) deleted ${deletable.length} POs: ${
       deletable.map((p) => p.po_number).join(", ")
-    }${blocked.length ? ` | blocked: ${blocked.map((p) => `${p.po_number}(${p.status})`).join(", ")}` : ""}`,
+    } | storage cleanup: ${attachmentPaths.length} attachments + ${deliveryImagePaths.length} delivery images` +
+    (blocked.length ? ` | blocked: ${blocked.map((p) => `${p.po_number}(${p.status})`).join(", ")}` : ""),
   );
 
   revalidatePath("/po");
@@ -791,10 +865,12 @@ export async function revertStatusAction(
         .from("po_deliveries" as never)
         .delete()
         .eq("id", lastDelivery.id);
-    }
 
-    // Clear received_date ของ PO เพราะอาจถูกตั้งโดย delivery ล่าสุดที่เพิ่งลบ
-    update.received_date = null;
+      // Clear received_date เฉพาะเมื่อมี delivery ที่เพิ่งลบจริง
+      // (defensive: ถ้าข้อมูล inconsistent — status=รับของแล้ว แต่ deliveryCount=0
+      //  เราไม่ควรล้าง received_date เก่าทิ้ง)
+      update.received_date = null;
+    }
 
     rollbackNote = lastDelivery
       ? ` | ยกเลิก delivery #${lastDelivery.delivery_no} (rollback stock ${stockRollbackCount} รายการ)`

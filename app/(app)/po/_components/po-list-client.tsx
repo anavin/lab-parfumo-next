@@ -175,7 +175,7 @@ export function PoListClient({
             disabled={pending}
           >
             <X className="size-3.5" />
-            ยกเลิก
+            เลิกเลือก
           </Button>
           <Button
             size="sm"

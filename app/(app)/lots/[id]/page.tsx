@@ -138,12 +138,21 @@ export default async function LotDetailPage({
               label="PO ที่มา"
               value={
                 lot.po_number ? (
-                  <Link
-                    href={`/po/${lot.po_id}`}
-                    className="text-primary hover:underline"
-                  >
-                    {lot.po_number}
-                  </Link>
+                  // ถ้า PO ถูกลบ → po_id = NULL (ON DELETE SET NULL)
+                  // แต่ po_number snapshot ยังอยู่ — แสดง text ไม่ทำ link
+                  lot.po_id ? (
+                    <Link
+                      href={`/po/${lot.po_id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {lot.po_number}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {lot.po_number}
+                      <span className="text-xs ml-1.5 italic">(ถูกลบ)</span>
+                    </span>
+                  )
                 ) : "—"
               }
               dim={!lot.po_number}
