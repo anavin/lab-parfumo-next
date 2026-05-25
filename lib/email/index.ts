@@ -639,3 +639,170 @@ Lab Parfumo PO
 
   return sendEmail({ to: opts.to, subject, html, text });
 }
+
+// ==========================
+// Admin Daily Alerts Email
+// ==========================
+// แจ้ง admin ทุกวันสำหรับ:
+//  1) PO ค้างยังไม่สั่งซื้อ (รอจัดซื้อดำเนินการ ≥ 1 วัน)
+//  2) PO ที่มีปัญหา (มีปัญหา ≥ 1 วัน)
+// รวมเป็น 1 อีเมล/วัน — gate ด้วย email_daily_digest pref
+
+export interface AdminAlertItem {
+  poId: string;
+  poNumber: string;
+  createdByName: string | null;
+  ageDays: number;     // จำนวนวันที่ค้าง
+  itemCount: number;
+  totalQty: number;
+  reason?: string;     // เฉพาะ issue
+}
+
+export interface AdminAlertsEmailOpts {
+  to: string;
+  recipientName: string;
+  pending: AdminAlertItem[];   // PO รอจัดซื้อ
+  issues: AdminAlertItem[];    // PO มีปัญหา
+  companyName?: string;
+  date: string;
+  appUrl?: string;
+}
+
+export async function sendAdminAlertsEmail(opts: AdminAlertsEmailOpts): Promise<SendResult> {
+  const baseUrl = resolveBaseUrl(opts.appUrl);
+  const prefsUrl = `${baseUrl}/preferences`;
+  const poListUrl = `${baseUrl}/po`;
+  const totalCount = opts.pending.length + opts.issues.length;
+  const subject = sanitizeSubject(
+    `🔔 PO ต้องดำเนินการ ${totalCount} ใบ — ${opts.date}`,
+  );
+
+  // Build table rows for a section
+  const buildRows = (items: AdminAlertItem[], showReason: boolean) =>
+    items
+      .map((it) => {
+        const poUrl = `${baseUrl}/po/${it.poId}`;
+        const reasonCell = showReason
+          ? `<td style="padding:8px 10px; font-size:12px; color:#475569; border-bottom:1px solid #F1F5F9;">${escHtml(it.reason ?? "—")}</td>`
+          : "";
+        return `<tr>
+          <td style="padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:bold; color:#1E293B; border-bottom:1px solid #F1F5F9;">
+            <a href="${poUrl}" style="color:#3A5A8C; text-decoration:none;">${escHtml(it.poNumber)}</a>
+          </td>
+          <td style="padding:8px 10px; font-size:12px; color:#475569; border-bottom:1px solid #F1F5F9;">${escHtml(it.createdByName ?? "—")}</td>
+          <td style="padding:8px 10px; font-size:12px; color:#475569; border-bottom:1px solid #F1F5F9; text-align:right; font-variant-numeric:tabular-nums;">${it.itemCount} รายการ</td>
+          <td style="padding:8px 10px; font-size:12px; font-weight:600; color:#DC2626; border-bottom:1px solid #F1F5F9; text-align:right; font-variant-numeric:tabular-nums;">${it.ageDays} วัน</td>
+          ${reasonCell}
+        </tr>`;
+      })
+      .join("");
+
+  const pendingSection =
+    opts.pending.length > 0
+      ? `
+      <div style="margin-top:24px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <span style="font-size:18px;">🛒</span>
+          <span style="font-size:14px; font-weight:700; color:#92400E;">รอจัดซื้อดำเนินการ (${opts.pending.length} ใบ)</span>
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse; background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; overflow:hidden;">
+          <thead>
+            <tr style="background:#FEF3C7;">
+              <th style="padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#78350F; font-weight:700;">PO #</th>
+              <th style="padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#78350F; font-weight:700;">ผู้สร้าง</th>
+              <th style="padding:8px 10px; text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#78350F; font-weight:700;">รายการ</th>
+              <th style="padding:8px 10px; text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#78350F; font-weight:700;">ค้าง</th>
+            </tr>
+          </thead>
+          <tbody>${buildRows(opts.pending, false)}</tbody>
+        </table>
+      </div>`
+      : "";
+
+  const issuesSection =
+    opts.issues.length > 0
+      ? `
+      <div style="margin-top:24px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <span style="font-size:18px;">⚠️</span>
+          <span style="font-size:14px; font-weight:700; color:#991B1B;">PO ที่มีปัญหา (${opts.issues.length} ใบ)</span>
+        </div>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:10px; overflow:hidden;">
+          <thead>
+            <tr style="background:#FECACA;">
+              <th style="padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#7F1D1D; font-weight:700;">PO #</th>
+              <th style="padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#7F1D1D; font-weight:700;">ผู้สร้าง</th>
+              <th style="padding:8px 10px; text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#7F1D1D; font-weight:700;">รายการ</th>
+              <th style="padding:8px 10px; text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#7F1D1D; font-weight:700;">ค้าง</th>
+              <th style="padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:#7F1D1D; font-weight:700;">เหตุผล</th>
+            </tr>
+          </thead>
+          <tbody>${buildRows(opts.issues, true)}</tbody>
+        </table>
+      </div>`
+      : "";
+
+  const html = `<!doctype html>
+<html lang="th">
+<head><meta charset="utf-8"><title>${escHtml(subject)}</title></head>
+<body style="margin:0; padding:0; background:#F8FAFC; font-family:'Sarabun',-apple-system,BlinkMacSystemFont,sans-serif; color:#1E293B;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#F8FAFC; padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 4px 12px rgba(15,23,42,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#3A5A8C 0%,#2C3E60 100%); padding:24px; color:#fff; text-align:center;">
+          <div style="font-size:32px; line-height:1;">🔔</div>
+          <div style="font-size:11px; font-weight:700; margin-top:8px; opacity:0.85; text-transform:uppercase; letter-spacing:0.08em;">Admin Daily Alerts</div>
+          <div style="font-size:20px; font-weight:bold; margin-top:6px; line-height:1.4;">PO ที่ต้องดำเนินการ ${totalCount} ใบ</div>
+          <p style="color:#A8C0E0; margin:6px 0 0; font-size:13px;">${escHtml(opts.date)}${opts.companyName ? ` • ${escHtml(opts.companyName)}` : ""}</p>
+        </td></tr>
+        <tr><td style="padding:24px 28px;">
+          <p style="margin:0 0 6px; font-size:15px;">สวัสดีคุณ <strong>${escHtml(opts.recipientName)}</strong>,</p>
+          <p style="margin:0; font-size:13px; color:#64748B;">รายการต่อไปนี้ต้องการการดำเนินการจากคุณ — กดเลข PO เพื่อเปิดดู</p>
+          ${pendingSection}
+          ${issuesSection}
+          <p style="margin:28px 0 0; text-align:center;">
+            <a href="${poListUrl}" style="display:inline-block; background:#3A5A8C; color:#fff; padding:12px 28px; border-radius:10px; text-decoration:none; font-weight:600; font-size:14px;">ดูรายการ PO ทั้งหมด →</a>
+          </p>
+          <p style="margin:24px 0 0; font-size:12px; color:#94A3B8; text-align:center; border-top:1px solid #E2E8F0; padding-top:18px;">
+            อีเมลอัตโนมัติจากระบบ Lab Parfumo PO — ส่งทุกวัน 09:00 จนกว่าจะดำเนินการ<br>
+            หากไม่ต้องการรับอีเมลนี้ ตั้งค่าได้ที่ <a href="${prefsUrl}" style="color:#64748B;">การตั้งค่าการแจ้งเตือน</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const textLines: string[] = [
+    `🔔 PO ที่ต้องดำเนินการ ${totalCount} ใบ — ${opts.date}`,
+    "",
+    `สวัสดีคุณ ${opts.recipientName},`,
+    "",
+  ];
+  if (opts.pending.length > 0) {
+    textLines.push(`🛒 รอจัดซื้อ (${opts.pending.length} ใบ):`);
+    for (const it of opts.pending) {
+      textLines.push(
+        `  • ${it.poNumber} — ${it.createdByName ?? "—"} • ${it.itemCount} รายการ • ค้าง ${it.ageDays} วัน`,
+      );
+    }
+    textLines.push("");
+  }
+  if (opts.issues.length > 0) {
+    textLines.push(`⚠️ PO ที่มีปัญหา (${opts.issues.length} ใบ):`);
+    for (const it of opts.issues) {
+      textLines.push(
+        `  • ${it.poNumber} — ${it.createdByName ?? "—"} • ${it.itemCount} รายการ • ค้าง ${it.ageDays} วัน${it.reason ? ` • ${it.reason}` : ""}`,
+      );
+    }
+    textLines.push("");
+  }
+  textLines.push(`ดูรายการทั้งหมด: ${poListUrl}`);
+  textLines.push("");
+  textLines.push("—");
+  textLines.push("Lab Parfumo PO");
+  textLines.push(`ตั้งค่าการแจ้งเตือน: ${prefsUrl}`);
+
+  return sendEmail({ to: opts.to, subject, html, text: textLines.join("\n") });
+}

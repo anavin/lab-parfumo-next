@@ -217,6 +217,7 @@ Idle timeout: 60 min. Cookie max-age: 7 days. Account lockout: 5 failed / 15 min
 1. **`sendWelcomeEmail`** — new user creation (Username + temp password)
 2. **`sendDailyDigest`** — admin daily summary (cron 08:00 ICT, filter by `email_daily_digest` pref)
 3. **`sendPoUpdateEmail`** — PO transitions (8 kinds: ordered/shipping/completed/cancelled/issue/close_reminder/**reverted**/new_for_admin)
+4. **`sendAdminAlertsEmail`** — admin daily reminders (cron 09:00 ICT via close-reminder route) — รวม pending (รอจัดซื้อ ≥ 1 วัน) + issues (มีปัญหา ≥ 1 วัน) ใน 1 อีเมล/วัน — filter by `email_daily_digest` pref
 
 ### `resolveBaseUrl()` priority
 ```
@@ -245,6 +246,10 @@ Used in ALL email subjects (defense in depth against header injection).
 
 ### Admin email trigger
 - **New PO created** → `new_for_admin` template → all admin/supervisor with `email_new_po=true`
+- **Daily 09:00 ICT** → `sendAdminAlertsEmail` (via close-reminder cron):
+  - PO `รอจัดซื้อดำเนินการ` ค้าง ≥ 1 วัน → reminder ทุกวันจนกว่าจะสั่งซื้อ
+  - PO `มีปัญหา` ค้าง ≥ 1 วัน → reminder ทุกวันจนกว่าจะแก้
+  - รวมเป็น 1 อีเมล/วัน/admin — filter by `email_daily_digest` pref
 
 ### Per-user prefs (`users.notification_prefs` JSONB)
 - `email_daily_digest` (default true)
