@@ -1358,6 +1358,14 @@ export async function createPoAction(
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
+  // Rate limit per user — gate accidental duplicate submits + abusive automation
+  // (no-op if Upstash env vars aren't configured)
+  const { checkRateLimit, CREATE_PO_LIMITER } = await import("@/lib/security/rate-limit");
+  const rl = await checkRateLimit(CREATE_PO_LIMITER, `po:${user.id}`);
+  if (!rl.allowed) {
+    return { ok: false, error: rl.retryAfterText ?? "เกินจำนวนคำขอ" };
+  }
+
   // Validate input
   const parsed = createPoSchema.safeParse({ items, notes });
   if (!parsed.success) {

@@ -505,6 +505,7 @@ Shared component: `components/ui/image-lightbox.tsx`
 | Email subject | sanitizeSubject() — strip CRLF + control chars + max 200 chars |
 | SMTP password | AES-256-GCM encryption via ENCRYPTION_KEY |
 | Cron auth | Bearer CRON_SECRET (rejects all if not set) |
+| Rate limit | Upstash sliding window: login 5/15min/IP, createPo 60/hr/user (graceful no-op if env not set) |
 | Sensitive fields | hidden from non-admin (prices, supplier contact, procurement notes) |
 
 ### Atomic operations (no race condition)
@@ -642,12 +643,12 @@ extracts path from the canonical Supabase URL pattern.
 4. 🟡 `optimizePackageImports` in next.config (@radix-ui, lucide-react, recharts)
 
 ### Nice-to-have
-- Print-friendly route `/po/[id]/print`
+- ✅ Print-friendly route `/po/[id]/print` (DONE)
 - Custom domain (replaces *.vercel.app warning)
-- Rate limiting (Upstash KV) on login + create PO
+- ✅ Rate limiting (Upstash KV) on login + create PO (DONE — graceful no-op without env)
 - Submit Safe Browsing review for the deployed URL
-- Expiring lots dashboard alert (`getExpiringSoonCount()`)
-- FIFO suggestion UI in withdraw form (preview lots that will be consumed)
+- ✅ Expiring lots dashboard alert (`getExpiringSoonCount()`) (DONE)
+- ✅ FIFO suggestion UI in withdraw form (preview lots that will be consumed) (DONE)
 
 ---
 
@@ -676,6 +677,14 @@ FROM_EMAIL / FROM_NAME
 
 # Security (recommended)
 CRON_SECRET                       # /api/cron/* — REJECTS if not set
+
+# Rate limiting (optional — graceful no-op without these)
+UPSTASH_REDIS_REST_URL            # @upstash/redis REST URL
+UPSTASH_REDIS_REST_TOKEN          # @upstash/redis REST token
+# Limits: login 5/15min per IP, createPo 60/hour per user
+
+# Storage migration (optional — flip when bucket goes private)
+PO_ATTACHMENTS_PRIVATE            # "true" → mint signed URLs for po-attachments
 ENCRYPTION_KEY                    # 32 bytes hex (openssl rand -hex 32)
 NEXT_PUBLIC_SENTRY_DSN            # Sentry — graceful no-op if missing
 ```

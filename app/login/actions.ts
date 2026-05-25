@@ -1,8 +1,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { loginWithPassword } from "@/lib/auth/login";
 import { createSession, setSessionCookie } from "@/lib/auth/session";
+import { checkRateLimit, clientIp, LOGIN_LIMITER } from "@/lib/security/rate-limit";
 
 export interface LoginActionState {
   error?: string;
@@ -15,6 +17,14 @@ export async function loginAction(
 ): Promise<LoginActionState> {
   const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+
+  // Rate limit per IP — defends against credential stuffing across many usernames
+  // (DB-level lockout is per-username; this is the second layer)
+  const ip = clientIp(await headers());
+  const rl = await checkRateLimit(LOGIN_LIMITER, `login:${ip}`);
+  if (!rl.allowed) {
+    return { error: rl.retryAfterText ?? "เกินจำนวนคำขอ" };
+  }
 
   const result = await loginWithPassword(username, password);
   if (!result.ok || !result.user) {
