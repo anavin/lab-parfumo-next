@@ -42,7 +42,7 @@ Fonts:        Sarabun (Thai, weights 400-800) + JetBrains Mono — both via next
 Charts:       recharts (lazy-loaded via next/dynamic)
 Avatar:       boring-avatars (variant "beam")
 Validation:   Zod (lib/actions/schemas.ts)
-Cron:         Vercel Cron (vercel.json `crons`) — daily-digest + close-reminder
+Cron:         Vercel Cron (vercel.json `crons`) — daily-digest + daily-tasks
 Toast:        sonner
 Tests:        Vitest (4 files, 63 tests, ~5s runtime)
 ```
@@ -73,7 +73,8 @@ app/
     po/[id]/pdf/     — PDF download
     po/export/       — CSV export (formula-injection safe)
     cron/daily-digest/   — 08:00 ICT (Vercel Cron)
-    cron/close-reminder/ — 09:00 ICT (throttle 3 days, gắn last_close_reminder_sent_at)
+    cron/daily-tasks/    — 09:00 ICT — รัน 3 งาน: lot expiry refresh + close-reminder + admin-alerts
+                           (เคยอยู่ที่ /api/cron/close-reminder — เปลี่ยนชื่อให้สื่อกับงานจริง)
   login/
   change-password/
 
@@ -217,7 +218,7 @@ Idle timeout: 60 min. Cookie max-age: 7 days. Account lockout: 5 failed / 15 min
 1. **`sendWelcomeEmail`** — new user creation (Username + temp password)
 2. **`sendDailyDigest`** — admin daily summary (cron 08:00 ICT, filter by `email_daily_digest` pref)
 3. **`sendPoUpdateEmail`** — PO transitions (8 kinds: ordered/shipping/completed/cancelled/issue/close_reminder/**reverted**/new_for_admin)
-4. **`sendAdminAlertsEmail`** — admin daily reminders (cron 09:00 ICT via close-reminder route) — รวม pending (รอจัดซื้อ ≥ 1 วัน) + issues (มีปัญหา ≥ 1 วัน) ใน 1 อีเมล/วัน — filter by `email_daily_digest` pref
+4. **`sendAdminAlertsEmail`** — admin daily reminders (cron 09:00 ICT via daily-tasks route) — รวม pending (รอจัดซื้อ ≥ 1 วัน) + issues (มีปัญหา ≥ 1 วัน) ใน 1 อีเมล/วัน — filter by `email_daily_digest` pref
 
 ### `resolveBaseUrl()` priority
 ```
@@ -246,7 +247,7 @@ Used in ALL email subjects (defense in depth against header injection).
 
 ### Admin email trigger
 - **New PO created** → `new_for_admin` template → all admin/supervisor with `email_new_po=true`
-- **Daily 09:00 ICT** → `sendAdminAlertsEmail` (via close-reminder cron):
+- **Daily 09:00 ICT** → `sendAdminAlertsEmail` (via daily-tasks cron):
   - PO `รอจัดซื้อดำเนินการ` ค้าง ≥ 1 วัน → reminder ทุกวันจนกว่าจะสั่งซื้อ
   - PO `มีปัญหา` ค้าง ≥ 1 วัน → reminder ทุกวันจนกว่าจะแก้
   - รวมเป็น 1 อีเมล/วัน/admin — filter by `email_daily_digest` pref
@@ -351,7 +352,7 @@ Both paths:
 - `expiry_date < today + status=active` → 'expired'
 - `status=discarded` → keep (admin override)
 
-Daily cron `/api/cron/close-reminder` also flips expired lots ที่นิ่ง
+Daily cron `/api/cron/daily-tasks` also flips expired lots ที่นิ่ง
 
 ### Pages
 - **`/lots`** — list with 4 KPI cards (by status) + filter: status / search / expiring 7d / 30d
@@ -608,7 +609,21 @@ Risk: low — file names are random hash, hard to guess.
 ### Still pending (refactor work — design sprint candidates)
 - **M3: Hardcoded colors** — 191 จุด — design system v2
 - **M6: po-attachments signed URL migration** — careful migration needed (rewrite stored URLs in DB)
-- **L1: Test coverage** — server actions ไม่มี unit test (po/equipment/lot/withdraw)
+- **L1: Test coverage** — server actions ไม่มี unit test (po/equipment/lot/withdraw/suppliers)
+  - Including `linkSupplierToPoAction`, `createSupplierAction`, `updateProcurementAction`
+  - Verification SQL meanwhile:
+    ```sql
+    -- ตรวจ PO ที่ supplier_name มี แต่ supplier_id ยังไม่ link
+    SELECT po_number, supplier_name, status, created_at
+    FROM purchase_orders
+    WHERE supplier_name IS NOT NULL AND TRIM(supplier_name) != ''
+      AND supplier_id IS NULL;
+
+    -- ตรวจ activity supplier_linked (audit trail หลัง LinkSupplierButton)
+    SELECT po_id, description, created_at
+    FROM po_activities WHERE action = 'supplier_linked'
+    ORDER BY created_at DESC LIMIT 20;
+    ```
 - **L3: ISR migration** — force-dynamic → revalidate 60s on dashboard/budget/reports
   (note: cookies() blocks ISR — would need refactor to use unstable_cache more aggressively)
 

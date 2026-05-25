@@ -49,7 +49,14 @@ export function LinkSupplierButton({
         toast.success(`🔗 เชื่อมโยง ${poNumber} กับ Supplier ใหม่แล้ว`);
         router.refresh();
       } else {
-        toast.error(res.error ?? "เชื่อมโยงไม่สำเร็จ");
+        // Supplier ถูกสร้างแล้วใน DB แต่ link ล้ม — ไม่ใช่ catastrophic เพราะ
+        // (1) supplier อยู่ใน /suppliers list และ (2) admin re-save PO procurement
+        // จะ auto-link ผ่าน ilike name lookup ใน updateProcurementAction
+        toast.error(
+          `${res.error ?? "เชื่อมโยงไม่สำเร็จ"} — Supplier ถูกสร้างแล้ว สามารถ refresh แล้วลองใหม่ หรือไปที่ /suppliers`,
+          { duration: 8000 },
+        );
+        router.refresh();
       }
     });
   }

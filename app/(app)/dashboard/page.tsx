@@ -620,12 +620,22 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
   const isStale = ageDays >= 3 && po.status === "รอจัดซื้อดำเนินการ";
 
   // Overdue detection — สำหรับ PO ที่มี expected_date และยังไม่ปิดงาน/ยกเลิก/รับของแล้ว
+  // ⚠️ Date compare ใช้ string (YYYY-MM-DD) เพื่อเลี่ยง timezone bug — ICT (UTC+7)
+  //    เทียบกับ UTC midnight ของวันเดียวกัน = "เลย" 7 ชม. แล้วตอน 07:00 ICT → false-positive
+  const todayStr = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
   const isOverdue =
     !!po.expected_date &&
     ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(po.status) &&
-    new Date(po.expected_date) < new Date();
-  const daysOverdue = isOverdue
-    ? Math.max(1, Math.floor((Date.now() - new Date(po.expected_date as string).getTime()) / 86400_000))
+    po.expected_date < todayStr;
+  const daysOverdue = isOverdue && po.expected_date
+    ? Math.max(
+        1,
+        Math.floor(
+          (new Date(todayStr + "T00:00:00.000Z").getTime() -
+            new Date(po.expected_date + "T00:00:00.000Z").getTime()) /
+            86400_000,
+        ),
+      )
     : 0;
 
   const items = po.items ?? [];

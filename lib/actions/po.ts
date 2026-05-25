@@ -1250,23 +1250,49 @@ export async function linkSupplierToPoAction(
 
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, supplier_name")
+    .select("id, po_number, supplier_name, supplier_id")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
 
-  const { error } = await sb
+  // Race guard — ถ้า PO ถูก link ไปแล้ว (เช่น admin อื่นกดพร้อมกัน)
+  //   → ไม่ override (กัน orphan supplier + ป้องกันการเปลี่ยน link โดยไม่ตั้งใจ)
+  if (po.supplier_id && po.supplier_id !== supplierId) {
+    return {
+      ok: false,
+      error: "PO นี้ link Supplier ในระบบอยู่แล้ว — โปรด refresh หน้าเพื่อดูข้อมูลล่าสุด",
+    };
+  }
+  // ถ้า link ไปยัง supplier เดียวกันอยู่แล้ว → idempotent success
+  if (po.supplier_id === supplierId) {
+    return { ok: true, poId };
+  }
+
+  // Atomic conditional update — เฉพาะตอน supplier_id ยังเป็น null
+  // (กัน race ถึง 2 admin กดพร้อมกัน — request หลังจะได้ rowsUpdated=0)
+  const { error, count } = await sb
     .from("purchase_orders")
-    .update({
-      supplier_id: supplierId,
-      // Sync ชื่อกับที่ register ใน DB (case-correct + trimmed)
-      supplier_name: supRow.name,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", poId);
+    .update(
+      {
+        supplier_id: supplierId,
+        // Sync ชื่อกับที่ register ใน DB (case-correct + trimmed)
+        supplier_name: supRow.name,
+        updated_at: new Date().toISOString(),
+      },
+      { count: "exact" },
+    )
+    .eq("id", poId)
+    .is("supplier_id", null);
   if (error) {
     console.error("[po linkSupplierToPo] failed:", error);
     return { ok: false, error: "เชื่อมโยง Supplier ไม่สำเร็จ" };
+  }
+  // Race lost — มีคนอื่น link ไปก่อนหน้านี้ระหว่าง check กับ update
+  if (count === 0) {
+    return {
+      ok: false,
+      error: "PO นี้ถูก link โดยผู้ใช้คนอื่นแล้ว — refresh หน้าเพื่อดูข้อมูลล่าสุด",
+    };
   }
 
   await logActivity(

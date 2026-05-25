@@ -1,10 +1,16 @@
 /**
- * Close reminder cron — แจ้งเตือน creator เมื่อ PO รับของแล้วเกิน 1 วันยังไม่ปิด
+ * Daily tasks cron — รัน 09:00 AM ICT ทุกวัน (vercel.json crons)
  *
- * Schedule: 9:00 AM ICT ทุกวัน (vercel.json crons)
- * Filter: status ใน {"รับของแล้ว", "มีปัญหา"} + received_date ≥ 1 วันที่แล้ว
+ * ทำ 3 อย่าง ใน HTTP request เดียว (กัน Vercel Hobby cron limit):
+ *   1) Lot expiry refresh — flip lots ที่ expiry_date < today → status='expired'
+ *   2) Close reminder — แจ้ง creator เมื่อ PO "รับของแล้ว"/"มีปัญหา" ค้างไม่ปิด > 1 วัน
+ *      (throttle 3 วัน/PO ผ่าน last_close_reminder_sent_at)
+ *   3) Admin daily alerts — แจ้ง admin/supervisor 1 อีเมลรวม pending(รอจัดซื้อ) +
+ *      issues(มีปัญหา) ที่ค้าง ≥ 1 วัน — gate ด้วย email_daily_digest pref
  *
  * Security: Bearer Authorization header (CRON_SECRET)
+ *
+ * ⚠️ ไฟล์นี้เคยอยู่ที่ /api/cron/close-reminder — เปลี่ยนชื่อให้สื่อกับงาน 3 อย่าง
  */
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -23,7 +29,7 @@ function authorize(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     console.warn(
-      "[cron/close-reminder] CRON_SECRET not set — rejecting all requests for safety.",
+      "[cron/daily-tasks] CRON_SECRET not set — rejecting all requests for safety.",
     );
     return false;
   }
@@ -52,10 +58,10 @@ export async function GET(req: Request) {
       .lt("expiry_date", today);
     lotsExpiredCount = count ?? 0;
     if (lotsExpiredCount > 0) {
-      console.log(`[cron/close-reminder] flipped ${lotsExpiredCount} lots to 'expired'`);
+      console.log(`[cron/daily-tasks] flipped ${lotsExpiredCount} lots to 'expired'`);
     }
   } catch (e) {
-    console.warn("[cron/close-reminder] lot expiry refresh failed:", e);
+    console.warn("[cron/daily-tasks] lot expiry refresh failed:", e);
   }
 
   // === Close reminder ===
@@ -69,14 +75,23 @@ export async function GET(req: Request) {
     .slice(0, 10);
   const reminderCutoff = new Date(Date.now() - 3 * 86_400_000).toISOString();
 
+  // Explicit columns + LIMIT — กัน memory blowup ถ้ามี PO ค้าง 500+ ใบ
+  // (items JSONB ไม่ใช้ในส่วนนี้ → ไม่ดึง)
   const { data: posRaw } = await sb
     .from("purchase_orders")
-    .select("*")
+    .select("id, po_number, status, created_by, received_date, last_close_reminder_sent_at")
     .in("status", ["รับของแล้ว", "มีปัญหา"])
     .lte("received_date", cutoffDate)
-    .or(`last_close_reminder_sent_at.is.null,last_close_reminder_sent_at.lte.${reminderCutoff}`);
+    .or(`last_close_reminder_sent_at.is.null,last_close_reminder_sent_at.lte.${reminderCutoff}`)
+    .order("received_date", { ascending: true })
+    .limit(200);
 
-  const pos = (posRaw ?? []) as PurchaseOrder[];
+  // Narrow type — ส่วน close_reminder ใช้แค่ field พวกนี้
+  type CloseReminderPo = Pick<
+    PurchaseOrder,
+    "id" | "po_number" | "status" | "created_by" | "received_date"
+  > & { last_close_reminder_sent_at: string | null };
+  const pos = (posRaw ?? []) as CloseReminderPo[];
 
   if (pos.length === 0) {
     return NextResponse.json({
@@ -185,7 +200,7 @@ export async function GET(req: Request) {
   }
 
   console.log(
-    `[cron/close-reminder] total=${pos.length} sent=${sent.length} ` +
+    `[cron/daily-tasks] total=${pos.length} sent=${sent.length} ` +
     `skipped=${skipped.length} failed=${failed.length}`,
   );
 
@@ -234,8 +249,10 @@ export async function GET(req: Request) {
     const pendingPos = (pendingRaw ?? []) as AlertPoRow[];
     const issuePos = (issuesRaw ?? []) as AlertPoRow[];
 
-    // ดึงสาเหตุ "มีปัญหา" จาก po_activities (action='received' ล่าสุด)
-    // → activity.description มีรายละเอียดของปัญหาที่บันทึกตอนรับของ
+    // ดึงสาเหตุ "มีปัญหา" จาก po_activities — ใช้ activity ล่าสุดที่เกี่ยวข้อง
+    // ครอบคลุม 3 path ที่ทำให้ PO เป็น "มีปัญหา":
+    //   - received: รับของแล้วเจอปัญหา (description ปกติ)
+    //   - status_changed / status_reverted: manual หรือ revert
     const issueReasonMap = new Map<string, string>();
     if (issuePos.length > 0) {
       try {
@@ -244,7 +261,7 @@ export async function GET(req: Request) {
           .from("po_activities" as never)
           .select("po_id, description, created_at, action")
           .in("po_id", issueIds)
-          .eq("action", "received")
+          .in("action", ["received", "status_changed", "status_reverted"])
           .order("created_at", { ascending: false });
         type ActivityRow = {
           po_id: string;
@@ -253,7 +270,7 @@ export async function GET(req: Request) {
           action: string;
         };
         for (const a of (activities ?? []) as ActivityRow[]) {
-          // ใช้ activity ล่าสุดของแต่ละ PO
+          // ใช้ activity ล่าสุดของแต่ละ PO (rows มาเรียงตาม desc แล้ว)
           if (!issueReasonMap.has(a.po_id) && a.description) {
             // strip ส่วน "รับของ #N | สภาพ: X | ..." — เอาเฉพาะส่วนหลัง |
             const parts = a.description.split("|").map((s) => s.trim());
@@ -262,7 +279,7 @@ export async function GET(req: Request) {
           }
         }
       } catch (e) {
-        console.warn("[cron/close-reminder] failed to fetch issue reasons:", e);
+        console.warn("[cron/daily-tasks] failed to fetch issue reasons:", e);
       }
     }
 
@@ -366,15 +383,15 @@ export async function GET(req: Request) {
       }
 
       console.log(
-        `[cron/close-reminder] admin alerts: pending=${pendingItems.length} ` +
+        `[cron/daily-tasks] admin alerts: pending=${pendingItems.length} ` +
           `issues=${issueItems.length} recipients=${admins.length} ` +
           `sent=${adminAlertsResult.sent} failed=${adminAlertsResult.failed}`,
       );
     } else {
-      console.log("[cron/close-reminder] admin alerts: no pending/issue POs");
+      console.log("[cron/daily-tasks] admin alerts: no pending/issue POs");
     }
   } catch (e) {
-    console.error("[cron/close-reminder] admin alerts failed:", e);
+    console.error("[cron/daily-tasks] admin alerts failed:", e);
   }
 
   return NextResponse.json({
