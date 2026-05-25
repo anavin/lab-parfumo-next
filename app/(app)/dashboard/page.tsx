@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertTriangle, Clock, Plus, FileText, Package, PackageX,
-  TrendingUp, TrendingDown, Trophy, AlertCircle, ArrowRight,
-  ShoppingBag, Truck, PackageCheck, ClipboardEdit,
-  CheckCircle2, XCircle, type LucideIcon,
+  TrendingUp, TrendingDown, Trophy, ArrowRight,
+  ShoppingBag, CheckCircle2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import { getExpiringSoonCount } from "@/lib/db/lots";
 import { TrendChart, SuppliersChart } from "./_components/lazy-charts";
 import { StaffDashboard } from "./_components/staff-dashboard";
 import type { PoStatus, PurchaseOrder, Equipment } from "@/lib/types/db";
+import { getStatusVisual, getStatusSoft } from "@/lib/design/status-visual";
 
 export const metadata: Metadata = {
   title: "Dashboard — Lab Parfumo PO",
@@ -31,58 +31,10 @@ const STATUS_ORDER: PoStatus[] = [
   "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์", "ยกเลิก",
 ];
 
-interface StatusVisual {
-  icon: LucideIcon;
-  label: string;
-  /** Tailwind classes for the icon background + text */
-  tone: string;
-  ring: string;
-}
-
-const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
-  "รอจัดซื้อดำเนินการ": {
-    icon: ClipboardEdit,
-    label: "รอจัดซื้อ",
-    tone: "bg-amber-100 text-amber-700",
-    ring: "ring-amber-200/60",
-  },
-  "สั่งซื้อแล้ว": {
-    icon: ShoppingBag,
-    label: "สั่งซื้อแล้ว",
-    tone: "bg-blue-100 text-blue-700",
-    ring: "ring-blue-200/60",
-  },
-  "กำลังขนส่ง": {
-    icon: Truck,
-    label: "กำลังขนส่ง",
-    tone: "bg-indigo-100 text-indigo-700",
-    ring: "ring-indigo-200/60",
-  },
-  "รับของแล้ว": {
-    icon: PackageCheck,
-    label: "รับของแล้ว",
-    tone: "bg-cyan-100 text-cyan-700",
-    ring: "ring-cyan-200/60",
-  },
-  "มีปัญหา": {
-    icon: AlertTriangle,
-    label: "มีปัญหา",
-    tone: "bg-red-100 text-red-600",
-    ring: "ring-red-200/60",
-  },
-  "เสร็จสมบูรณ์": {
-    icon: CheckCircle2,
-    label: "เสร็จสมบูรณ์",
-    tone: "bg-emerald-100 text-emerald-700",
-    ring: "ring-emerald-200/60",
-  },
-  "ยกเลิก": {
-    icon: XCircle,
-    label: "ยกเลิก",
-    tone: "bg-slate-100 text-slate-500",
-    ring: "ring-slate-200/60",
-  },
-};
+// Status visual sourced from lib/design/status-visual.ts (M3 design tokens)
+// — see getStatusVisual() — fixes the previous drift bug where this map
+//   still had "สั่งซื้อแล้ว: blue" + "เสร็จสมบูรณ์: emerald" while the rest
+//   of the app had moved to emerald/green
 
 function fmtMoney(n: number): string {
   return `฿${n.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`;
@@ -252,7 +204,7 @@ export default async function DashboardPage() {
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {STATUS_ORDER.map((status) => {
-            const visual = STATUS_VISUAL[status];
+            const visual = getStatusVisual(status);
             const Icon = visual.icon;
             const count = stats.byStatus[status] ?? 0;
             const warn = status === "รอจัดซื้อดำเนินการ" && count > 0;
@@ -262,7 +214,7 @@ export default async function DashboardPage() {
                 key={status}
                 href={`/po?status=${encodeURIComponent(status)}`}
                 className={`group relative bg-card border border-border/80 rounded-2xl p-4 flex flex-col items-center justify-center text-center hover:border-primary/40 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ${
-                  warn ? `ring-1 ${visual.ring}` : ""
+                  warn ? `ring-1 ${visual.ringColor}` : ""
                 } ${isEmpty ? "opacity-70 hover:opacity-100" : ""}`}
               >
                 {/* Warning pulse dot */}
@@ -271,7 +223,7 @@ export default async function DashboardPage() {
                 )}
 
                 {/* Icon badge */}
-                <div className={`size-11 rounded-xl flex items-center justify-center mb-3 transition-transform duration-300 group-hover:scale-110 ${visual.tone} ring-1 ${visual.ring}`}>
+                <div className={`size-11 rounded-xl flex items-center justify-center mb-3 transition-transform duration-300 group-hover:scale-110 ${visual.iconTone} ring-1 ${visual.ringColor}`}>
                   <Icon className="size-5" strokeWidth={2.25} />
                 </div>
 
@@ -282,7 +234,7 @@ export default async function DashboardPage() {
 
                 {/* Label — full text, no truncation */}
                 <div className="text-xs text-muted-foreground font-semibold mt-2 leading-tight">
-                  {visual.label}
+                  {visual.shortLabel}
                 </div>
               </Link>
             );
@@ -586,52 +538,7 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
   );
 }
 
-// Status color mapping — แยกสีตามสถานะจริง (ไม่ซ้ำกัน)
-interface StatusStyle {
-  icon: LucideIcon;
-  iconBg: string;
-  iconColor: string;
-  ringColor: string;
-  textColor: string;
-}
-
-const STATUS_STYLE: Record<string, StatusStyle> = {
-  "รอจัดซื้อดำเนินการ": {
-    icon: ClipboardEdit,
-    iconBg: "bg-amber-50",
-    iconColor: "text-amber-600",
-    ringColor: "ring-amber-200/60",
-    textColor: "text-amber-700",
-  },
-  "สั่งซื้อแล้ว": {
-    icon: ShoppingBag,
-    iconBg: "bg-emerald-50",
-    iconColor: "text-emerald-600",
-    ringColor: "ring-emerald-200/60",
-    textColor: "text-emerald-700",
-  },
-  "กำลังขนส่ง": {
-    icon: Truck,
-    iconBg: "bg-indigo-50",
-    iconColor: "text-indigo-600",
-    ringColor: "ring-indigo-200/60",
-    textColor: "text-indigo-700",
-  },
-  "รับของแล้ว": {
-    icon: PackageCheck,
-    iconBg: "bg-cyan-50",
-    iconColor: "text-cyan-600",
-    ringColor: "ring-cyan-200/60",
-    textColor: "text-cyan-700",
-  },
-  "มีปัญหา": {
-    icon: AlertCircle,
-    iconBg: "bg-red-50",
-    iconColor: "text-red-600",
-    ringColor: "ring-red-200/60",
-    textColor: "text-red-700",
-  },
-};
+// STATUS_STYLE removed — sourced from getStatusSoft() in lib/design/status-visual.ts
 
 function ActionRow({ po }: { po: PurchaseOrder }) {
   const isProblem = po.status === "มีปัญหา";
@@ -661,7 +568,7 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
   const items = po.items ?? [];
 
   // Lookup สี + icon ตามสถานะ — fallback เป็นสีเทาถ้าไม่ตรงตาราง
-  const style = STATUS_STYLE[po.status] ?? {
+  const style = getStatusSoft(po.status) ?? {
     icon: Clock,
     iconBg: "bg-slate-50",
     iconColor: "text-slate-600",

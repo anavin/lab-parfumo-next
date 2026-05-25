@@ -18,6 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
+import { STATUS_HEX } from "@/lib/design/status-visual";
 
 type Period = "7" | "30" | "month" | "year" | "all" | "custom";
 
@@ -30,15 +31,8 @@ const PERIOD_LABEL: Record<Period, string> = {
   "custom": "กำหนดเอง",
 };
 
-const STATUS_COLORS: Record<PoStatus, string> = {
-  "รอจัดซื้อดำเนินการ": "#F59E0B",  // amber
-  "สั่งซื้อแล้ว":      "#10B981",  // emerald (light green — admin ดำเนินการแล้ว)
-  "กำลังขนส่ง":         "#6366F1",  // indigo
-  "รับของแล้ว":         "#06B6D4",  // cyan
-  "มีปัญหา":            "#DC2626",  // red
-  "เสร็จสมบูรณ์":       "#15803D",  // green-700 (dark green — final done)
-  "ยกเลิก":             "#94A3B8",  // slate
-};
+// Status colors sourced from lib/design/status-visual.ts (M3 design tokens)
+// — chart cells use STATUS_HEX.pill() so they match the rest of the UI
 
 const PIE_COLORS = [
   "#3A5A8C", "#2563EB", "#7C3AED", "#0891B2", "#059669",
@@ -346,7 +340,7 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
                     <Tooltip content={<StatusTooltip />} cursor={{ fill: "#F1F5F9" }} />
                     <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                       {statusCount.map((entry, i) => (
-                        <Cell key={i} fill={STATUS_COLORS[entry.name as PoStatus] ?? "#94A3B8"} />
+                        <Cell key={i} fill={STATUS_HEX.pill(entry.name as PoStatus) ?? "#94A3B8"} />
                       ))}
                     </Bar>
                   </BarChart>

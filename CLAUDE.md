@@ -577,8 +577,21 @@ Space    lightbox: toggle slideshow play/pause
 
 ## Known caveats
 
-### Force-dynamic everywhere
-Most `(app)/*/page.tsx` exports `dynamic = "force-dynamic"`. Tradeoff: prevents Vercel edge caching.
+### Force-dynamic everywhere — **architectural, not fixable without auth refactor**
+Every `(app)/*/page.tsx` exports `dynamic = "force-dynamic"` because the
+shared `(app)/layout.tsx` calls `getCurrentUser()` → `cookies()`. Any page
+under that layout is opted into dynamic rendering by Next.js, regardless
+of what the page itself declares.
+
+To enable ISR on these pages would require either:
+  - Moving auth out of the layout (back to per-page or middleware-only) — breaks
+    the "single source of truth" pattern and risks unauthenticated leaks
+  - Splitting per-user data fetch into client-side hooks — much larger refactor
+
+Mitigation that's already in place: heavy queries use `unstable_cache` +
+`revalidateTag` (categories, lookups, suppliers — see "Performance wins"
+section). That delivers most of the ISR benefit (cache reuse across requests)
+without the architecture cost. **L3 is therefore considered closed-by-design.**
 
 ### `*.vercel.app` Chrome warning
 Custom domain solves this. Security headers in `next.config.ts` improve site reputation.
@@ -613,7 +626,12 @@ extracts path from the canonical Supabase URL pattern.
 - F6: PoEmailKind="reverted" + email notify ✓
 
 ### Still pending (refactor work — design sprint candidates)
-- **M3: Hardcoded colors** — 191 จุด — design system v2
+- **M3: Hardcoded colors** — ⚠️ partial. Status visual tokens consolidated in
+  `lib/design/status-visual.ts` (5 maps → 1) + `getStatusVisual` / `getStatusSoft`
+  / `STATUS_HEX` adapters. po-row + dashboard + staff-dashboard + reports
+  refactored. Remaining: ad-hoc `bg-red-50` / `bg-amber-100` etc in feature
+  components (~150 sites) — work through gradually using the established
+  hue palette.
 - **M6: po-attachments signed URL migration** — ✅ code ready. Manual ops step left: flip bucket private + set `PO_ATTACHMENTS_PRIVATE=true`. See `migrations/202605_po_attachments_signed_url.md`
 - **L1: Test coverage** — partial:
   - ✅ `linkSupplierToPoAction` — 9 tests (permission/idempotent/race) in `lib/actions/po-link-supplier.test.ts`
@@ -633,8 +651,10 @@ extracts path from the canonical Supabase URL pattern.
     FROM po_activities WHERE action = 'supplier_linked'
     ORDER BY created_at DESC LIMIT 20;
     ```
-- **L3: ISR migration** — force-dynamic → revalidate 60s on dashboard/budget/reports
-  (note: cookies() blocks ISR — would need refactor to use unstable_cache more aggressively)
+- **L3: ISR migration** — ❌ closed-by-design. `(app)/layout.tsx` reads `cookies()`
+  for auth → opts entire route group into dynamic rendering. The unstable_cache
+  + revalidateTag layer (F5) covers what ISR would have. See "Force-dynamic
+  everywhere" in Known caveats.
 
 ### Performance audit findings (TOP not yet fixed)
 1. 🔴 `select("*")` on hot paths → explicit columns (-25% bandwidth)
@@ -644,9 +664,9 @@ extracts path from the canonical Supabase URL pattern.
 
 ### Nice-to-have
 - ✅ Print-friendly route `/po/[id]/print` (DONE)
-- Custom domain (replaces *.vercel.app warning)
+- Custom domain (replaces *.vercel.app warning) — **manual ops** — see steps below
 - ✅ Rate limiting (Upstash KV) on login + create PO (DONE — graceful no-op without env)
-- Submit Safe Browsing review for the deployed URL
+- Submit Safe Browsing review for the deployed URL — **manual ops** — see steps below
 - ✅ Expiring lots dashboard alert (`getExpiringSoonCount()`) (DONE)
 - ✅ FIFO suggestion UI in withdraw form (preview lots that will be consumed) (DONE)
 
@@ -688,6 +708,35 @@ PO_ATTACHMENTS_PRIVATE            # "true" → mint signed URLs for po-attachmen
 ENCRYPTION_KEY                    # 32 bytes hex (openssl rand -hex 32)
 NEXT_PUBLIC_SENTRY_DSN            # Sentry — graceful no-op if missing
 ```
+
+---
+
+## Manual ops checklist (one-time setup)
+
+These items don't need code — they're ops/admin tasks.
+
+### Custom domain (replaces *.vercel.app browser warnings)
+1. Buy/own a domain (Cloudflare/Namecheap/etc.)
+2. Vercel project → Settings → Domains → Add `your-domain.com`
+3. Add the A/CNAME records Vercel shows in your DNS provider
+4. Wait for SSL provisioning (usually < 5 min)
+5. Set `NEXT_PUBLIC_APP_URL=https://your-domain.com` in Vercel env
+6. Redeploy to pick up the new URL in emails / cron callbacks
+
+### Safe Browsing review (if Chrome still warns)
+- Once on a custom domain with HTTPS + the security headers from `next.config.ts`,
+  Google's Safe Browsing usually clears the site within 24–48 hr automatically
+- If still flagged: submit a review at https://safebrowsing.google.com/safebrowsing/report_error/
+
+### Upstash Redis (rate limiting)
+1. Sign up at https://upstash.com
+2. Create a Redis database (free tier OK)
+3. Copy REST URL + REST Token
+4. Set in Vercel env: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+5. Verify by hitting `/login` 6 times within 15 min from same IP — 6th should be blocked
+
+### po-attachments → private bucket
+- See `migrations/202605_po_attachments_signed_url.md`
 
 ---
 

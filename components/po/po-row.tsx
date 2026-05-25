@@ -1,83 +1,15 @@
 /**
  * PO list row — premium B2B feel, clear hierarchy, full info
+ *
+ * Status visual now sourced from lib/design/status-visual.ts (M3 design tokens)
  */
 import Link from "next/link";
 import {
   ChevronRight, Calendar, User, Package as PackageIcon,
-  Building2, ShoppingBag, Truck, PackageCheck, AlertTriangle,
-  CheckCircle2, XCircle, ClipboardEdit, type LucideIcon, Clock,
+  Building2, Clock,
 } from "lucide-react";
-import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
-
-interface StatusVisual {
-  icon: LucideIcon;
-  label: string;
-  pillClass: string;
-  iconBg: string;
-  iconColor: string;
-  ringColor: string;
-}
-
-const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
-  "รอจัดซื้อดำเนินการ": {
-    icon: ClipboardEdit,
-    label: "รอจัดซื้อ",
-    pillClass: "bg-amber-50 text-amber-700 ring-amber-200",
-    iconBg: "bg-amber-100",
-    iconColor: "text-amber-700",
-    ringColor: "ring-amber-200/60",
-  },
-  "สั่งซื้อแล้ว": {
-    icon: ShoppingBag,
-    label: "สั่งซื้อแล้ว",
-    // เขียวอ่อน (emerald) — admin ดำเนินการแล้ว
-    pillClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-700",
-    ringColor: "ring-emerald-200/60",
-  },
-  "กำลังขนส่ง": {
-    icon: Truck,
-    label: "กำลังขนส่ง",
-    pillClass: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-    iconBg: "bg-indigo-100",
-    iconColor: "text-indigo-700",
-    ringColor: "ring-indigo-200/60",
-  },
-  "รับของแล้ว": {
-    icon: PackageCheck,
-    label: "รับของแล้ว",
-    pillClass: "bg-cyan-50 text-cyan-700 ring-cyan-200",
-    iconBg: "bg-cyan-100",
-    iconColor: "text-cyan-700",
-    ringColor: "ring-cyan-200/60",
-  },
-  "มีปัญหา": {
-    icon: AlertTriangle,
-    label: "มีปัญหา",
-    pillClass: "bg-red-50 text-red-700 ring-red-200",
-    iconBg: "bg-red-100",
-    iconColor: "text-red-700",
-    ringColor: "ring-red-200/60",
-  },
-  "เสร็จสมบูรณ์": {
-    icon: CheckCircle2,
-    label: "เสร็จสมบูรณ์",
-    // เขียวเข้ม (green-700) — แยกชัดจาก "สั่งซื้อแล้ว" (emerald)
-    pillClass: "bg-green-100 text-green-800 ring-green-300",
-    iconBg: "bg-green-200",
-    iconColor: "text-green-800",
-    ringColor: "ring-green-300/60",
-  },
-  "ยกเลิก": {
-    icon: XCircle,
-    label: "ยกเลิก",
-    pillClass: "bg-slate-100 text-slate-500 ring-slate-200",
-    iconBg: "bg-slate-100",
-    iconColor: "text-slate-500",
-    ringColor: "ring-slate-200/60",
-  },
-};
+import type { PurchaseOrder } from "@/lib/types/db";
+import { getStatusVisual } from "@/lib/design/status-visual";
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -105,7 +37,7 @@ export function PoRow({
   isAdmin: boolean;
 }) {
   const items = po.items ?? [];
-  const visual = STATUS_VISUAL[po.status];
+  const visual = getStatusVisual(po.status);
   const StatusIcon = visual.icon;
   const totalQty = items.reduce((s, it) => s + (it.qty ?? 0), 0);
 
@@ -217,7 +149,7 @@ export function PoRow({
           {/* Status pill */}
           <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ring-1 ${visual.pillClass}`}>
             <span className="size-1.5 rounded-full bg-current opacity-70" />
-            {visual.label}
+            {visual.shortLabel}
           </div>
 
           {/* Urgency badges */}
