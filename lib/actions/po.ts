@@ -84,7 +84,7 @@ interface EmailContext {
 async function notifyAdmins(
   poId: string, title: string, message: string,
   kind: NotifyKind = "new_po",
-  emailContext?: { poNumber: string; by: string; itemCount?: number },
+  emailContext?: { poNumber: string; by: string; itemCount?: number; excludeUserId?: string },
 ) {
   const sb = getSupabaseAdmin();
   const { data: privileged } = await sb
@@ -100,7 +100,10 @@ async function notifyAdmins(
     full_name: string;
     notification_prefs: NotificationPrefs | null;
   };
-  const rows = privileged as Row[];
+  // Exclude user (กรณี admin/supervisor สร้าง PO เอง — ไม่ต้องส่ง noti ให้ตัวเอง)
+  const rows = (privileged as Row[]).filter(
+    (a) => !emailContext?.excludeUserId || a.id !== emailContext.excludeUserId,
+  );
 
   // 1) In-app
   const inappRecipients = rows.filter((a) => isAllowed(a.notification_prefs, kind));
@@ -1363,6 +1366,8 @@ export async function createPoAction(
         poNumber: newPo.po_number,
         by: user.full_name,
         itemCount: items.length,
+        // กัน admin/supervisor ที่สร้าง PO เองรับ noti ของตัวเอง
+        excludeUserId: user.id,
       },
     );
   } catch {
