@@ -44,7 +44,7 @@ Avatar:       boring-avatars (variant "beam")
 Validation:   Zod (lib/actions/schemas.ts)
 Cron:         Vercel Cron (vercel.json `crons`) — daily-digest + daily-tasks
 Toast:        sonner
-Tests:        Vitest (4 files, 63 tests, ~5s runtime)
+Tests:        Vitest (6 files, 79 tests, ~5s runtime)
 ```
 
 ### Key directories
@@ -609,8 +609,11 @@ Risk: low — file names are random hash, hard to guess.
 ### Still pending (refactor work — design sprint candidates)
 - **M3: Hardcoded colors** — 191 จุด — design system v2
 - **M6: po-attachments signed URL migration** — careful migration needed (rewrite stored URLs in DB)
-- **L1: Test coverage** — server actions ไม่มี unit test (po/equipment/lot/withdraw/suppliers)
-  - Including `linkSupplierToPoAction`, `createSupplierAction`, `updateProcurementAction`
+- **L1: Test coverage** — partial:
+  - ✅ `linkSupplierToPoAction` — 9 tests (permission/idempotent/race) in `lib/actions/po-link-supplier.test.ts`
+  - ✅ `previewWithdrawFifoAction` — 7 tests (validation/FIFO order/unallocated) in `lib/actions/withdraw-fifo-preview.test.ts`
+  - ✅ Shared Supabase mock helper at `tests/_mocks/supabase.ts` — fluent builder + call recording
+  - ❌ Still missing: createPoAction, updateProcurementAction, createWithdrawalAction, equipment CRUD, suppliers CRUD
   - Verification SQL meanwhile:
     ```sql
     -- ตรวจ PO ที่ supplier_name มี แต่ supplier_id ยังไม่ link
@@ -650,7 +653,7 @@ npm install
 npm run dev          # http://localhost:3000
 npx tsc --noEmit     # type check
 npm run build        # production build (run before push if changing types)
-npm test             # vitest run (63 tests)
+npm test             # vitest run (79 tests)
 git push             # → Vercel auto-deploy main
 ```
 
