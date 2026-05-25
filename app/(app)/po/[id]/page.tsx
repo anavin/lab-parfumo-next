@@ -24,6 +24,7 @@ import { CommentForm } from "./_components/comment-form";
 import { AttachmentsSection } from "./_components/attachments-section";
 import { DeliveriesList } from "./_components/deliveries-list";
 import { LinkSupplierButton } from "./_components/link-supplier-button";
+import { resolveAttachmentUrls } from "@/lib/storage/attachments";
 
 export const dynamic = "force-dynamic";
 
@@ -343,10 +344,10 @@ export default async function PoViewPage({
         </Card>
       )}
 
-      {/* Attachments */}
+      {/* Attachments — URLs resolved server-side (signed if bucket is private) */}
       <AttachmentsSection
         poId={po.id}
-        attachments={po.attachment_urls ?? []}
+        attachments={await resolveAttachmentUrls(po.attachment_urls ?? [])}
         isAdmin={isAdmin}
       />
 

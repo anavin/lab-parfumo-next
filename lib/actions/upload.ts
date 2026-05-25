@@ -164,6 +164,8 @@ const ATTACHMENT_MIME: Record<string, string> = {
 
 export interface UploadedAttachment {
   url: string;
+  /** Storage path ภายใน bucket — สำหรับ generate signed URL (M6) */
+  path: string;
   name: string;
   size: number;
   type: string;            // extension เช่น "pdf"
@@ -261,6 +263,7 @@ export async function uploadSingleAttachmentAction(
     ok: true,
     attachment: {
       url: urlData.publicUrl,
+      path: safeName,
       name: file.name,
       size: file.size,
       type: ext,

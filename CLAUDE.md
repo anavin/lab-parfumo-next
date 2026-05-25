@@ -156,7 +156,7 @@ Mobile: flat horizontal-scroll (FLAT_FALLBACK in nav-links.tsx)
 |-------------------|-------------------------------|-------------------|
 | `equipment-images` | Equipment + custom item photos | Yes (ensureBucket) |
 | `delivery-images` | Photos when receiving stock | Yes |
-| `po-attachments`  | PDF/Word/Excel attached to PO | Yes — **public bucket (M6 todo: signed URL migration)** |
+| `po-attachments`  | PDF/Word/Excel attached to PO | Yes — public until ops flip (M6 code ready — see `migrations/202605_po_attachments_signed_url.md`) |
 
 `ensureBucket()` in `lib/actions/upload.ts` — race-safe, idempotent.
 Image upload verifies magic bytes (JPEG/PNG/GIF/WEBP) — prevents rename attack.
@@ -589,9 +589,14 @@ Codebase uses untyped Supabase client → many `as never` casts. Future: generat
 Without it, falls back through `VERCEL_PROJECT_PRODUCTION_URL` → `VERCEL_URL` (has SSO!) → localhost.
 **Always set explicitly in Vercel.**
 
-### `po-attachments` bucket is still public
-Migration to signed URLs deferred (would break existing public URL references in attachment_urls JSONB).
-Risk: low — file names are random hash, hard to guess.
+### `po-attachments` bucket is still public — but flip is now 1 env-var away
+Code-side migration done (`lib/storage/attachments.ts` + `PoAttachment.path` field).
+To flip: make bucket private in Supabase dashboard + set
+`PO_ATTACHMENTS_PRIVATE=true` in Vercel. See
+`migrations/202605_po_attachments_signed_url.md` for full ops steps.
+
+Legacy attachments without `path` field still work after flip — helper
+extracts path from the canonical Supabase URL pattern.
 
 ---
 
@@ -608,7 +613,7 @@ Risk: low — file names are random hash, hard to guess.
 
 ### Still pending (refactor work — design sprint candidates)
 - **M3: Hardcoded colors** — 191 จุด — design system v2
-- **M6: po-attachments signed URL migration** — careful migration needed (rewrite stored URLs in DB)
+- **M6: po-attachments signed URL migration** — ✅ code ready. Manual ops step left: flip bucket private + set `PO_ATTACHMENTS_PRIVATE=true`. See `migrations/202605_po_attachments_signed_url.md`
 - **L1: Test coverage** — partial:
   - ✅ `linkSupplierToPoAction` — 9 tests (permission/idempotent/race) in `lib/actions/po-link-supplier.test.ts`
   - ✅ `previewWithdrawFifoAction` — 7 tests (validation/FIFO order/unallocated) in `lib/actions/withdraw-fifo-preview.test.ts`

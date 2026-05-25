@@ -264,7 +264,20 @@ export interface PoItem {
 }
 
 export interface PoAttachment {
+  /**
+   * Public URL ของไฟล์
+   * - Legacy: ใช้ตรงๆ ได้ (bucket เป็น public)
+   * - หลัง M6 migration (bucket → private + signed URL): ใช้เป็น fallback
+   *   เฉพาะตอน path ไม่มี — view layer ควรเรียก resolveAttachmentUrl()
+   */
   url: string;
+  /**
+   * Storage path ภายใน bucket (ใหม่ — M6 prep)
+   * เก็บแยกเพื่อ generate signed URL ได้ตอน render
+   * ค่า: เช่น "abc123_filename.pdf"
+   * Legacy attachments ที่ไม่มี field นี้ → resolveAttachmentUrl() จะ extract จาก url
+   */
+  path?: string;
   name: string;
   size: number;
   type: string;
