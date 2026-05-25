@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import {
-  ArrowLeft, Calendar, Truck, FileText, MessageSquare,
-  Activity, Package,
+  ArrowLeft, Calendar, Truck, FileText, Package,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { WorkflowTimeline } from "@/components/po/workflow-timeline";
 import { requireUser } from "@/lib/auth/require-user";
 import {
-  getPoById, getPoActivities, getPoComments, getPoDeliveries,
+  getPoById, getPoDeliveries,
 } from "@/lib/db/po";
 import { getSupplierOptions } from "@/lib/db/suppliers";
 import { getEquipmentById } from "@/lib/db/equipment";
@@ -20,10 +20,17 @@ import { getLookups } from "@/lib/db/lookups";
 import type { Equipment, Lookup } from "@/lib/types/db";
 import { ItemsList } from "./_components/items-list";
 import { ActionButtons } from "./_components/action-buttons";
-import { CommentForm } from "./_components/comment-form";
 import { AttachmentsSection } from "./_components/attachments-section";
 import { DeliveriesList } from "./_components/deliveries-list";
 import { LinkSupplierButton } from "./_components/link-supplier-button";
+import {
+  PoCommentsSection,
+  PoCommentsSectionSkeleton,
+} from "./_components/comments-section";
+import {
+  PoActivitiesSection,
+  PoActivitiesSectionSkeleton,
+} from "./_components/activities-section";
 import { resolveAttachmentUrls } from "@/lib/storage/attachments";
 
 export const dynamic = "force-dynamic";
@@ -90,12 +97,11 @@ export default async function PoViewPage({
         ])
       : Promise.resolve([[], [], []]);
 
+  // Activities + Comments stream via Suspense (defer fetch — see below)
   const [
-    activities, comments, deliveries, supplierOptions, equipmentList,
+    deliveries, supplierOptions, equipmentList,
     [supplierCategories, banks, paymentTerms],
   ] = await Promise.all([
-    getPoActivities(po.id),
-    getPoComments(po.id),
     getPoDeliveries(po.id),
     isAdmin ? getSupplierOptions() : Promise.resolve([]),
     Promise.all(eqIds.map((id) => getEquipmentById(id))),
@@ -351,61 +357,15 @@ export default async function PoViewPage({
         isAdmin={isAdmin}
       />
 
-      {/* Comments */}
-      <Card>
-        <CardContent className="p-5">
-          <SectionTitle icon={<MessageSquare className="h-4 w-4" />}>
-            ความคิดเห็น ({comments.length})
-          </SectionTitle>
-          {comments.length === 0 ? (
-            <div className="text-sm text-slate-400 italic">ยังไม่มีความคิดเห็น</div>
-          ) : (
-            <div className="space-y-2">
-              {comments.map((c) => (
-                <div key={c.id} className="border border-slate-200 rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-semibold text-slate-900">
-                      {c.user_role === "admin" ? "👑" : c.user_role === "supervisor" ? "🛡️" : "👤"} {c.user_name}
-                    </span>
-                    <span className="text-xs text-slate-400">{fmtDateTime(c.created_at)}</span>
-                  </div>
-                  <p className="text-sm text-slate-700 whitespace-pre-line">{c.message}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <CommentForm poId={po.id} />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Comments — streamed via Suspense */}
+      <Suspense fallback={<PoCommentsSectionSkeleton />}>
+        <PoCommentsSection poId={po.id} />
+      </Suspense>
 
-      {/* Activities */}
-      <Card>
-        <CardContent className="p-5">
-          <SectionTitle icon={<Activity className="h-4 w-4" />}>
-            ประวัติกิจกรรม ({activities.length})
-          </SectionTitle>
-          {activities.length === 0 ? (
-            <div className="text-sm text-slate-400 italic">ยังไม่มีกิจกรรม</div>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {activities.map((a) => (
-                <li key={a.id} className="flex gap-2 text-slate-600">
-                  <span className="text-slate-400 text-xs flex-shrink-0">
-                    {fmtDateTime(a.created_at)}
-                  </span>
-                  <span>—</span>
-                  <span className="font-semibold text-slate-700">
-                    {a.user_role === "admin" ? "👑" : a.user_role === "supervisor" ? "🛡️" : "👤"} {a.user_name ?? "—"}:
-                  </span>
-                  <span>{a.description ?? "—"}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {/* Activities — streamed via Suspense */}
+      <Suspense fallback={<PoActivitiesSectionSkeleton />}>
+        <PoActivitiesSection poId={po.id} />
+      </Suspense>
     </div>
   );
 }
@@ -494,14 +454,3 @@ function fmtDate(d: string | null | undefined): string {
   }
 }
 
-function fmtDateTime(d: string | null | undefined): string {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleString("th-TH", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  } catch {
-    return String(d);
-  }
-}
