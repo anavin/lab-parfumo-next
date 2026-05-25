@@ -3,7 +3,7 @@ import Link from "next/link";
 import {
   AlertTriangle, Clock, Plus, FileText, Package, PackageX,
   TrendingUp, TrendingDown, Trophy, AlertCircle, ArrowRight,
-  ClipboardEdit, ShoppingBag, Truck, PackageCheck,
+  ShoppingBag, Truck, PackageCheck, ClipboardEdit,
   CheckCircle2, XCircle, type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -566,33 +566,81 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
   );
 }
 
+// Status color mapping — แยกสีตามสถานะจริง (ไม่ซ้ำกัน)
+interface StatusStyle {
+  icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+  ringColor: string;
+  textColor: string;
+}
+
+const STATUS_STYLE: Record<string, StatusStyle> = {
+  "รอจัดซื้อดำเนินการ": {
+    icon: ClipboardEdit,
+    iconBg: "bg-amber-50",
+    iconColor: "text-amber-600",
+    ringColor: "ring-amber-200/60",
+    textColor: "text-amber-700",
+  },
+  "สั่งซื้อแล้ว": {
+    icon: ShoppingBag,
+    iconBg: "bg-blue-50",
+    iconColor: "text-blue-600",
+    ringColor: "ring-blue-200/60",
+    textColor: "text-blue-700",
+  },
+  "กำลังขนส่ง": {
+    icon: Truck,
+    iconBg: "bg-indigo-50",
+    iconColor: "text-indigo-600",
+    ringColor: "ring-indigo-200/60",
+    textColor: "text-indigo-700",
+  },
+  "รับของแล้ว": {
+    icon: PackageCheck,
+    iconBg: "bg-cyan-50",
+    iconColor: "text-cyan-600",
+    ringColor: "ring-cyan-200/60",
+    textColor: "text-cyan-700",
+  },
+  "มีปัญหา": {
+    icon: AlertCircle,
+    iconBg: "bg-red-50",
+    iconColor: "text-red-600",
+    ringColor: "ring-red-200/60",
+    textColor: "text-red-700",
+  },
+};
+
 function ActionRow({ po }: { po: PurchaseOrder }) {
   const isProblem = po.status === "มีปัญหา";
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(po.created_at).getTime()) / 86400_000));
   const ageLabel = ageDays === 0 ? "วันนี้" : ageDays < 7 ? `${ageDays} วัน` : `${ageDays}+ วัน`;
-  const isStale = ageDays >= 3;
+  const isStale = ageDays >= 3 && po.status === "รอจัดซื้อดำเนินการ";
   const items = po.items ?? [];
+
+  // Lookup สี + icon ตามสถานะ — fallback เป็นสีเทาถ้าไม่ตรงตาราง
+  const style = STATUS_STYLE[po.status] ?? {
+    icon: Clock,
+    iconBg: "bg-slate-50",
+    iconColor: "text-slate-600",
+    ringColor: "ring-slate-200/60",
+    textColor: "text-slate-700",
+  };
+  const StatusIcon = style.icon;
 
   return (
     <Link
       href={`/po/${po.id}`}
       className="group relative flex items-start gap-3.5 py-3 px-3 -mx-3 hover:bg-accent/40 rounded-xl transition-all duration-200"
     >
-      {/* Status icon */}
+      {/* Status icon — สีตามสถานะจริง */}
       <div
-        className={`relative size-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-110 ${
-          isProblem
-            ? "bg-red-50 text-red-600 ring-1 ring-red-200/60"
-            : isStale
-              ? "bg-amber-50 text-amber-600 ring-1 ring-amber-200/60"
-              : "bg-blue-50 text-blue-600 ring-1 ring-blue-200/60"
-        }`}
+        className={`relative size-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-110 ${style.iconBg} ${style.iconColor} ring-1 ${style.ringColor}`}
       >
-        {isProblem
-          ? <AlertCircle className="size-5" strokeWidth={2.25} />
-          : <Clock className="size-5" strokeWidth={2.25} />
-        }
-        {/* Pulse for problems */}
+        <StatusIcon className="size-5" strokeWidth={2.25} />
+        {/* Pulse animation for problems */}
         {isProblem && (
           <span className="absolute inset-0 rounded-xl bg-red-400 animate-ping opacity-20" />
         )}
@@ -600,16 +648,20 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        {/* Row 1: PO# + status */}
+        {/* Row 1: PO# + status badge */}
         <div className="flex items-baseline gap-2 flex-wrap">
           <div className="font-bold text-sm text-foreground font-mono tracking-tight">
             {po.po_number}
           </div>
-          <div className={`text-[11px] font-semibold ${
-            isProblem ? "text-red-600" : isStale ? "text-amber-600" : "text-blue-600"
-          }`}>
+          <div className={`text-[11px] font-semibold ${style.textColor}`}>
             • {po.status}
           </div>
+          {/* Stale warning — ถ้า รอจัดซื้อ ค้างเกิน 3 วัน */}
+          {isStale && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 ring-1 ring-red-200">
+              ⚠️ ค้างนาน
+            </span>
+          )}
         </div>
 
         {/* Row 2: requester · total qty */}
@@ -654,7 +706,7 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
       {/* Age + arrow */}
       <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
         <div className={`text-xs font-semibold tabular-nums ${
-          isStale ? "text-amber-600" : "text-muted-foreground"
+          isStale ? "text-red-600" : "text-muted-foreground"
         }`}>
           {ageLabel}
         </div>
