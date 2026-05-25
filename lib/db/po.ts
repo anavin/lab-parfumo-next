@@ -29,6 +29,18 @@ interface GetPosOpts {
   limit?: number;
 }
 
+// Hot-path columns สำหรับ list/dashboard/report/export — exclude เฉพาะ field
+// ที่ไม่ใช้ใน list view (attachment_urls JSONB อาจใหญ่, last_close_reminder_sent_at
+// ใช้แค่ใน cron). บนหน้า detail (getPoById) ยังดึงทุก column ปกติ
+const PO_LIST_COLS = [
+  "id", "po_number", "status", "items", "purpose", "notes",
+  "supplier_name", "supplier_contact", "supplier_id",
+  "subtotal", "discount", "shipping_fee", "vat", "total",
+  "ordered_date", "expected_date", "received_date",
+  "tracking_number", "procurement_notes",
+  "created_by", "created_by_name", "created_at", "updated_at",
+].join(", ");
+
 /**
  * Cached ใน same request — layout + page เรียก getPos ก็ไป DB ครั้งเดียว
  */
@@ -36,7 +48,7 @@ export const getPos = cache(async ({
   userId, role = "requester", status, limit = 500,
 }: GetPosOpts = {}): Promise<PurchaseOrder[]> => {
   const sb = getSupabaseAdmin();
-  let q = sb.from("purchase_orders").select("*");
+  let q = sb.from("purchase_orders").select(PO_LIST_COLS);
   if (role === "requester" && userId) {
     q = q.eq("created_by", userId);
   }
@@ -46,7 +58,7 @@ export const getPos = cache(async ({
   const { data } = await q
     .order("created_at", { ascending: false })
     .limit(limit);
-  return (data ?? []) as PurchaseOrder[];
+  return (data ?? []) as unknown as PurchaseOrder[];
 });
 
 export interface DashboardStats {
