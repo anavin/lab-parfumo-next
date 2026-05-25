@@ -618,6 +618,16 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(po.created_at).getTime()) / 86400_000));
   const ageLabel = ageDays === 0 ? "วันนี้" : ageDays < 7 ? `${ageDays} วัน` : `${ageDays}+ วัน`;
   const isStale = ageDays >= 3 && po.status === "รอจัดซื้อดำเนินการ";
+
+  // Overdue detection — สำหรับ PO ที่มี expected_date และยังไม่ปิดงาน/ยกเลิก/รับของแล้ว
+  const isOverdue =
+    !!po.expected_date &&
+    ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(po.status) &&
+    new Date(po.expected_date) < new Date();
+  const daysOverdue = isOverdue
+    ? Math.max(1, Math.floor((Date.now() - new Date(po.expected_date as string).getTime()) / 86400_000))
+    : 0;
+
   const items = po.items ?? [];
 
   // Lookup สี + icon ตามสถานะ — fallback เป็นสีเทาถ้าไม่ตรงตาราง
@@ -660,6 +670,12 @@ function ActionRow({ po }: { po: PurchaseOrder }) {
           {isStale && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 ring-1 ring-red-200">
               ⚠️ ค้างนาน
+            </span>
+          )}
+          {/* Overdue warning — เกินกำหนดรับ */}
+          {isOverdue && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-100 text-red-700 ring-1 ring-red-300">
+              ⏰ เลยกำหนดรับ {daysOverdue} วัน
             </span>
           )}
         </div>
