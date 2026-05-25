@@ -8,6 +8,92 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+// ==================================================================
+// FIFO Preview — แสดงให้ user เห็นว่าถ้าเบิก N ขวด จะหยิบจาก lot ไหนบ้าง
+// ==================================================================
+export interface FifoPreviewLot {
+  lotId: string;
+  lotNo: string;
+  qtyAvailable: number;
+  qtyToConsume: number;
+  expiryDate: string | null;
+  receivedDate: string;
+  supplierName: string | null;
+}
+export interface FifoPreviewResult {
+  ok: boolean;
+  error?: string;
+  /** lots ที่จะถูก consume เรียงตาม FIFO (received_date ASC) */
+  lots?: FifoPreviewLot[];
+  /** qty ที่ปัจจุบัน lots ไม่พอ → จะ deduct จาก stock อย่างเดียว (lot ไม่ครอบคลุม) */
+  unallocated?: number;
+  /** stock ปัจจุบัน */
+  currentStock?: number;
+}
+
+export async function previewWithdrawFifoAction(input: {
+  equipmentId: string;
+  qty: number;
+}): Promise<FifoPreviewResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
+  if (!input.equipmentId || !Number.isFinite(input.qty) || input.qty <= 0) {
+    return { ok: false, error: "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const sb = getSupabaseAdmin();
+
+  // ดึง stock ปัจจุบัน + active lots พร้อมกัน (parallel)
+  const [{ data: eqRow }, { data: lotsRaw }] = await Promise.all([
+    sb.from("equipment").select("stock").eq("id", input.equipmentId).maybeSingle(),
+    sb
+      .from("lots" as never)
+      .select("id, lot_no, qty_remaining, expiry_date, received_date, supplier_name")
+      .eq("equipment_id", input.equipmentId)
+      .eq("status", "active")
+      .gt("qty_remaining", 0)
+      .order("received_date", { ascending: true }),
+  ]);
+
+  const eq = eqRow as { stock: number | null } | null;
+  if (!eq) return { ok: false, error: "ไม่พบอุปกรณ์" };
+
+  type LotRow = {
+    id: string;
+    lot_no: string;
+    qty_remaining: number;
+    expiry_date: string | null;
+    received_date: string;
+    supplier_name: string | null;
+  };
+  const lots = (lotsRaw ?? []) as LotRow[];
+
+  // คำนวณ FIFO — เดินตาม lot จนกว่าจะหมด qty
+  let remaining = input.qty;
+  const consumed: FifoPreviewLot[] = [];
+  for (const lot of lots) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, lot.qty_remaining);
+    consumed.push({
+      lotId: lot.id,
+      lotNo: lot.lot_no,
+      qtyAvailable: lot.qty_remaining,
+      qtyToConsume: take,
+      expiryDate: lot.expiry_date,
+      receivedDate: lot.received_date,
+      supplierName: lot.supplier_name,
+    });
+    remaining -= take;
+  }
+
+  return {
+    ok: true,
+    lots: consumed,
+    unallocated: remaining > 0 ? remaining : 0,
+    currentStock: eq.stock ?? 0,
+  };
+}
+
 interface WithdrawResult {
   ok: boolean;
   error?: string;

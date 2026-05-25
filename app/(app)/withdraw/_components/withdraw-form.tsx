@@ -17,7 +17,11 @@ import {
 import { cn } from "@/lib/cn";
 import { LookupCombobox } from "@/components/ui/lookup-combobox";
 import type { Equipment, Lookup } from "@/lib/types/db";
-import { createWithdrawalAction } from "@/lib/actions/withdraw";
+import {
+  createWithdrawalAction,
+  previewWithdrawFifoAction,
+  type FifoPreviewLot,
+} from "@/lib/actions/withdraw";
 
 export function WithdrawForm({
   equipment, categories, purposes, canCreateLookup,
@@ -480,6 +484,33 @@ function SelectedItemForm({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
 
+  // FIFO Preview — แสดงให้ user เห็นว่าจะหยิบจาก lot ไหน (debounce 300ms)
+  const [fifoLots, setFifoLots] = useState<FifoPreviewLot[] | null>(null);
+  const [fifoUnallocated, setFifoUnallocated] = useState(0);
+  const [fifoLoading, setFifoLoading] = useState(false);
+  useEffect(() => {
+    if (qty <= 0 || qty > stock) {
+      setFifoLots(null);
+      setFifoUnallocated(0);
+      return;
+    }
+    setFifoLoading(true);
+    const timer = setTimeout(async () => {
+      const res = await previewWithdrawFifoAction({ equipmentId: eq.id, qty });
+      if (res.ok) {
+        setFifoLots(res.lots ?? []);
+        setFifoUnallocated(res.unallocated ?? 0);
+      } else {
+        setFifoLots(null);
+      }
+      setFifoLoading(false);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      setFifoLoading(false);
+    };
+  }, [eq.id, qty, stock]);
+
   function handleSubmit() {
     setError(null);
     if (qty < 1) {
@@ -584,6 +615,63 @@ function SelectedItemForm({
               />
             )}
           </div>
+
+          {/* FIFO Preview — แสดง lot ที่จะ consume */}
+          {fifoLots && fifoLots.length > 0 && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-bold text-indigo-900 inline-flex items-center gap-1.5">
+                  📦 FIFO Preview — จะหยิบจาก {fifoLots.length} lot
+                </div>
+                {fifoLoading && (
+                  <span className="text-[10px] text-indigo-600">กำลังคำนวณ…</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                {fifoLots.map((lot) => {
+                  const isExpiringSoon = lot.expiryDate
+                    ? new Date(lot.expiryDate).getTime() - Date.now() < 30 * 86400_000
+                    : false;
+                  return (
+                    <div
+                      key={lot.lotId}
+                      className="flex items-center justify-between gap-2 text-[11px] py-1 px-2 rounded bg-white/70 ring-1 ring-indigo-100"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono font-bold text-indigo-900 truncate">
+                          {lot.lotNo}
+                        </span>
+                        {lot.expiryDate && (
+                          <span
+                            className={`text-[10px] tabular-nums ${
+                              isExpiringSoon ? "text-red-600 font-bold" : "text-muted-foreground"
+                            }`}
+                          >
+                            หมด {new Date(lot.expiryDate).toLocaleDateString("th-TH", {
+                              day: "2-digit", month: "short", year: "2-digit",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-semibold tabular-nums text-indigo-700 flex-shrink-0">
+                        {lot.qtyToConsume.toLocaleString("th-TH")} / {lot.qtyAvailable.toLocaleString("th-TH")} {eq.unit ?? ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {fifoUnallocated > 0 && (
+                <div className="text-[11px] text-amber-700 font-semibold inline-flex items-center gap-1">
+                  ⚠️ Lot ไม่ครอบคลุม {fifoUnallocated} {eq.unit ?? ""} — จะหัก stock อย่างเดียว
+                </div>
+              )}
+            </div>
+          )}
+          {fifoLots && fifoLots.length === 0 && qty > 0 && qty <= stock && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-[11px] text-amber-800">
+              💡 อุปกรณ์นี้ยังไม่มี lot ที่ active — จะหัก stock โดยตรง (ไม่ track lot)
+            </div>
+          )}
 
           {error && <Alert tone="danger" className="text-sm">❌ {error}</Alert>}
 

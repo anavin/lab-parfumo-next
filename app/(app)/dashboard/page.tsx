@@ -15,6 +15,7 @@ import {
   buildMonthlyTrend, topSuppliers,
 } from "@/lib/db/po";
 import { getLowStockEquipment } from "@/lib/db/equipment";
+import { getExpiringSoonCount } from "@/lib/db/lots";
 import { TrendChart, SuppliersChart } from "./_components/lazy-charts";
 import { StaffDashboard } from "./_components/staff-dashboard";
 import type { PoStatus, PurchaseOrder, Equipment } from "@/lib/types/db";
@@ -115,9 +116,10 @@ export default async function DashboardPage() {
   }
 
   // === Admin path ===
-  const [pos, lowStockEquipment] = await Promise.all([
+  const [pos, lowStockEquipment, expiringLotsCount] = await Promise.all([
     getPos({ userId: user.id, role: user.role }),
     getLowStockEquipment(),
+    getExpiringSoonCount(30), // lots ที่จะหมดอายุภายใน 30 วัน
   ]);
 
   // === Empty state ===
@@ -183,6 +185,24 @@ export default async function DashboardPage() {
                 </span>
                 <Link
                   href="/po/pending-receipt"
+                  className="font-semibold underline-offset-2 hover:underline inline-flex items-center gap-1"
+                >
+                  ดูรายการ <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        {expiringLotsCount > 0 && (
+          <Alert tone="warning">
+            <AlertDescription>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span>
+                  <strong>🧪 Lot ใกล้หมดอายุ {expiringLotsCount} lot</strong>{" "}
+                  <span className="opacity-80">(ภายใน 30 วัน)</span>
+                </span>
+                <Link
+                  href="/lots?expiring=30"
                   className="font-semibold underline-offset-2 hover:underline inline-flex items-center gap-1"
                 >
                   ดูรายการ <ArrowRight className="size-3.5" />
