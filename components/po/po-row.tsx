@@ -30,10 +30,11 @@ const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
   "สั่งซื้อแล้ว": {
     icon: ShoppingBag,
     label: "สั่งซื้อแล้ว",
-    pillClass: "bg-blue-50 text-blue-700 ring-blue-200",
-    iconBg: "bg-blue-100",
-    iconColor: "text-blue-700",
-    ringColor: "ring-blue-200/60",
+    // เขียวอ่อน (emerald) — admin ดำเนินการแล้ว
+    pillClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-700",
+    ringColor: "ring-emerald-200/60",
   },
   "กำลังขนส่ง": {
     icon: Truck,
@@ -62,10 +63,11 @@ const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
   "เสร็จสมบูรณ์": {
     icon: CheckCircle2,
     label: "เสร็จสมบูรณ์",
-    pillClass: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-700",
-    ringColor: "ring-emerald-200/60",
+    // เขียวเข้ม (green-700) — แยกชัดจาก "สั่งซื้อแล้ว" (emerald)
+    pillClass: "bg-green-100 text-green-800 ring-green-300",
+    iconBg: "bg-green-200",
+    iconColor: "text-green-800",
+    ringColor: "ring-green-300/60",
   },
   "ยกเลิก": {
     icon: XCircle,

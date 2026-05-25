@@ -40,7 +40,8 @@ const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
   },
   "สั่งซื้อแล้ว": {
     icon: ShoppingBag, label: "สั่งซื้อแล้ว",
-    tone: "bg-blue-100 text-blue-700", ring: "ring-blue-200/60",
+    // เขียวอ่อน (emerald) — admin ดำเนินการแล้ว
+    tone: "bg-emerald-100 text-emerald-700", ring: "ring-emerald-200/60",
   },
   "กำลังขนส่ง": {
     icon: Truck, label: "กำลังขนส่ง",
@@ -56,7 +57,8 @@ const STATUS_VISUAL: Record<PoStatus, StatusVisual> = {
   },
   "เสร็จสมบูรณ์": {
     icon: CheckCircle2, label: "เสร็จสมบูรณ์",
-    tone: "bg-emerald-100 text-emerald-700", ring: "ring-emerald-200/60",
+    // เขียวเข้ม (green-700) — แยกจาก "สั่งซื้อแล้ว" (emerald)
+    tone: "bg-green-200 text-green-800", ring: "ring-green-300/60",
   },
   "ยกเลิก": {
     icon: XCircle, label: "ยกเลิก",

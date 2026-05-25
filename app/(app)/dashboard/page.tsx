@@ -585,10 +585,10 @@ const STATUS_STYLE: Record<string, StatusStyle> = {
   },
   "สั่งซื้อแล้ว": {
     icon: ShoppingBag,
-    iconBg: "bg-blue-50",
-    iconColor: "text-blue-600",
-    ringColor: "ring-blue-200/60",
-    textColor: "text-blue-700",
+    iconBg: "bg-emerald-50",
+    iconColor: "text-emerald-600",
+    ringColor: "ring-emerald-200/60",
+    textColor: "text-emerald-700",
   },
   "กำลังขนส่ง": {
     icon: Truck,

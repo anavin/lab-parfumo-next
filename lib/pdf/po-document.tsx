@@ -44,13 +44,15 @@ const C = {
 
   accent: "#D97706",     // accent (warning/notes)
   accentPale: "#FEF3C7",
-  emerald: "#059669",
+  emerald: "#10B981",        // light green — สั่งซื้อแล้ว (admin processed)
   emeraldPale: "#D1FAE5",
+  green: "#15803D",          // dark green — เสร็จสมบูรณ์ (final done)
+  greenPale: "#DCFCE7",
   red: "#DC2626",
   redPale: "#FEE2E2",
   amber: "#D97706",
   amberPale: "#FEF3C7",
-  blue: "#2563EB",
+  blue: "#2563EB",           // (legacy — keep for other uses)
   bluePale: "#DBEAFE",
   indigo: "#4F46E5",
   indigoPale: "#E0E7FF",
@@ -63,11 +65,11 @@ const C = {
 // ==================================================================
 const STATUS_COLOR: Record<PoStatus, { fg: string; bg: string }> = {
   "รอจัดซื้อดำเนินการ": { fg: C.amber, bg: C.amberPale },
-  "สั่งซื้อแล้ว":      { fg: C.blue, bg: C.bluePale },
+  "สั่งซื้อแล้ว":      { fg: C.emerald, bg: C.emeraldPale },  // light green
   "กำลังขนส่ง":         { fg: C.indigo, bg: C.indigoPale },
   "รับของแล้ว":         { fg: C.cyan, bg: C.cyanPale },
   "มีปัญหา":            { fg: C.red, bg: C.redPale },
-  "เสร็จสมบูรณ์":       { fg: C.emerald, bg: C.emeraldPale },
+  "เสร็จสมบูรณ์":       { fg: C.green, bg: C.greenPale },     // dark green
   "ยกเลิก":             { fg: C.muted, bg: C.bgTinted },
 };
 

@@ -32,11 +32,11 @@ const PERIOD_LABEL: Record<Period, string> = {
 
 const STATUS_COLORS: Record<PoStatus, string> = {
   "รอจัดซื้อดำเนินการ": "#F59E0B",  // amber
-  "สั่งซื้อแล้ว":      "#3B82F6",  // blue
+  "สั่งซื้อแล้ว":      "#10B981",  // emerald (light green — admin ดำเนินการแล้ว)
   "กำลังขนส่ง":         "#6366F1",  // indigo
   "รับของแล้ว":         "#06B6D4",  // cyan
   "มีปัญหา":            "#DC2626",  // red
-  "เสร็จสมบูรณ์":       "#059669",  // emerald
+  "เสร็จสมบูรณ์":       "#15803D",  // green-700 (dark green — final done)
   "ยกเลิก":             "#94A3B8",  // slate
 };
 
