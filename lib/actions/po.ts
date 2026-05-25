@@ -1219,6 +1219,70 @@ export async function removePoAttachmentAction(
 }
 
 // ==================================================================
+// Link supplier_id to PO — เรียกหลัง register Supplier ใหม่จากหน้า PO
+//
+// Use case: PO ที่มี supplier_name (typed as free text) แต่ supplier_id=null
+//   → user กดปุ่ม "เพิ่ม Supplier ใหม่" → SupplierDialog เปิด pre-fill ชื่อ
+//   → กดบันทึก → ได้ supplierId กลับ → call action นี้เพื่อ link FK
+// ==================================================================
+export async function linkSupplierToPoAction(
+  poId: string,
+  supplierId: string,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poId || !supplierId) {
+    return { ok: false, error: "ข้อมูลไม่ครบ" };
+  }
+
+  const sb = getSupabaseAdmin();
+  // Sanity check: supplier มีจริง + active
+  const { data: sup } = await sb
+    .from("suppliers" as never)
+    .select("id, name, is_active")
+    .eq("id", supplierId)
+    .maybeSingle();
+  type SupRow = { id: string; name: string; is_active: boolean };
+  const supRow = sup as SupRow | null;
+  if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, supplier_name")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+
+  const { error } = await sb
+    .from("purchase_orders")
+    .update({
+      supplier_id: supplierId,
+      // Sync ชื่อกับที่ register ใน DB (case-correct + trimmed)
+      supplier_name: supRow.name,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", poId);
+  if (error) {
+    console.error("[po linkSupplierToPo] failed:", error);
+    return { ok: false, error: "เชื่อมโยง Supplier ไม่สำเร็จ" };
+  }
+
+  await logActivity(
+    poId,
+    user.full_name,
+    user.role,
+    "supplier_linked",
+    `เชื่อมโยงกับ Supplier: ${supRow.name}`,
+  );
+
+  revalidatePath(`/po/${poId}`);
+  revalidatePath("/po");
+  return { ok: true, poId };
+}
+
+// ==================================================================
 // PO number generator — ใช้ RPC ถ้ามี (atomic), fallback ถ้าไม่มี
 //
 // ⚠️ RPC คือ source of truth — Postgres `next_po_number()` atomic

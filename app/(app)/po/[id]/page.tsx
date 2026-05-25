@@ -16,12 +16,14 @@ import {
 } from "@/lib/db/po";
 import { getSupplierOptions } from "@/lib/db/suppliers";
 import { getEquipmentById } from "@/lib/db/equipment";
-import type { Equipment } from "@/lib/types/db";
+import { getLookups } from "@/lib/db/lookups";
+import type { Equipment, Lookup } from "@/lib/types/db";
 import { ItemsList } from "./_components/items-list";
 import { ActionButtons } from "./_components/action-buttons";
 import { CommentForm } from "./_components/comment-form";
 import { AttachmentsSection } from "./_components/attachments-section";
 import { DeliveriesList } from "./_components/deliveries-list";
+import { LinkSupplierButton } from "./_components/link-supplier-button";
 
 export const dynamic = "force-dynamic";
 
@@ -77,12 +79,26 @@ export default async function PoViewPage({
     ),
   );
 
-  const [activities, comments, deliveries, supplierOptions, equipmentList] = await Promise.all([
+  // Lookups เฉพาะ admin — ใช้ใน LinkSupplierButton (SupplierDialog ต้องการ)
+  const lookupsP: Promise<[Lookup[], Lookup[], Lookup[]]> =
+    isAdmin && po.supplier_name && !po.supplier_id
+      ? Promise.all([
+          getLookups("supplier_category"),
+          getLookups("bank"),
+          getLookups("payment_term"),
+        ])
+      : Promise.resolve([[], [], []]);
+
+  const [
+    activities, comments, deliveries, supplierOptions, equipmentList,
+    [supplierCategories, banks, paymentTerms],
+  ] = await Promise.all([
     getPoActivities(po.id),
     getPoComments(po.id),
     getPoDeliveries(po.id),
     isAdmin ? getSupplierOptions() : Promise.resolve([]),
     Promise.all(eqIds.map((id) => getEquipmentById(id))),
+    lookupsP,
   ]);
 
   // Build equipment lookup map (filter nulls)
@@ -203,12 +219,15 @@ export default async function PoViewPage({
                       </div>
                     )}
                     {!po.supplier_id && (
-                      <div className="text-[11px] text-amber-600 mt-1.5 inline-flex items-center gap-1">
-                        ⚠️ ยังไม่ link กับ Supplier ใน DB —
-                        <Link href="/suppliers" className="underline hover:text-amber-800">
-                          เพิ่ม Supplier ใหม่
-                        </Link>
-                      </div>
+                      <LinkSupplierButton
+                        poId={po.id}
+                        poNumber={po.po_number}
+                        supplierName={po.supplier_name}
+                        supplierContact={po.supplier_contact}
+                        categories={supplierCategories}
+                        banks={banks}
+                        paymentTerms={paymentTerms}
+                      />
                     )}
                   </>
                 ) : (

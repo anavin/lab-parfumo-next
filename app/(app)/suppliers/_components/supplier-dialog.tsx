@@ -67,6 +67,7 @@ function fromSupplier(s: Supplier): FormState {
 
 export function SupplierDialog({
   mode, supplier, categories, banks, paymentTerms, onClose, onSaved,
+  prefillName, prefillAddress,
 }: {
   mode: "create" | "edit";
   supplier?: Supplier;
@@ -74,13 +75,23 @@ export function SupplierDialog({
   banks: Lookup[];
   paymentTerms: Lookup[];
   onClose: () => void;
-  onSaved: () => void;
+  /** Called after successful save. For create mode, receives the new supplier id. */
+  onSaved: (supplierId?: string) => void;
+  /** Pre-fill name (create mode only) — used when registering from PO page */
+  prefillName?: string;
+  /** Pre-fill address (create mode only) — typically po.supplier_contact */
+  prefillAddress?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(
-    mode === "edit" && supplier ? fromSupplier(supplier) : EMPTY_FORM,
-  );
+  const [form, setForm] = useState<FormState>(() => {
+    if (mode === "edit" && supplier) return fromSupplier(supplier);
+    return {
+      ...EMPTY_FORM,
+      name: prefillName?.trim() ?? "",
+      address: prefillAddress?.trim() ?? "",
+    };
+  });
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((cur) => ({ ...cur, [k]: v }));
@@ -106,7 +117,7 @@ export function SupplierDialog({
           ? `✅ เพิ่ม ${form.name} สำเร็จ`
           : `✅ บันทึก ${form.name} แล้ว`,
       );
-      onSaved();
+      onSaved(res.supplierId);
     });
   }
 
