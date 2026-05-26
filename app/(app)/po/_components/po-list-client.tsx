@@ -11,7 +11,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, X } from "lucide-react";
+import { Trash2, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export function PoListClient({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [forceMode, setForceMode] = useState(false);
   const [pending, start] = useTransition();
 
   // Staff view: plain list (no checkbox)
@@ -45,12 +46,31 @@ export function PoListClient({
     );
   }
 
-  const selectablePos = pos.filter((p) => DELETABLE_STATUSES.includes(p.status));
+  // Force mode → ทุก PO ลบได้ (สำหรับล้าง test data)
+  // Normal mode → เฉพาะ DELETABLE_STATUSES
+  const selectablePos = forceMode
+    ? pos
+    : pos.filter((p) => DELETABLE_STATUSES.includes(p.status));
   const allOnPageSelected =
     selectablePos.length > 0 &&
     selectablePos.every((p) => selected.has(p.id));
   const someOnPageSelected =
     selectablePos.some((p) => selected.has(p.id)) && !allOnPageSelected;
+
+  function handleToggleForceMode(checked: boolean) {
+    setForceMode(checked);
+    // ถ้าปิด force → เคลียร์ PO ที่เลือกซึ่ง status ไม่ deletable ออก
+    if (!checked) {
+      setSelected((s) => {
+        const next = new Set<string>();
+        for (const id of s) {
+          const po = pos.find((p) => p.id === id);
+          if (po && DELETABLE_STATUSES.includes(po.status)) next.add(id);
+        }
+        return next;
+      });
+    }
+  }
 
   function toggleOne(id: string) {
     setSelected((s) => {
@@ -80,15 +100,17 @@ export function PoListClient({
   function handleDelete() {
     start(async () => {
       const ids = Array.from(selected);
-      const r = await bulkDeletePoAction(ids);
+      const r = await bulkDeletePoAction(ids, { force: forceMode });
       if (r.ok) {
         let msg = `ลบ ${r.deleted} ใบเรียบร้อย`;
         if (r.blocked > 0) {
           msg += ` (ข้าม ${r.blocked} ใบที่อยู่ใน workflow active)`;
         }
+        if (forceMode) msg = `🧹 ${msg} (force mode)`;
         toast.success(msg);
         setSelected(new Set());
         setConfirmOpen(false);
+        setForceMode(false); // reset หลังลบเสร็จ
         router.refresh();
       } else {
         toast.error(r.error ?? "ลบไม่สำเร็จ");
@@ -101,18 +123,40 @@ export function PoListClient({
 
   return (
     <div className="space-y-2">
-      {/* Select-all toggle */}
-      {selectablePos.length > 0 && (
-        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
-          <Checkbox
-            id="select-all"
-            checked={allOnPageSelected ? true : (someOnPageSelected ? "indeterminate" : false)}
-            onCheckedChange={toggleAllOnPage}
-            disabled={pending}
-          />
-          <label htmlFor="select-all" className="cursor-pointer select-none">
-            เลือกทั้งหมดในหน้านี้ ({selectablePos.length} ใบที่ลบได้)
-          </label>
+      {/* Select-all + Force-mode toggle row */}
+      {(selectablePos.length > 0 || forceMode) && (
+        <div className="flex items-center gap-3 px-1 py-1 text-xs text-muted-foreground flex-wrap">
+          <div className="inline-flex items-center gap-2">
+            <Checkbox
+              id="select-all"
+              checked={allOnPageSelected ? true : (someOnPageSelected ? "indeterminate" : false)}
+              onCheckedChange={toggleAllOnPage}
+              disabled={pending}
+            />
+            <label htmlFor="select-all" className="cursor-pointer select-none">
+              เลือกทั้งหมดในหน้านี้ ({selectablePos.length} ใบ
+              {forceMode ? "" : "ที่ลบได้"})
+            </label>
+          </div>
+
+          {/* Force mode toggle — admin only (สำหรับล้าง test data) */}
+          <div className="inline-flex items-center gap-1.5 ml-2 px-2 py-1 rounded-md bg-red-50 border border-red-200">
+            <Checkbox
+              id="force-mode"
+              checked={forceMode}
+              onCheckedChange={(c) => handleToggleForceMode(c === true)}
+              disabled={pending}
+            />
+            <label
+              htmlFor="force-mode"
+              className="cursor-pointer select-none text-red-700 font-semibold inline-flex items-center gap-1"
+              title="ลบ PO ได้ทุกสถานะ (รวมที่กำลังดำเนินการ/เสร็จสมบูรณ์) — สำหรับล้างข้อมูลทดสอบ"
+            >
+              <AlertTriangle className="size-3" />
+              บังคับลบทุกสถานะ
+            </label>
+          </div>
+
           {selected.size > 0 && (
             <button
               type="button"
@@ -128,13 +172,19 @@ export function PoListClient({
 
       {/* List */}
       {pos.map((po) => {
-        const isDeletable = DELETABLE_STATUSES.includes(po.status);
+        // ใน force mode ทุก PO เลือกได้
+        const isDeletable = forceMode || DELETABLE_STATUSES.includes(po.status);
         const isSelected = selected.has(po.id);
+        const isForceTarget = forceMode && !DELETABLE_STATUSES.includes(po.status);
         return (
           <div
             key={po.id}
             className={`flex items-stretch gap-2 rounded-2xl transition-colors ${
-              isSelected ? "bg-primary/5 ring-1 ring-primary/30 ring-offset-2 ring-offset-background" : ""
+              isSelected
+                ? isForceTarget
+                  ? "bg-red-50/60 ring-1 ring-red-300 ring-offset-2 ring-offset-background"
+                  : "bg-primary/5 ring-1 ring-primary/30 ring-offset-2 ring-offset-background"
+                : ""
             }`}
           >
             <div className="flex-shrink-0 flex items-center pl-1.5">
@@ -147,7 +197,7 @@ export function PoListClient({
                 />
               ) : (
                 <span
-                  title="ลบไม่ได้ — PO อยู่ใน workflow active"
+                  title="ลบไม่ได้ — PO อยู่ใน workflow active (เปิด 'บังคับลบ' ถ้าต้องการ)"
                   className="size-4 inline-block opacity-0"
                 />
               )}
@@ -192,7 +242,11 @@ export function PoListClient({
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={`ลบ ${selected.size} ใบ PO ?`}
+        title={
+          forceMode
+            ? `🧹 บังคับลบ ${selected.size} ใบ PO (force mode)?`
+            : `ลบ ${selected.size} ใบ PO ?`
+        }
         description={
           <div className="space-y-1.5">
             <div>
@@ -202,13 +256,39 @@ export function PoListClient({
               <li>กิจกรรม + ความคิดเห็น</li>
               <li>ประวัติการรับของ + รูปภาพ</li>
               <li>การแจ้งเตือนที่อ้างถึง PO นี้</li>
+              {forceMode && (
+                <>
+                  <li className="text-red-600 font-semibold">Lots ที่สร้างจาก PO เหล่านี้</li>
+                  <li className="text-red-600 font-semibold">withdrawal_lot_usage rows ที่อ้าง lots</li>
+                </>
+              )}
             </ul>
+            {forceMode && (
+              <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-200 text-red-800 text-xs space-y-1">
+                <div className="font-bold inline-flex items-center gap-1">
+                  <AlertTriangle className="size-3.5" />
+                  คำเตือน Force Mode
+                </div>
+                <div>
+                  จะลบ PO ทุกสถานะรวมที่ <strong>สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์</strong>
+                </div>
+                <div>
+                  ❗ <strong>ไม่</strong> rollback stock ของ equipment ที่ deliveries ลด/เพิ่ม — แก้ stock ด้วยตนเองหากจำเป็น
+                </div>
+              </div>
+            )}
             <div className="text-destructive font-semibold mt-2">
               ⚠️ ไม่สามารถ undo ได้
             </div>
           </div>
         }
-        confirmText={pending ? "กำลังลบ..." : `ลบ ${selected.size} ใบ`}
+        confirmText={
+          pending
+            ? "กำลังลบ..."
+            : forceMode
+              ? `🧹 บังคับลบ ${selected.size} ใบ`
+              : `ลบ ${selected.size} ใบ`
+        }
         variant="danger"
         loading={pending}
         onConfirm={handleDelete}

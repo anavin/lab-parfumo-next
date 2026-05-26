@@ -365,6 +365,7 @@ export interface BulkDeleteResult {
 
 export async function bulkDeletePoAction(
   poIds: string[],
+  options?: { force?: boolean },
 ): Promise<BulkDeleteResult> {
   const user = await getCurrentUser();
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
@@ -382,6 +383,7 @@ export async function bulkDeletePoAction(
   }
 
   const sb = getSupabaseAdmin();
+  const isForce = options?.force === true;
 
   // 1) ดึง PO ทั้งหมด — ตรวจ status + เก็บ URLs ของ attachments + delivery images
   //    เพื่อ cleanup storage blobs (กัน orphan files + privacy concern)
@@ -398,8 +400,14 @@ export async function bulkDeletePoAction(
   };
   const rows = (pos ?? []) as Row[];
 
-  const deletable = rows.filter((p) => DELETABLE_STATUSES.includes(p.status));
-  const blocked = rows.filter((p) => !DELETABLE_STATUSES.includes(p.status));
+  // Force mode: ลบทุก status (สำหรับล้าง test data) — admin/supervisor only
+  // Normal mode: ลบเฉพาะ DELETABLE_STATUSES (รอจัดซื้อ/ยกเลิก)
+  const deletable = isForce
+    ? rows
+    : rows.filter((p) => DELETABLE_STATUSES.includes(p.status));
+  const blocked = isForce
+    ? []
+    : rows.filter((p) => !DELETABLE_STATUSES.includes(p.status));
 
   if (deletable.length === 0) {
     return {
@@ -463,8 +471,27 @@ export async function bulkDeletePoAction(
     // 3d) notifications referencing PO
     await sb.from("notifications").delete().in("po_id", deletableIds);
     // 3e) lots created by these PO deliveries (จาก Phase E)
-    //     ใช้ ON DELETE SET NULL ใน lots.po_id แล้ว → row ยังอยู่ แค่ unset
-    //     (เก็บ lot history ไว้ แม้ PO ถูกลบ — ของยังอยู่ในคลังจริง)
+    //     Normal mode: ใช้ ON DELETE SET NULL ใน lots.po_id → row ยังอยู่ แค่ unset
+    //                  (เก็บ lot history ไว้ แม้ PO ถูกลบ — ของยังอยู่ในคลังจริง)
+    //     Force mode: ลบ lots ทิ้งด้วย (test data cleanup) + clean withdrawal_lot_usage
+    if (isForce) {
+      const { data: lotsToDelete } = await sb
+        .from("lots" as never)
+        .select("id")
+        .in("po_id", deletableIds);
+      type LotIdRow = { id: string };
+      const lotIds = ((lotsToDelete ?? []) as LotIdRow[]).map((l) => l.id);
+      if (lotIds.length > 0) {
+        // ลบ withdrawal_lot_usage rows ที่อ้าง lots พวกนี้ก่อน
+        await sb
+          .from("withdrawal_lot_usage" as never)
+          .delete()
+          .in("lot_id", lotIds);
+        // ลบ lots
+        await sb.from("lots" as never).delete().in("id", lotIds);
+        console.log(`[bulkDelete force] also deleted ${lotIds.length} lot(s)`);
+      }
+    }
   } catch (e) {
     console.warn("[bulkDelete] cascade delete partial fail:", e);
     // ดำเนินการต่อ — main PO delete จะ FK error ถ้ามีของค้าง
@@ -518,8 +545,8 @@ export async function bulkDeletePoAction(
   // 6) Audit log — ใส่ log ใน po_activities ของ PO ที่ลบ... ไม่ได้แล้วเพราะลบไปแล้ว
   //    ใช้ console.log แทน (Sentry/Vercel logs จับ)
   console.log(
-    `[bulkDelete] user=${user.full_name} (${user.role}) deleted ${deletable.length} POs: ${
-      deletable.map((p) => p.po_number).join(", ")
+    `[bulkDelete${isForce ? " FORCE" : ""}] user=${user.full_name} (${user.role}) deleted ${deletable.length} POs: ${
+      deletable.map((p) => `${p.po_number}(${p.status})`).join(", ")
     } | storage cleanup: ${attachmentPaths.length} attachments + ${deliveryImagePaths.length} delivery images` +
     (blocked.length ? ` | blocked: ${blocked.map((p) => `${p.po_number}(${p.status})`).join(", ")}` : ""),
   );
