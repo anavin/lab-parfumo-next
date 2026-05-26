@@ -488,6 +488,10 @@ export async function previewSupplierDeleteAction(
   };
 }
 
+/**
+ * "ลบถาวร" → ตอนนี้คือ "ย้ายไปถังขยะ" (soft delete with recovery)
+ * Set deleted_at = NOW() — แสดงใน /trash → กู้คืน หรือลบจริงจากที่นั่นได้
+ */
 export async function hardDeleteSupplierAction(id: string): Promise<HardDeleteResult> {
   const me = await getCurrentUser();
   if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
@@ -497,7 +501,6 @@ export async function hardDeleteSupplierAction(id: string): Promise<HardDeleteRe
 
   const sb = getSupabaseAdmin();
 
-  // อ่าน info ก่อนลบ (สำหรับ log)
   const { data: sup } = await sb
     .from("suppliers" as never)
     .select("name")
@@ -505,25 +508,29 @@ export async function hardDeleteSupplierAction(id: string): Promise<HardDeleteRe
     .maybeSingle();
   const supName = (sup as { name?: string } | null)?.name ?? "(ไม่ทราบชื่อ)";
 
-  // นับ PO ที่จะถูก unlink
+  // นับ PO ที่ link (สำหรับ feedback — ไม่ unlink ตอนนี้ เพราะยังกู้คืนได้)
   const { count: linkedPoCount } = await sb
     .from("purchase_orders")
     .select("id", { count: "exact", head: true })
-    .eq("supplier_id", id);
+    .eq("supplier_id", id)
+    .is("deleted_at", null);
 
   const { error } = await sb
     .from("suppliers" as never)
-    .delete()
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by_name: me.full_name,
+    } as never)
     .eq("id", id);
 
   if (error) {
-    console.error("[suppliers] hard delete failed:", error);
+    console.error("[suppliers] move to trash failed:", error);
     return { ok: false, error: `ลบไม่สำเร็จ: ${error.message ?? "unknown"}` };
   }
 
   console.log(
-    `[suppliers HARD-DELETE] user=${me.full_name} (${me.role}) deleted "${supName}" (${id})` +
-      ` — unlinked ${linkedPoCount ?? 0} PO(s) — supplier_id ของ PO เหล่านั้นถูกตั้งเป็น null`,
+    `[suppliers TRASH] user=${me.full_name} moved "${supName}" (${id}) to trash` +
+      ` — ${linkedPoCount ?? 0} linked PO(s) yet to be unlinked (จะ unlink ตอน permanent delete จาก /trash)`,
   );
 
   revalidatePath("/suppliers");
@@ -531,6 +538,92 @@ export async function hardDeleteSupplierAction(id: string): Promise<HardDeleteRe
   revalidatePath("/po/[id]", "page");
   revalidatePath("/dashboard");
   revalidatePath("/reports");
+  revalidatePath("/trash");
+  revalidateTag("suppliers");
+
+  return {
+    ok: true,
+    supplierId: id,
+    unlinkedPoCount: linkedPoCount ?? 0,
+  };
+}
+
+/**
+ * Restore Supplier จากถังขยะ → set deleted_at = NULL
+ */
+export async function restoreSupplierFromTrashAction(id: string): Promise<ActionResult> {
+  const me = await getCurrentUser();
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!id) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const sb = getSupabaseAdmin();
+  const { error } = await sb
+    .from("suppliers" as never)
+    .update({ deleted_at: null, deleted_by_name: null } as never)
+    .eq("id", id)
+    .not("deleted_at", "is", null);
+  if (error) {
+    console.error("[suppliers] restore from trash failed:", error);
+    return { ok: false, error: "กู้คืนไม่สำเร็จ" };
+  }
+  console.log(`[suppliers RESTORE] user=${me.full_name} restored supplier ${id} from trash`);
+
+  revalidatePath("/suppliers");
+  revalidatePath("/trash");
+  revalidateTag("suppliers");
+  return { ok: true, supplierId: id };
+}
+
+/**
+ * Permanent delete จากถังขยะ → DELETE จริง + unlink PO
+ */
+export async function permanentDeleteSupplierAction(id: string): Promise<HardDeleteResult> {
+  const me = await getCurrentUser();
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!id) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const sb = getSupabaseAdmin();
+
+  // ตรวจว่าอยู่ในถังขยะจริง — กันลบ supplier ที่ active โดยไม่ตั้งใจ
+  const { data: sup } = await sb
+    .from("suppliers" as never)
+    .select("name, deleted_at")
+    .eq("id", id)
+    .maybeSingle();
+  type SupRow = { name: string; deleted_at: string | null };
+  const supRow = sup as SupRow | null;
+  if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+  if (!supRow.deleted_at) {
+    return {
+      ok: false,
+      error: "Supplier ยังไม่อยู่ในถังขยะ — กดลบก่อนแล้วค่อยลบถาวร",
+    };
+  }
+
+  const { count: linkedPoCount } = await sb
+    .from("purchase_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("supplier_id", id);
+
+  const { error } = await sb.from("suppliers" as never).delete().eq("id", id);
+  if (error) {
+    console.error("[suppliers] permanent delete failed:", error);
+    return { ok: false, error: `ลบไม่สำเร็จ: ${error.message ?? "unknown"}` };
+  }
+
+  console.log(
+    `[suppliers PERMANENT-DELETE] user=${me.full_name} deleted "${supRow.name}" (${id})` +
+      ` — unlinked ${linkedPoCount ?? 0} PO(s) — supplier_id → null`,
+  );
+
+  revalidatePath("/suppliers");
+  revalidatePath("/trash");
+  revalidatePath("/po");
+  revalidatePath("/po/[id]", "page");
   revalidateTag("suppliers");
 
   return {

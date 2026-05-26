@@ -63,7 +63,8 @@ const getSpendingBreakdown = cache(
       .select("total, items")
       .gte("ordered_date", startDate)
       .lt("ordered_date", endDate)
-      .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"]);
+      .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"])
+      .is("deleted_at", null);
 
     const pos = (data ?? []) as PoRow[];
 

@@ -20,7 +20,7 @@ export const globalSearch = cache(async (
 
   // ⚡ Run PO + Equipment fetch in parallel
   const posPromise = (async () => {
-    let pq = sb.from("purchase_orders").select("*").limit(200);
+    let pq = sb.from("purchase_orders").select("*").is("deleted_at", null).limit(200);
     if (!opts.isAdmin && opts.userId) pq = pq.eq("created_by", opts.userId);
     const { data } = await pq.order("created_at", { ascending: false });
     return (data ?? []) as PurchaseOrder[];

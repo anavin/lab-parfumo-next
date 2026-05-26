@@ -180,6 +180,7 @@ Image upload verifies magic bytes (JPEG/PNG/GIF/WEBP) — prevents rename attack
 | `withdraw_stock` RPC + `po_counters` + `next_po_number` RPC | Atomic stock + PO number | `202605_atomic_rpcs.sql` |
 | **Data API grants to service_role + RLS enable + future defaults** | Prep for Supabase 30-Oct-2026 enforcement | `202605_data_api_grants.sql` |
 | **`lot_status_enforce` trigger + backfill** | Auto-update lots.status (F2) | `202605_lots_auto_status.sql` |
+| **`deleted_at` + `deleted_by_name` columns** | Recycle bin (recovery support) สำหรับ PO + Suppliers | `202605_soft_delete.sql` |
 | **`withdrawal_lot_usage` table + `withdraw_atomic` RPC** | Multi-lot FIFO trace + true atomic withdraw (F1+F3) | `202605_withdraw_atomic.sql` |
 
 **FK link**: `purchase_orders.supplier_id → suppliers.id` (auto-set by orderPoAction via name lookup)

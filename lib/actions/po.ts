@@ -437,86 +437,20 @@ export async function bulkDeletePoAction(
 
   const deletableIds = deletable.map((p) => p.id);
 
-  // 2) เก็บ storage paths ของ attachments + delivery images ก่อนลบ rows
-  //    Pattern URL ของ Supabase Storage:
-  //      https://xxx.supabase.co/storage/v1/object/public/<bucket>/<path>
-  //    Extract <path> → ลบจาก bucket หลัง row ถูกลบ
-  function extractStoragePath(url: string, bucket: string): string | null {
-    const marker = `/object/public/${bucket}/`;
-    const idx = url.indexOf(marker);
-    if (idx < 0) return null;
-    return url.substring(idx + marker.length);
-  }
-
-  // 2a) เก็บ attachment paths ของทุก PO ที่จะลบ
+  // ⚠️ Storage cleanup ย้ายไป permanentDeletePoAction (เรียกจาก /trash)
+  //    Soft delete ไม่ลบไฟล์เพราะอาจกู้คืน — ลบจริงตอน permanent delete
   const attachmentPaths: string[] = [];
-  for (const r of deletable) {
-    for (const a of (r.attachment_urls ?? [])) {
-      const p = extractStoragePath(a.url, "po-attachments");
-      if (p) attachmentPaths.push(p);
-    }
-  }
-
-  // 2b) เก็บ delivery image paths
   const deliveryImagePaths: string[] = [];
-  try {
-    const { data: deliveries } = await sb
-      .from("po_deliveries" as never)
-      .select("image_urls")
-      .in("po_id", deletableIds);
-    type DRow = { image_urls: string[] | null };
-    for (const d of ((deliveries ?? []) as DRow[])) {
-      for (const url of (d.image_urls ?? [])) {
-        const p = extractStoragePath(url, "delivery-images");
-        if (p) deliveryImagePaths.push(p);
-      }
-    }
-  } catch (e) {
-    console.warn("[bulkDelete] collect delivery images failed:", e);
-  }
 
-  // 3) Cascade delete related rows (กัน FK constraint error)
-  //    ลำดับ: child tables ก่อน → parent table
-  try {
-    // 3a) po_activities
-    await sb.from("po_activities" as never).delete().in("po_id", deletableIds);
-    // 3b) po_comments
-    await sb.from("po_comments" as never).delete().in("po_id", deletableIds);
-    // 3c) po_deliveries (NOT cascading stock — POs that affected stock can't be deleted directly)
-    await sb.from("po_deliveries" as never).delete().in("po_id", deletableIds);
-    // 3d) notifications referencing PO
-    await sb.from("notifications").delete().in("po_id", deletableIds);
-    // 3e) lots created by these PO deliveries (จาก Phase E)
-    //     Normal mode: ใช้ ON DELETE SET NULL ใน lots.po_id → row ยังอยู่ แค่ unset
-    //                  (เก็บ lot history ไว้ แม้ PO ถูกลบ — ของยังอยู่ในคลังจริง)
-    //     Force mode: ลบ lots ทิ้งด้วย (test data cleanup) + clean withdrawal_lot_usage
-    if (isForce) {
-      const { data: lotsToDelete } = await sb
-        .from("lots" as never)
-        .select("id")
-        .in("po_id", deletableIds);
-      type LotIdRow = { id: string };
-      const lotIds = ((lotsToDelete ?? []) as LotIdRow[]).map((l) => l.id);
-      if (lotIds.length > 0) {
-        // ลบ withdrawal_lot_usage rows ที่อ้าง lots พวกนี้ก่อน
-        await sb
-          .from("withdrawal_lot_usage" as never)
-          .delete()
-          .in("lot_id", lotIds);
-        // ลบ lots
-        await sb.from("lots" as never).delete().in("id", lotIds);
-        console.log(`[bulkDelete force] also deleted ${lotIds.length} lot(s)`);
-      }
-    }
-  } catch (e) {
-    console.warn("[bulkDelete] cascade delete partial fail:", e);
-    // ดำเนินการต่อ — main PO delete จะ FK error ถ้ามีของค้าง
-  }
-
-  // 4) Delete the POs themselves
+  // 3) Soft delete — move to trash (deleted_at = NOW())
+  //    Related rows (activities, comments, deliveries, lots) ยังอยู่
+  //    Permanent delete + cascade ทำตอน restoreFromTrash → permanentDeletePoAction
   const { error } = await sb
     .from("purchase_orders")
-    .delete()
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by_name: user.full_name,
+    })
     .in("id", deletableIds);
 
   if (error) {
@@ -529,8 +463,7 @@ export async function bulkDeletePoAction(
     };
   }
 
-  // 5) Cleanup storage blobs (best-effort — แม้ลบไม่หมดก็ไม่กระทบ DB)
-  //    Storage delete max 1000 paths ต่อ call (Supabase limit)
+  // (cleanup blocks below kept for permanentDeletePoAction reuse — no-op here since arrays are empty)
   if (attachmentPaths.length > 0) {
     try {
       const chunks: string[][] = [];
@@ -558,12 +491,10 @@ export async function bulkDeletePoAction(
     }
   }
 
-  // 6) Audit log — ใส่ log ใน po_activities ของ PO ที่ลบ... ไม่ได้แล้วเพราะลบไปแล้ว
-  //    ใช้ console.log แทน (Sentry/Vercel logs จับ)
   console.log(
-    `[bulkDelete${isForce ? " FORCE" : ""}] user=${user.full_name} (${user.role}) deleted ${deletable.length} POs: ${
+    `[bulkDelete TRASH${isForce ? " FORCE" : ""}] user=${user.full_name} (${user.role}) moved ${deletable.length} PO(s) to trash: ${
       deletable.map((p) => `${p.po_number}(${p.status})`).join(", ")
-    } | storage cleanup: ${attachmentPaths.length} attachments + ${deliveryImagePaths.length} delivery images` +
+    }` +
     (blocked.length ? ` | blocked: ${blocked.map((p) => `${p.po_number}(${p.status})`).join(", ")}` : ""),
   );
 
@@ -573,6 +504,7 @@ export async function bulkDeletePoAction(
   revalidatePath("/audit");
   revalidatePath("/reports");
   revalidatePath("/lots");
+  revalidatePath("/trash");
 
   return {
     ok: true,
@@ -582,6 +514,151 @@ export async function bulkDeletePoAction(
       ? blocked.map((p) => ({ poNumber: p.po_number, status: p.status }))
       : undefined,
   };
+}
+
+// ==================================================================
+// Trash: restore + permanent delete (PO)
+// ==================================================================
+export async function restorePoFromTrashAction(
+  poIds: string[],
+): Promise<ActionResult & { restored?: number }> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poIds.length) return { ok: false, error: "ไม่ได้เลือก PO" };
+  if (poIds.length > 100) return { ok: false, error: "กู้คืนสูงสุด 100 ใบ/ครั้ง" };
+
+  const sb = getSupabaseAdmin();
+  const { error, count } = await sb
+    .from("purchase_orders")
+    .update({ deleted_at: null, deleted_by_name: null } as never, { count: "exact" })
+    .in("id", poIds)
+    .not("deleted_at", "is", null);
+  if (error) {
+    console.error("[po restoreFromTrash] failed:", error);
+    return { ok: false, error: "กู้คืนไม่สำเร็จ" };
+  }
+
+  console.log(`[po RESTORE] user=${user.full_name} restored ${count ?? 0} PO(s) from trash`);
+
+  revalidatePath("/po");
+  revalidatePath("/po/[id]", "page");
+  revalidatePath("/dashboard");
+  revalidatePath("/trash");
+  return { ok: true, restored: count ?? 0 };
+}
+
+export async function permanentDeletePoAction(
+  poIds: string[],
+): Promise<BulkDeleteResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor", deleted: 0, blocked: 0 };
+  }
+  if (!poIds.length) return { ok: false, error: "ไม่ได้เลือก PO", deleted: 0, blocked: 0 };
+  if (poIds.length > 100) {
+    return { ok: false, error: "ลบสูงสุด 100 ใบ/ครั้ง", deleted: 0, blocked: 0 };
+  }
+
+  const sb = getSupabaseAdmin();
+
+  // ตรวจว่าทุก PO อยู่ในถังขยะจริง (deleted_at NOT NULL) — กันลบ active โดยไม่ตั้งใจ
+  const { data: rows } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, attachment_urls, deleted_at")
+    .in("id", poIds);
+
+  type Row = {
+    id: string;
+    po_number: string;
+    status: PoStatus;
+    attachment_urls: PoAttachment[] | null;
+    deleted_at: string | null;
+  };
+  const all = (rows ?? []) as Row[];
+  const trashed = all.filter((r) => r.deleted_at !== null);
+
+  if (trashed.length === 0) {
+    return {
+      ok: false,
+      error: "PO ที่เลือกไม่อยู่ในถังขยะ — ลบจากถังขยะเท่านั้น",
+      deleted: 0,
+      blocked: all.length,
+    };
+  }
+
+  const ids = trashed.map((r) => r.id);
+
+  // เก็บ storage paths สำหรับ cleanup
+  function extractStoragePath(url: string, bucket: string): string | null {
+    const marker = `/object/public/${bucket}/`;
+    const idx = url.indexOf(marker);
+    if (idx < 0) return null;
+    return url.substring(idx + marker.length);
+  }
+  const attachmentPaths: string[] = [];
+  for (const r of trashed) {
+    for (const a of (r.attachment_urls ?? [])) {
+      const p = extractStoragePath(a.url, "po-attachments");
+      if (p) attachmentPaths.push(p);
+    }
+  }
+  const deliveryImagePaths: string[] = [];
+  try {
+    const { data: deliveries } = await sb
+      .from("po_deliveries" as never)
+      .select("image_urls")
+      .in("po_id", ids);
+    type DRow = { image_urls: string[] | null };
+    for (const d of ((deliveries ?? []) as DRow[])) {
+      for (const url of (d.image_urls ?? [])) {
+        const p = extractStoragePath(url, "delivery-images");
+        if (p) deliveryImagePaths.push(p);
+      }
+    }
+  } catch { /* ok */ }
+
+  // Cascade delete related (activities/comments/deliveries มี ON DELETE CASCADE)
+  try {
+    await sb.from("po_activities" as never).delete().in("po_id", ids);
+    await sb.from("po_comments" as never).delete().in("po_id", ids);
+    await sb.from("po_deliveries" as never).delete().in("po_id", ids);
+    await sb.from("notifications").delete().in("po_id", ids);
+    // lots: ON DELETE SET NULL — preserve lot history
+  } catch (e) {
+    console.warn("[permanentDelete] cascade partial fail:", e);
+  }
+
+  // Delete PO rows
+  const { error } = await sb.from("purchase_orders").delete().in("id", ids);
+  if (error) {
+    console.error("[permanentDelete] failed:", error);
+    return { ok: false, error: `ลบไม่สำเร็จ: ${error.message}`, deleted: 0, blocked: 0 };
+  }
+
+  // Storage cleanup (best-effort)
+  if (attachmentPaths.length > 0) {
+    try { await sb.storage.from("po-attachments").remove(attachmentPaths); }
+    catch (e) { console.warn("[permanentDelete] storage po-attachments fail:", e); }
+  }
+  if (deliveryImagePaths.length > 0) {
+    try { await sb.storage.from("delivery-images").remove(deliveryImagePaths); }
+    catch (e) { console.warn("[permanentDelete] storage delivery-images fail:", e); }
+  }
+
+  console.log(
+    `[po PERMANENT-DELETE] user=${user.full_name} (${user.role}) deleted ${trashed.length} PO(s): ` +
+      `${trashed.map((p) => p.po_number).join(", ")} | storage: ${attachmentPaths.length} attachments + ${deliveryImagePaths.length} delivery images`,
+  );
+
+  revalidatePath("/trash");
+  revalidatePath("/po");
+  revalidatePath("/dashboard");
+  revalidatePath("/audit");
+  revalidatePath("/lots");
+
+  return { ok: true, deleted: trashed.length, blocked: all.length - trashed.length };
 }
 
 export async function closePoAction(poId: string): Promise<ActionResult> {

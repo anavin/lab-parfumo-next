@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FileText, PackageOpen, Send, Box,
   Wallet, BarChart3, Users, Building2, ScrollText, Boxes,
-  ChevronDown, ClipboardList, Warehouse,
+  ChevronDown, ClipboardList, Warehouse, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -94,6 +94,7 @@ const NAV: NavItem[] = [
       { href: "/budget", label: "งบประมาณ", icon: Wallet, privileged: true },
       { href: "/reports", label: "รายงาน", icon: BarChart3, privileged: true },
       { href: "/audit", label: "Audit Log", icon: ScrollText, adminOnly: true },
+      { href: "/trash", label: "ถังขยะ", icon: Trash2, privileged: true },
     ],
   },
   {

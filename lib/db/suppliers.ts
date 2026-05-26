@@ -28,13 +28,15 @@ const SUPPLIER_COLUMNS = [
   "created_at", "updated_at", "created_by_name", "updated_by_name",
 ].join(", ");
 
-/** ทุก supplier (ทั้ง active + inactive) — cached 5 นาที + tag "suppliers" */
+/** ทุก supplier (ทั้ง active + inactive) — cached 5 นาที + tag "suppliers"
+ *  Exclude items in trash (deleted_at IS NOT NULL) */
 export const getAllSuppliers = unstable_cache(
   async (): Promise<Supplier[]> => {
     const sb = getSupabaseAdmin();
     const { data } = await sb
       .from("suppliers" as never)
       .select(SUPPLIER_COLUMNS)
+      .is("deleted_at", null)
       .order("name", { ascending: true });
     return (data as unknown as Supplier[] | null) ?? [];
   },
@@ -42,7 +44,7 @@ export const getAllSuppliers = unstable_cache(
   { revalidate: 300, tags: ["suppliers"] },
 );
 
-/** Supplier เดียวด้วย id */
+/** Supplier เดียวด้วย id — exclude trashed */
 export const getSupplierById = cache(
   async (id: string): Promise<Supplier | null> => {
     const sb = getSupabaseAdmin();
@@ -50,6 +52,7 @@ export const getSupplierById = cache(
       .from("suppliers" as never)
       .select(SUPPLIER_COLUMNS)
       .eq("id", id)
+      .is("deleted_at", null)
       .maybeSingle();
     return (data as unknown as Supplier | null) ?? null;
   },
@@ -57,17 +60,19 @@ export const getSupplierById = cache(
 
 /**
  * ทุก supplier พร้อม stats (PO count + spend)
- * ใช้ใน /suppliers list page — คำนวณจาก PO data
+ * ใช้ใน /suppliers list page — คำนวณจาก PO data (exclude trashed POs + suppliers)
  */
 export const getSuppliersWithStats = cache(async (): Promise<SupplierWithStats[]> => {
   const sb = getSupabaseAdmin();
   const [suppliersRes, posRes] = await Promise.all([
     sb.from("suppliers" as never)
       .select(SUPPLIER_COLUMNS)
+      .is("deleted_at", null)
       .order("name", { ascending: true }),
     sb.from("purchase_orders")
       .select("supplier_id, status, total, ordered_date, po_number, created_at")
-      .not("supplier_id", "is", null),
+      .not("supplier_id", "is", null)
+      .is("deleted_at", null),
   ]);
 
   const suppliers = (suppliersRes.data as unknown as Supplier[] | null) ?? [];
@@ -256,10 +261,12 @@ export const getSupplierOptions = cache(async (): Promise<SupplierOption[]> => {
     sb.from("suppliers" as never)
       .select(SUPPLIER_COLUMNS)
       .eq("is_active", true)
+      .is("deleted_at", null)
       .order("name", { ascending: true }),
     sb.from("purchase_orders")
       .select("supplier_name, supplier_contact, ordered_date, po_number")
       .not("supplier_name", "is", null)
+      .is("deleted_at", null)
       .order("ordered_date", { ascending: false })
       .limit(1000),
   ]);

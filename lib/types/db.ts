@@ -158,6 +158,9 @@ export interface Supplier {
   updated_at: string;
   created_by_name: string;
   updated_by_name: string;
+  /** Soft delete — null = active. NOT null = อยู่ในถังขยะ */
+  deleted_at?: string | null;
+  deleted_by_name?: string | null;
 }
 
 /** Supplier + stats — ใช้ใน list page + detail */
@@ -312,6 +315,9 @@ export interface PurchaseOrder {
   created_by_name: string | null;
   created_at: string;
   updated_at: string | null;
+  /** Soft delete — null = active. NOT null = อยู่ในถังขยะ */
+  deleted_at?: string | null;
+  deleted_by_name?: string | null;
 }
 
 export interface Withdrawal {

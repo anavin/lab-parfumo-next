@@ -65,7 +65,8 @@ export const getPos = cache(async ({
   userId, role = "requester", status, limit = 500,
 }: GetPosOpts = {}): Promise<PurchaseOrder[]> => {
   const sb = getSupabaseAdmin();
-  let q = sb.from("purchase_orders").select(PO_LIST_COLS);
+  let q = sb.from("purchase_orders").select(PO_LIST_COLS)
+    .is("deleted_at", null); // exclude trashed POs
   if (role === "requester" && userId) {
     q = q.eq("created_by", userId);
   }
@@ -288,6 +289,7 @@ export const getPoById = cache(
       .from("purchase_orders")
       .select("*")
       .eq("id", id)
+      .is("deleted_at", null)
       .maybeSingle();
     return (data as PurchaseOrder) ?? null;
   },
@@ -425,6 +427,7 @@ export async function getPosPendingReceipt(): Promise<PurchaseOrder[]> {
     .from("purchase_orders")
     .select("*")
     .in("status", PENDING_RECEIPT as readonly string[])
+    .is("deleted_at", null)
     .order("expected_date", { ascending: true })
     .limit(500);
   return (data ?? []) as PurchaseOrder[];
@@ -437,6 +440,7 @@ export const getSupplierHistory = cache(async (): Promise<SupplierEntry[]> => {
     .from("purchase_orders")
     .select("supplier_name, supplier_contact, ordered_date, po_number")
     .not("supplier_name", "is", null)
+    .is("deleted_at", null)
     .order("ordered_date", { ascending: false })
     .limit(1000);
 
