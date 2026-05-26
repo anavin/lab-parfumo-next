@@ -17,7 +17,23 @@
  * picks up the column and queries resume filtering normally.
  */
 
+// TTL-cached state — กัน Vercel hot function instance ที่จำ "missing"
+// จากตอนก่อนรัน migration → หลัง migration แล้วยังไม่ apply filter
+// 60 วินาที = ทุกครั้งจะ retry ครั้งสุด ภายใน 1 นาทีเปลี่ยน state
+const STATE_TTL_MS = 60_000;
 let _state: "missing" | "ok" | "unknown" = "unknown";
+let _stateExpiresAt = 0;
+
+function currentState(): "missing" | "ok" | "unknown" {
+  if (Date.now() > _stateExpiresAt) {
+    return "unknown"; // re-test next call (cache miss/expired)
+  }
+  return _state;
+}
+function setState(s: "missing" | "ok") {
+  _state = s;
+  _stateExpiresAt = Date.now() + STATE_TTL_MS;
+}
 
 interface PostgrestError {
   code?: string;
@@ -29,20 +45,28 @@ export function markTrashColumnMissing(err: unknown): boolean {
   if (!err) return false;
   const e = err as PostgrestError;
   if (e.code === "42703" || (e.message ?? "").toLowerCase().includes("deleted_at")) {
-    if (_state !== "missing") {
+    if (currentState() !== "missing") {
       console.warn(
         "[soft-delete] column 'deleted_at' missing — RUN migrations/202605_soft_delete.sql in Supabase. " +
-          "Falling back to unfiltered queries.",
+          "Falling back to unfiltered queries (will re-check in 60s).",
       );
-      _state = "missing";
     }
+    setState("missing");
     return true;
   }
   return false;
 }
 
 export function isTrashColumnAvailable(): boolean {
-  return _state !== "missing";
+  return currentState() !== "missing";
+}
+
+/** Mark column as available — called from runWithSoftDeleteFallback on successful filtered query */
+function markTrashColumnAvailable() {
+  if (_state !== "ok") {
+    console.log("[soft-delete] column 'deleted_at' detected — filtering enabled");
+  }
+  setState("ok");
 }
 
 /**
@@ -60,12 +84,18 @@ export async function runWithSoftDeleteFallback<T>(
   withFilter: () => ThenableResult<T>,
   withoutFilter: () => ThenableResult<T>,
 ): Promise<{ data: T | null; error: unknown }> {
+  // Skip filter เฉพาะตอน state cache บอกว่า "missing" (within TTL)
+  // นอกนั้นพยายาม filter เสมอ → ถ้า migration เพิ่งรัน → filter ทำงาน → mark ok
   if (!isTrashColumnAvailable()) {
     return await withoutFilter();
   }
   const r = await withFilter();
   if (r.error && markTrashColumnMissing(r.error)) {
     return await withoutFilter();
+  }
+  // Success — mark column as available (reset TTL)
+  if (!r.error) {
+    markTrashColumnAvailable();
   }
   return r;
 }
