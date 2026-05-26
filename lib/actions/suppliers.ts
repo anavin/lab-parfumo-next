@@ -161,24 +161,46 @@ export async function updateSupplierAction(
   }
 
   // Sync snapshot: ถ้าชื่อเปลี่ยน → update purchase_orders.supplier_name
-  // ของทุก PO ที่ link supplier_id นี้ (รวม PO เก่าและใหม่)
+  //   (1) PO ที่ link supplier_id นี้แล้ว → 100% sure → sync ตามปกติ
+  //   (2) PO เก่า (supplier_id IS NULL) ที่ supplier_name ตรงกับชื่อเก่า →
+  //       auto-match by name (สมมติว่าตั้งใจหมายถึง supplier นี้ — admin
+  //       เลือก policy นี้แล้วใน UI)
   const newName = typeof payload.name === "string" ? payload.name : null;
   if (newName && oldName && newName !== oldName) {
-    const { error: syncErr, count } = await sb
+    // (1) Linked POs
+    const linkedRes = await sb
       .from("purchase_orders")
       .update(
         { supplier_name: newName, updated_at: new Date().toISOString() },
         { count: "exact" },
       )
       .eq("supplier_id", id);
-    if (syncErr) {
-      console.error("[suppliers] PO snapshot sync failed:", syncErr);
-      // best-effort — ไม่ block ถึง update supplier สำเร็จแล้ว
-    } else if ((count ?? 0) > 0) {
+    if (linkedRes.error) {
+      console.error("[suppliers] linked PO snapshot sync failed:", linkedRes.error);
+    }
+
+    // (2) Legacy unlinked POs — match by old supplier_name
+    const legacyRes = await sb
+      .from("purchase_orders")
+      .update(
+        { supplier_name: newName, updated_at: new Date().toISOString() },
+        { count: "exact" },
+      )
+      .is("supplier_id", null)
+      .eq("supplier_name", oldName);
+    if (legacyRes.error) {
+      console.error("[suppliers] legacy PO snapshot sync failed:", legacyRes.error);
+    }
+
+    const linkedCount = linkedRes.count ?? 0;
+    const legacyCount = legacyRes.count ?? 0;
+    if (linkedCount + legacyCount > 0) {
       console.log(
-        `[suppliers] synced supplier_name on ${count} PO row(s) (${oldName} → ${newName})`,
+        `[suppliers] synced supplier_name (${oldName} → ${newName}) — ` +
+          `linked=${linkedCount}, legacy=${legacyCount}`,
       );
     }
+
     // Invalidate PO-related caches เพื่อให้หน้าอื่นเห็นชื่อใหม่
     revalidatePath("/po");
     revalidatePath("/po/[id]", "page");  // ทุก PO detail page (dynamic route)
