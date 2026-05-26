@@ -1309,6 +1309,74 @@ export async function linkSupplierToPoAction(
 }
 
 // ==================================================================
+// Update procurement notes — แก้ไข "หมายเหตุจัดซื้อ" หลังสั่งไปแล้ว
+//
+// Use case: admin กรอก note ตอนสั่งซื้อแล้ว แต่อยากแก้เพิ่ม/แก้คำผิด/
+//           เพิ่มข้อมูลหลังจากนั้น
+// Permission: privileged (admin/supervisor) เท่านั้น — เพราะ procurement_notes
+//             เป็น admin-only field อยู่แล้ว (staff มองไม่เห็น)
+// Status gate: ห้ามแก้ตอน PO ถูก "ยกเลิก" (terminal — preserve audit trail)
+// ==================================================================
+export async function updateProcurementNotesAction(
+  poId: string,
+  notes: string,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poId) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const trimmed = notes.trim();
+  if (trimmed.length > 5000) {
+    return { ok: false, error: "หมายเหตุยาวเกินไป (สูงสุด 5000 ตัวอักษร)" };
+  }
+
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, procurement_notes")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.status === "ยกเลิก") {
+    return { ok: false, error: "แก้ไขหมายเหตุไม่ได้ — PO ถูกยกเลิกแล้ว" };
+  }
+
+  // Idempotent: ถ้าค่าเหมือนเดิมไม่ต้อง update
+  const oldNotes = (po.procurement_notes ?? "").trim();
+  if (oldNotes === trimmed) {
+    return { ok: true, poId };
+  }
+
+  const { error } = await sb
+    .from("purchase_orders")
+    .update({
+      procurement_notes: trimmed || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", poId);
+  if (error) {
+    console.error("[po updateProcurementNotes] failed:", error);
+    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  // Audit log — บันทึก diff อย่างย่อ (กัน description ยาวเกิน)
+  const oldPreview = oldNotes.slice(0, 60) || "(ว่าง)";
+  const newPreview = trimmed.slice(0, 60) || "(ว่าง)";
+  await logActivity(
+    poId,
+    user.full_name,
+    user.role,
+    "procurement_notes_edited",
+    `แก้ไขหมายเหตุจัดซื้อ: "${oldPreview}${oldNotes.length > 60 ? "…" : ""}" → "${newPreview}${trimmed.length > 60 ? "…" : ""}"`,
+  );
+
+  revalidatePath(`/po/${poId}`);
+  return { ok: true, poId };
+}
+
+// ==================================================================
 // PO number generator — ใช้ RPC ถ้ามี (atomic), fallback ถ้าไม่มี
 //
 // ⚠️ RPC คือ source of truth — Postgres `next_po_number()` atomic

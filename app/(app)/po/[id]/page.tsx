@@ -23,6 +23,7 @@ import { ActionButtons } from "./_components/action-buttons";
 import { AttachmentsSection } from "./_components/attachments-section";
 import { DeliveriesList } from "./_components/deliveries-list";
 import { LinkSupplierButton } from "./_components/link-supplier-button";
+import { ProcurementNotesCard } from "./_components/procurement-notes-card";
 import {
   PoCommentsSection,
   PoCommentsSectionSkeleton,
@@ -327,15 +328,13 @@ export default async function PoViewPage({
           </CardContent>
         </Card>
       )}
-      {isAdmin && po.procurement_notes && (
-        <Card>
-          <CardContent className="p-5">
-            <SectionTitle>📝 หมายเหตุจัดซื้อ</SectionTitle>
-            <div className="text-sm text-slate-700 bg-blue-50 border border-blue-200 rounded-lg p-3 whitespace-pre-line">
-              {po.procurement_notes}
-            </div>
-          </CardContent>
-        </Card>
+      {isAdmin && (
+        <ProcurementNotesCard
+          poId={po.id}
+          initialNotes={po.procurement_notes}
+          // ห้ามแก้ตอน PO ยกเลิก (action จะ reject — แต่ปิด UI ก่อนเป็น UX ที่ดีกว่า)
+          canEdit={po.status !== "ยกเลิก"}
+        />
       )}
 
       {/* Deliveries */}
