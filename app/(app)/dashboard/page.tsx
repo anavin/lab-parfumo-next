@@ -524,7 +524,7 @@ function KpiHero({ stats }: { stats: ReturnType<typeof computeStats> }) {
           <div className={`text-3xl sm:text-4xl font-extrabold tabular-nums tracking-tight drop-shadow-[0_2px_12px_rgba(255,255,255,0.1)] leading-none ${
             stats.staleCount > 0 ? "bg-gradient-to-br from-white via-amber-100 to-amber-200 bg-clip-text text-transparent" : "text-white"
           }`}>
-            {stats.pending}
+            {stats.procurementPending}
           </div>
           <div className="text-sm font-semibold text-white/70 mt-2">ใบ</div>
           {stats.staleCount > 0 && (

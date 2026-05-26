@@ -75,7 +75,9 @@ export default async function PoListPage({
   const chipOptions = buildChipOptions(byStatus, allPos.length);
 
   // Quick KPIs for header
-  const pending = (byStatus["รอจัดซื้อดำเนินการ"] ?? 0) + (byStatus["สั่งซื้อแล้ว"] ?? 0) + (byStatus["กำลังขนส่ง"] ?? 0);
+  //   pending = "รอจัดซื้อดำเนินการ" เท่านั้น (ตรงกับ link → status filter)
+  //   สถานะ active อื่น (สั่งซื้อแล้ว/กำลังขนส่ง) ดูจาก filter chips ด้านล่าง
+  const pending = byStatus["รอจัดซื้อดำเนินการ"] ?? 0;
   const completed = byStatus["เสร็จสมบูรณ์"] ?? 0;
   const problems = byStatus["มีปัญหา"] ?? 0;
 
@@ -126,7 +128,7 @@ export default async function PoListPage({
           href="/po"
         />
         <KpiCard
-          label="รอดำเนินการ"
+          label="รอจัดซื้อ"
           value={pending}
           unit="ใบ"
           icon={Clock}

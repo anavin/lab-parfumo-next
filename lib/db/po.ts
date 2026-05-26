@@ -64,7 +64,12 @@ export const getPos = cache(async ({
 export interface DashboardStats {
   total: number;
   byStatus: Record<string, number>;
+  /** Lump ของ active workflow ทั้ง 3 status (รอจัดซื้อ + สั่งซื้อแล้ว + กำลังขนส่ง)
+   *  ใช้ใน staff dashboard "กำลังดำเนินการ" */
   pending: number;
+  /** เฉพาะ "รอจัดซื้อดำเนินการ" — ใช้ใน admin dashboard ที่ link ไป filter status นี้
+   *  (เพื่อให้ count ตรงกับสิ่งที่ filter แสดง — กัน "8 → click → 0" mismatch) */
+  procurementPending: number;
   newThisWeek: number;
   thisMonthSpend: number;
   lastMonthSpend: number;
@@ -83,6 +88,7 @@ export function computeStats(pos: PurchaseOrder[]): DashboardStats {
 
   const byStatus: Record<string, number> = {};
   let pending = 0;
+  let procurementPending = 0;
   let newThisWeek = 0;
   let staleCount = 0;
   let overdueCount = 0;
@@ -99,6 +105,7 @@ export function computeStats(pos: PurchaseOrder[]): DashboardStats {
 
     if (ACTIVE_STATUSES.includes(p.status)) {
       pending++;
+      if (p.status === "รอจัดซื้อดำเนินการ") procurementPending++;
       // longest pending
       if (p.created_at) {
         const days = Math.floor((now.getTime() - new Date(p.created_at).getTime()) / 86400_000);
@@ -135,6 +142,7 @@ export function computeStats(pos: PurchaseOrder[]): DashboardStats {
     total: pos.length,
     byStatus,
     pending,
+    procurementPending,
     newThisWeek,
     thisMonthSpend,
     lastMonthSpend,
