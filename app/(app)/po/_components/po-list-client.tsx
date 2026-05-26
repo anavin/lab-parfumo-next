@@ -123,9 +123,10 @@ export function PoListClient({
 
   return (
     <div className="space-y-2">
-      {/* Select-all + Force-mode toggle row */}
-      {(selectablePos.length > 0 || forceMode) && (
-        <div className="flex items-center gap-3 px-1 py-1 text-xs text-muted-foreground flex-wrap">
+      {/* Select-all + Force-mode toggle row — แสดงเสมอ (privileged) เพื่อให้ admin
+          เข้าถึง force toggle ได้แม้ list มีแต่ PO active */}
+      <div className="flex items-center gap-3 px-1 py-1 text-xs text-muted-foreground flex-wrap">
+        {selectablePos.length > 0 && (
           <div className="inline-flex items-center gap-2">
             <Checkbox
               id="select-all"
@@ -138,37 +139,37 @@ export function PoListClient({
               {forceMode ? "" : "ที่ลบได้"})
             </label>
           </div>
+        )}
 
-          {/* Force mode toggle — admin only (สำหรับล้าง test data) */}
-          <div className="inline-flex items-center gap-1.5 ml-2 px-2 py-1 rounded-md bg-red-50 border border-red-200">
-            <Checkbox
-              id="force-mode"
-              checked={forceMode}
-              onCheckedChange={(c) => handleToggleForceMode(c === true)}
-              disabled={pending}
-            />
-            <label
-              htmlFor="force-mode"
-              className="cursor-pointer select-none text-red-700 font-semibold inline-flex items-center gap-1"
-              title="ลบ PO ได้ทุกสถานะ (รวมที่กำลังดำเนินการ/เสร็จสมบูรณ์) — สำหรับล้างข้อมูลทดสอบ"
-            >
-              <AlertTriangle className="size-3" />
-              บังคับลบทุกสถานะ
-            </label>
-          </div>
-
-          {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={clearSelection}
-              className="ml-auto text-primary hover:underline text-xs font-medium"
-              disabled={pending}
-            >
-              ล้างที่เลือก ({selected.size})
-            </button>
-          )}
+        {/* Force mode toggle — admin/supervisor only (สำหรับล้าง test data) */}
+        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 border border-red-200">
+          <Checkbox
+            id="force-mode"
+            checked={forceMode}
+            onCheckedChange={(c) => handleToggleForceMode(c === true)}
+            disabled={pending}
+          />
+          <label
+            htmlFor="force-mode"
+            className="cursor-pointer select-none text-red-700 font-semibold inline-flex items-center gap-1"
+            title="ลบ PO ได้ทุกสถานะ (รวมที่กำลังดำเนินการ/เสร็จสมบูรณ์) — สำหรับล้างข้อมูลทดสอบ"
+          >
+            <AlertTriangle className="size-3" />
+            บังคับลบทุกสถานะ
+          </label>
         </div>
-      )}
+
+        {selected.size > 0 && (
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="ml-auto text-primary hover:underline text-xs font-medium"
+            disabled={pending}
+          >
+            ล้างที่เลือก ({selected.size})
+          </button>
+        )}
+      </div>
 
       {/* List */}
       {pos.map((po) => {
