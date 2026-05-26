@@ -5,6 +5,7 @@
  */
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { runWithSoftDeleteFallback } from "./_soft-delete";
 import type { PurchaseOrder, Equipment, SearchResult } from "@/lib/types/db";
 
 // Re-export for backwards compat
@@ -20,9 +21,16 @@ export const globalSearch = cache(async (
 
   // ⚡ Run PO + Equipment fetch in parallel
   const posPromise = (async () => {
-    let pq = sb.from("purchase_orders").select("*").is("deleted_at", null).limit(200);
-    if (!opts.isAdmin && opts.userId) pq = pq.eq("created_by", opts.userId);
-    const { data } = await pq.order("created_at", { ascending: false });
+    function build(useFilter: boolean) {
+      let pq = sb.from("purchase_orders").select("*").limit(200);
+      if (useFilter) pq = pq.is("deleted_at", null);
+      if (!opts.isAdmin && opts.userId) pq = pq.eq("created_by", opts.userId);
+      return pq.order("created_at", { ascending: false });
+    }
+    const { data } = await runWithSoftDeleteFallback(
+      () => build(true),
+      () => build(false),
+    );
     return (data ?? []) as PurchaseOrder[];
   })();
 

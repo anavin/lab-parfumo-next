@@ -7,6 +7,7 @@
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { runWithSoftDeleteFallback } from "./_soft-delete";
 import type {
   Supplier, SupplierWithStats, PurchaseOrder, PoStatus,
   SupplierOption,
@@ -29,16 +30,20 @@ const SUPPLIER_COLUMNS = [
 ].join(", ");
 
 /** ทุก supplier (ทั้ง active + inactive) — cached 5 นาที + tag "suppliers"
- *  Exclude items in trash (deleted_at IS NOT NULL) */
+ *  Exclude items in trash (deleted_at IS NOT NULL); fallback ถ้ายังไม่รัน migration */
 export const getAllSuppliers = unstable_cache(
   async (): Promise<Supplier[]> => {
     const sb = getSupabaseAdmin();
-    const { data } = await sb
-      .from("suppliers" as never)
-      .select(SUPPLIER_COLUMNS)
-      .is("deleted_at", null)
-      .order("name", { ascending: true });
-    return (data as unknown as Supplier[] | null) ?? [];
+    function build(useFilter: boolean) {
+      let q = sb.from("suppliers" as never).select(SUPPLIER_COLUMNS);
+      if (useFilter) q = q.is("deleted_at", null);
+      return q.order("name", { ascending: true });
+    }
+    const r = await runWithSoftDeleteFallback(
+      () => build(true),
+      () => build(false),
+    );
+    return (r.data as unknown as Supplier[] | null) ?? [];
   },
   ["suppliers-all"],
   { revalidate: 300, tags: ["suppliers"] },
@@ -48,13 +53,16 @@ export const getAllSuppliers = unstable_cache(
 export const getSupplierById = cache(
   async (id: string): Promise<Supplier | null> => {
     const sb = getSupabaseAdmin();
-    const { data } = await sb
-      .from("suppliers" as never)
-      .select(SUPPLIER_COLUMNS)
-      .eq("id", id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    return (data as unknown as Supplier | null) ?? null;
+    function build(useFilter: boolean) {
+      let q = sb.from("suppliers" as never).select(SUPPLIER_COLUMNS).eq("id", id);
+      if (useFilter) q = q.is("deleted_at", null);
+      return q.maybeSingle();
+    }
+    const r = await runWithSoftDeleteFallback(
+      () => build(true),
+      () => build(false),
+    );
+    return (r.data as unknown as Supplier | null) ?? null;
   },
 );
 
@@ -64,15 +72,21 @@ export const getSupplierById = cache(
  */
 export const getSuppliersWithStats = cache(async (): Promise<SupplierWithStats[]> => {
   const sb = getSupabaseAdmin();
-  const [suppliersRes, posRes] = await Promise.all([
-    sb.from("suppliers" as never)
-      .select(SUPPLIER_COLUMNS)
-      .is("deleted_at", null)
-      .order("name", { ascending: true }),
-    sb.from("purchase_orders")
+  function supBuild(useFilter: boolean) {
+    let q = sb.from("suppliers" as never).select(SUPPLIER_COLUMNS);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q.order("name", { ascending: true });
+  }
+  function poBuild(useFilter: boolean) {
+    let q = sb.from("purchase_orders")
       .select("supplier_id, status, total, ordered_date, po_number, created_at")
-      .not("supplier_id", "is", null)
-      .is("deleted_at", null),
+      .not("supplier_id", "is", null);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q;
+  }
+  const [suppliersRes, posRes] = await Promise.all([
+    runWithSoftDeleteFallback(() => supBuild(true), () => supBuild(false)),
+    runWithSoftDeleteFallback(() => poBuild(true), () => poBuild(false)),
   ]);
 
   const suppliers = (suppliersRes.data as unknown as Supplier[] | null) ?? [];
@@ -257,18 +271,23 @@ export const getMonthlyTrendForSupplier = cache(
 export const getSupplierOptions = cache(async (): Promise<SupplierOption[]> => {
   const sb = getSupabaseAdmin();
 
-  const [suppliersRes, posRes] = await Promise.all([
-    sb.from("suppliers" as never)
+  function supOptBuild(useFilter: boolean) {
+    let q = sb.from("suppliers" as never)
       .select(SUPPLIER_COLUMNS)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .order("name", { ascending: true }),
-    sb.from("purchase_orders")
+      .eq("is_active", true);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q.order("name", { ascending: true });
+  }
+  function poOptBuild(useFilter: boolean) {
+    let q = sb.from("purchase_orders")
       .select("supplier_name, supplier_contact, ordered_date, po_number")
-      .not("supplier_name", "is", null)
-      .is("deleted_at", null)
-      .order("ordered_date", { ascending: false })
-      .limit(1000),
+      .not("supplier_name", "is", null);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q.order("ordered_date", { ascending: false }).limit(1000);
+  }
+  const [suppliersRes, posRes] = await Promise.all([
+    runWithSoftDeleteFallback(() => supOptBuild(true), () => supOptBuild(false)),
+    runWithSoftDeleteFallback(() => poOptBuild(true), () => poOptBuild(false)),
   ]);
 
   // 1) Index PO history by name → poCount, lastUsed, lastPo, lastContact

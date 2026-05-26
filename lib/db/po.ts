@@ -6,6 +6,7 @@
  */
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { runWithSoftDeleteFallback } from "./_soft-delete";
 import type {
   PurchaseOrder, PoStatus, Role, PoSortKey, SupplierEntry, PoDelivery,
 } from "@/lib/types/db";
@@ -65,18 +66,18 @@ export const getPos = cache(async ({
   userId, role = "requester", status, limit = 500,
 }: GetPosOpts = {}): Promise<PurchaseOrder[]> => {
   const sb = getSupabaseAdmin();
-  let q = sb.from("purchase_orders").select(PO_LIST_COLS)
-    .is("deleted_at", null); // exclude trashed POs
-  if (role === "requester" && userId) {
-    q = q.eq("created_by", userId);
+  function build(useFilter: boolean) {
+    let q = sb.from("purchase_orders").select(PO_LIST_COLS);
+    if (useFilter) q = q.is("deleted_at", null);
+    if (role === "requester" && userId) q = q.eq("created_by", userId);
+    if (status && status !== "ทั้งหมด") q = q.eq("status", status);
+    return q.order("created_at", { ascending: false }).limit(limit);
   }
-  if (status && status !== "ทั้งหมด") {
-    q = q.eq("status", status);
-  }
-  const { data } = await q
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  return (data ?? []) as unknown as PurchaseOrder[];
+  const r = await runWithSoftDeleteFallback(
+    () => build(true),
+    () => build(false),
+  );
+  return (r.data ?? []) as unknown as PurchaseOrder[];
 });
 
 export interface DashboardStats {
@@ -285,13 +286,16 @@ export function topSuppliers(pos: PurchaseOrder[], n = 5): Array<{
 export const getPoById = cache(
   async (id: string): Promise<PurchaseOrder | null> => {
     const sb = getSupabaseAdmin();
-    const { data } = await sb
-      .from("purchase_orders")
-      .select("*")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    return (data as PurchaseOrder) ?? null;
+    function build(useFilter: boolean) {
+      let q = sb.from("purchase_orders").select("*").eq("id", id);
+      if (useFilter) q = q.is("deleted_at", null);
+      return q.maybeSingle();
+    }
+    const r = await runWithSoftDeleteFallback(
+      () => build(true),
+      () => build(false),
+    );
+    return (r.data as PurchaseOrder) ?? null;
   },
 );
 
@@ -423,26 +427,34 @@ export function applyPoFilters(
 /** PO ที่รอรับของ (status ใน PENDING_RECEIPT) */
 export async function getPosPendingReceipt(): Promise<PurchaseOrder[]> {
   const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("purchase_orders")
-    .select("*")
-    .in("status", PENDING_RECEIPT as readonly string[])
-    .is("deleted_at", null)
-    .order("expected_date", { ascending: true })
-    .limit(500);
-  return (data ?? []) as PurchaseOrder[];
+  function build(useFilter: boolean) {
+    let q = sb.from("purchase_orders").select("*")
+      .in("status", PENDING_RECEIPT as readonly string[]);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q.order("expected_date", { ascending: true }).limit(500);
+  }
+  const r = await runWithSoftDeleteFallback(
+    () => build(true),
+    () => build(false),
+  );
+  return (r.data ?? []) as PurchaseOrder[];
 }
 
 /** Supplier ที่เคยใช้ — interface ย้ายไป lib/types/db.ts (cached per-request) */
 export const getSupplierHistory = cache(async (): Promise<SupplierEntry[]> => {
   const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("purchase_orders")
-    .select("supplier_name, supplier_contact, ordered_date, po_number")
-    .not("supplier_name", "is", null)
-    .is("deleted_at", null)
-    .order("ordered_date", { ascending: false })
-    .limit(1000);
+  function build(useFilter: boolean) {
+    let q = sb.from("purchase_orders")
+      .select("supplier_name, supplier_contact, ordered_date, po_number")
+      .not("supplier_name", "is", null);
+    if (useFilter) q = q.is("deleted_at", null);
+    return q.order("ordered_date", { ascending: false }).limit(1000);
+  }
+  const r = await runWithSoftDeleteFallback(
+    () => build(true),
+    () => build(false),
+  );
+  const data = r.data as Array<{ supplier_name: string; supplier_contact: string | null; ordered_date: string | null; po_number: string }> | null;
 
   const map = new Map<string, SupplierEntry>();
   for (const row of (data ?? []) as Array<{

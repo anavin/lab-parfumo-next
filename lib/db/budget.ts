@@ -11,6 +11,7 @@
  */
 import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { runWithSoftDeleteFallback } from "./_soft-delete";
 import type { Budget, BudgetStatus } from "@/lib/types/db";
 
 // Re-export for backwards compat (callers can still use lib/db/budget paths)
@@ -58,13 +59,18 @@ const getSpendingBreakdown = cache(
     };
 
     // Explicit cols — items JSONB ใช้สำหรับ category breakdown เท่านั้น
-    const { data } = await sb
-      .from("purchase_orders")
-      .select("total, items")
-      .gte("ordered_date", startDate)
-      .lt("ordered_date", endDate)
-      .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"])
-      .is("deleted_at", null);
+    function build(useFilter: boolean) {
+      let q = sb.from("purchase_orders").select("total, items")
+        .gte("ordered_date", startDate)
+        .lt("ordered_date", endDate)
+        .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"]);
+      if (useFilter) q = q.is("deleted_at", null);
+      return q;
+    }
+    const { data } = await runWithSoftDeleteFallback(
+      () => build(true),
+      () => build(false),
+    );
 
     const pos = (data ?? []) as PoRow[];
 
