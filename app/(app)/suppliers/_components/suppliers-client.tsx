@@ -9,7 +9,7 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Plus, Edit2, Trash2, RotateCcw, Search,
+  Plus, Edit2, Trash2, RotateCcw, Search, RefreshCw,
   Building2, CheckCircle2, DollarSign, ArrowRight,
   Phone, Mail, FileText, Trophy, Tag, MapPin,
   type LucideIcon,
@@ -22,7 +22,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
 import type { SupplierWithStats, Lookup } from "@/lib/types/db";
 import {
-  deleteSupplierAction, restoreSupplierAction,
+  deleteSupplierAction, restoreSupplierAction, syncAllSupplierSnapshotsAction,
 } from "@/lib/actions/suppliers";
 import { SupplierDialog } from "./supplier-dialog";
 
@@ -54,8 +54,29 @@ export function SuppliersClient({
   const [editId, setEditId] = useState<string | null>(null);
   const [delTarget, setDelTarget] = useState<SupplierWithStats | null>(null);
   const [delPending, startDelTransition] = useTransition();
+  const [syncPending, startSyncTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+
+  function handleSyncAll() {
+    startSyncTransition(async () => {
+      const res = await syncAllSupplierSnapshotsAction();
+      if (res.ok) {
+        const total = (res.linkedFixed ?? 0) + (res.legacyFixed ?? 0);
+        if (total === 0) {
+          toast.success("✅ ข้อมูล PO ตรงกับ Supplier ทั้งหมดอยู่แล้ว");
+        } else {
+          toast.success(
+            `✅ ซิงค์ชื่อ Supplier บน PO เรียบร้อย — ` +
+              `linked=${res.linkedFixed} legacy=${res.legacyFixed} (จากทั้งหมด ${res.totalChecked})`,
+          );
+        }
+        router.refresh();
+      } else {
+        toast.error(res.error ?? "ซิงค์ไม่สำเร็จ");
+      }
+    });
+  }
 
   const editing = editId ? suppliers.find((s) => s.id === editId) : null;
   const isAdmin = myRole === "admin" || myRole === "supervisor";
@@ -212,9 +233,19 @@ export function SuppliersClient({
                 />
               </div>
               {isAdmin && (
-                <Button onClick={() => setShowAdd(true)}>
-                  <Plus className="size-4" /> เพิ่ม Supplier
-                </Button>
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={handleSyncAll}
+                    loading={syncPending}
+                    title="ซิงค์ชื่อ Supplier บน PO ทั้งหมดให้ตรงกับตาราง Supplier (สำหรับแก้ข้อมูลเก่าที่ค้าง)"
+                  >
+                    <RefreshCw className="size-4" /> ซิงค์ชื่อ
+                  </Button>
+                  <Button onClick={() => setShowAdd(true)}>
+                    <Plus className="size-4" /> เพิ่ม Supplier
+                  </Button>
+                </>
               )}
             </div>
           </CardContent>

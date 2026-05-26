@@ -136,6 +136,7 @@ export async function updateSupplierAction(
     .eq("id", id)
     .maybeSingle();
   const oldName = (before as { name?: string } | null)?.name ?? null;
+  console.log(`[suppliers update] id=${id} oldName="${oldName}" input.name="${input.name}"`);
 
   // Cast Partial → CreateInput-compatible (cleanInput ตรวจ undefined ทุก field)
   const payload = cleanInput(input as CreateInput);
@@ -161,13 +162,19 @@ export async function updateSupplierAction(
   }
 
   // Sync snapshot: ถ้าชื่อเปลี่ยน → update purchase_orders.supplier_name
-  //   (1) PO ที่ link supplier_id นี้แล้ว → 100% sure → sync ตามปกติ
-  //   (2) PO เก่า (supplier_id IS NULL) ที่ supplier_name ตรงกับชื่อเก่า →
-  //       auto-match by name (สมมติว่าตั้งใจหมายถึง supplier นี้ — admin
-  //       เลือก policy นี้แล้วใน UI)
+  //   (1) PO ที่ link supplier_id นี้แล้ว → 100% sure
+  //   (2) PO เก่า (supplier_id IS NULL) ที่ supplier_name ตรงกับชื่อเก่า
+  //       (normalize trim+case) — ใช้ fetch+filter+update เพราะ .eq()
+  //       ไม่จัดการ whitespace/case
   const newName = typeof payload.name === "string" ? payload.name : null;
-  if (newName && oldName && newName !== oldName) {
-    // (1) Linked POs
+  const namesChanged =
+    !!newName && !!oldName && newName.trim() !== oldName.trim();
+  console.log(
+    `[suppliers update] newName="${newName}" namesChanged=${namesChanged}`,
+  );
+
+  if (namesChanged && newName && oldName) {
+    // (1) Linked POs — เร็ว, ตรง 100%
     const linkedRes = await sb
       .from("purchase_orders")
       .update(
@@ -179,27 +186,43 @@ export async function updateSupplierAction(
       console.error("[suppliers] linked PO snapshot sync failed:", linkedRes.error);
     }
 
-    // (2) Legacy unlinked POs — match by old supplier_name
-    const legacyRes = await sb
+    // (2) Legacy unlinked POs — match by trimmed+lowercased name in app code
+    //     (Supabase .eq()/.ilike() don't auto-trim → manual loop for safety)
+    const oldNorm = oldName.trim().toLowerCase();
+    const { data: candidates, error: legacySelErr } = await sb
       .from("purchase_orders")
-      .update(
-        { supplier_name: newName, updated_at: new Date().toISOString() },
-        { count: "exact" },
-      )
+      .select("id, supplier_name")
       .is("supplier_id", null)
-      .eq("supplier_name", oldName);
-    if (legacyRes.error) {
-      console.error("[suppliers] legacy PO snapshot sync failed:", legacyRes.error);
+      .not("supplier_name", "is", null);
+    if (legacySelErr) {
+      console.error("[suppliers] legacy candidate select failed:", legacySelErr);
+    }
+    type LegacyRow = { id: string; supplier_name: string | null };
+    const matching = ((candidates ?? []) as LegacyRow[]).filter(
+      (p) => (p.supplier_name ?? "").trim().toLowerCase() === oldNorm,
+    );
+    let legacyCount = 0;
+    if (matching.length > 0) {
+      const ids = matching.map((p) => p.id);
+      const legacyRes = await sb
+        .from("purchase_orders")
+        .update(
+          { supplier_name: newName, updated_at: new Date().toISOString() },
+          { count: "exact" },
+        )
+        .in("id", ids);
+      if (legacyRes.error) {
+        console.error("[suppliers] legacy PO update failed:", legacyRes.error);
+      } else {
+        legacyCount = legacyRes.count ?? matching.length;
+      }
     }
 
     const linkedCount = linkedRes.count ?? 0;
-    const legacyCount = legacyRes.count ?? 0;
-    if (linkedCount + legacyCount > 0) {
-      console.log(
-        `[suppliers] synced supplier_name (${oldName} → ${newName}) — ` +
-          `linked=${linkedCount}, legacy=${legacyCount}`,
-      );
-    }
+    console.log(
+      `[suppliers] synced supplier_name ("${oldName}" → "${newName}") — ` +
+        `linked=${linkedCount}, legacy=${legacyCount} (candidates=${candidates?.length ?? 0})`,
+    );
 
     // Invalidate PO-related caches เพื่อให้หน้าอื่นเห็นชื่อใหม่
     revalidatePath("/po");
@@ -214,6 +237,156 @@ export async function updateSupplierAction(
   revalidatePath(`/suppliers/${id}`);
   revalidateTag("suppliers");
   return { ok: true, supplierId: id };
+}
+
+// ==================================================================
+// Backfill: sync supplier_name on ALL POs to match suppliers table
+//
+// Run as one-shot from /suppliers page when historical data is drifted.
+// แก้ไขทุก PO ที่ supplier_id link แล้วแต่ supplier_name ใน snapshot ผิด
+// หรือ PO เก่า (supplier_id IS NULL) ที่ supplier_name ตรงกับ Supplier ใด ๆ
+// (normalize trim+case)
+// ==================================================================
+export interface SyncAllResult {
+  ok: boolean;
+  error?: string;
+  /** จำนวน PO ที่ snapshot ตรง supplier_id แต่ชื่อผิด → fix */
+  linkedFixed?: number;
+  /** จำนวน PO เก่า (supplier_id=null) ที่ map กับ Supplier ในระบบได้ → fix ชื่อ + link */
+  legacyFixed?: number;
+  /** total ที่ตรวจ */
+  totalChecked?: number;
+}
+
+export async function syncAllSupplierSnapshotsAction(): Promise<SyncAllResult> {
+  const me = await getCurrentUser();
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+
+  const sb = getSupabaseAdmin();
+
+  // 1. ดึง suppliers ทุกตัว
+  const { data: suppliersRaw, error: sErr } = await sb
+    .from("suppliers" as never)
+    .select("id, name");
+  if (sErr || !suppliersRaw) {
+    console.error("[sync-all] fetch suppliers failed:", sErr);
+    return { ok: false, error: "อ่านข้อมูล Supplier ไม่สำเร็จ" };
+  }
+  type SupRow = { id: string; name: string };
+  const suppliers = (suppliersRaw as SupRow[]).filter((s) => !!s.name);
+  // Map: lowercased trimmed name → { id, canonicalName }
+  const nameToSupplier = new Map<string, { id: string; name: string }>();
+  for (const s of suppliers) {
+    nameToSupplier.set(s.name.trim().toLowerCase(), { id: s.id, name: s.name });
+  }
+
+  // 2. ดึง PO ทุกใบที่มี supplier_name (เปล่า → ข้าม)
+  const { data: posRaw, error: pErr } = await sb
+    .from("purchase_orders")
+    .select("id, supplier_id, supplier_name")
+    .not("supplier_name", "is", null);
+  if (pErr || !posRaw) {
+    console.error("[sync-all] fetch POs failed:", pErr);
+    return { ok: false, error: "อ่านข้อมูล PO ไม่สำเร็จ" };
+  }
+  type PoRow = { id: string; supplier_id: string | null; supplier_name: string | null };
+  const pos = posRaw as PoRow[];
+  const idToSupplier = new Map<string, { id: string; name: string }>();
+  for (const s of suppliers) idToSupplier.set(s.id, { id: s.id, name: s.name });
+
+  // 3. ตรวจแต่ละ PO
+  //    (a) linked: supplier_id matches a real supplier but snapshot name differs
+  //    (b) legacy: supplier_id is null, supplier_name normalized matches a known supplier
+  const linkedToFix: Array<{ id: string; newName: string }> = [];
+  const legacyToFix: Array<{ id: string; supplierId: string; newName: string }> = [];
+
+  for (const p of pos) {
+    if (!p.supplier_name) continue;
+    const snapName = p.supplier_name.trim();
+    if (p.supplier_id) {
+      const sup = idToSupplier.get(p.supplier_id);
+      if (sup && sup.name.trim() !== snapName) {
+        linkedToFix.push({ id: p.id, newName: sup.name });
+      }
+    } else {
+      const sup = nameToSupplier.get(snapName.toLowerCase());
+      if (sup && sup.name !== snapName) {
+        // Sync ชื่อ + link supplier_id ให้
+        legacyToFix.push({ id: p.id, supplierId: sup.id, newName: sup.name });
+      } else if (sup && sup.name === snapName) {
+        // ชื่อตรง 100% อยู่แล้ว → แค่ link supplier_id ให้
+        legacyToFix.push({ id: p.id, supplierId: sup.id, newName: sup.name });
+      }
+    }
+  }
+
+  console.log(
+    `[sync-all] candidates: linked=${linkedToFix.length} legacy=${legacyToFix.length} total POs checked=${pos.length}`,
+  );
+
+  // 4. รัน UPDATE ทีละ batch
+  let linkedFixed = 0;
+  let legacyFixed = 0;
+  const nowIso = new Date().toISOString();
+
+  // Group linkedToFix by newName เพื่อ batch UPDATE WHERE id IN (...)
+  const byName = new Map<string, string[]>();
+  for (const f of linkedToFix) {
+    const arr = byName.get(f.newName) ?? [];
+    arr.push(f.id);
+    byName.set(f.newName, arr);
+  }
+  for (const [name, ids] of byName) {
+    const { error, count } = await sb
+      .from("purchase_orders")
+      .update({ supplier_name: name, updated_at: nowIso }, { count: "exact" })
+      .in("id", ids);
+    if (error) {
+      console.error("[sync-all] linked fix failed:", error);
+    } else {
+      linkedFixed += count ?? ids.length;
+    }
+  }
+
+  // Legacy: ต้อง update ชื่อ + supplier_id ต่อ supplier — batch ตาม supplier
+  const bySupId = new Map<string, { name: string; ids: string[] }>();
+  for (const f of legacyToFix) {
+    const cur = bySupId.get(f.supplierId) ?? { name: f.newName, ids: [] };
+    cur.ids.push(f.id);
+    bySupId.set(f.supplierId, cur);
+  }
+  for (const [supId, group] of bySupId) {
+    const { error, count } = await sb
+      .from("purchase_orders")
+      .update(
+        { supplier_id: supId, supplier_name: group.name, updated_at: nowIso },
+        { count: "exact" },
+      )
+      .in("id", group.ids);
+    if (error) {
+      console.error("[sync-all] legacy fix failed:", error);
+    } else {
+      legacyFixed += count ?? group.ids.length;
+    }
+  }
+
+  console.log(
+    `[sync-all] DONE: linked fixed=${linkedFixed}, legacy fixed=${legacyFixed}, checked=${pos.length}`,
+  );
+
+  // Invalidate caches
+  revalidatePath("/suppliers");
+  revalidatePath("/po");
+  revalidatePath("/po/[id]", "page");
+  revalidatePath("/po/pending-receipt");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidatePath("/audit");
+  revalidateTag("suppliers");
+
+  return { ok: true, linkedFixed, legacyFixed, totalChecked: pos.length };
 }
 
 // ==================================================================
