@@ -127,6 +127,16 @@ export async function updateSupplierAction(
   }
 
   const sb = getSupabaseAdmin();
+
+  // อ่านชื่อเดิมไว้ก่อน — ถ้าเปลี่ยน → sync ไปยัง purchase_orders.supplier_name
+  // (denormalized snapshot — ถ้าไม่ sync หน้าอื่นจะโชว์ชื่อเดิม)
+  const { data: before } = await sb
+    .from("suppliers" as never)
+    .select("name")
+    .eq("id", id)
+    .maybeSingle();
+  const oldName = (before as { name?: string } | null)?.name ?? null;
+
   // Cast Partial → CreateInput-compatible (cleanInput ตรวจ undefined ทุก field)
   const payload = cleanInput(input as CreateInput);
   payload.updated_by_name = me.full_name;
@@ -148,6 +158,34 @@ export async function updateSupplierAction(
     }
     console.error("[suppliers] update failed:", error);
     return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  // Sync snapshot: ถ้าชื่อเปลี่ยน → update purchase_orders.supplier_name
+  // ของทุก PO ที่ link supplier_id นี้ (รวม PO เก่าและใหม่)
+  const newName = typeof payload.name === "string" ? payload.name : null;
+  if (newName && oldName && newName !== oldName) {
+    const { error: syncErr, count } = await sb
+      .from("purchase_orders")
+      .update(
+        { supplier_name: newName, updated_at: new Date().toISOString() },
+        { count: "exact" },
+      )
+      .eq("supplier_id", id);
+    if (syncErr) {
+      console.error("[suppliers] PO snapshot sync failed:", syncErr);
+      // best-effort — ไม่ block ถึง update supplier สำเร็จแล้ว
+    } else if ((count ?? 0) > 0) {
+      console.log(
+        `[suppliers] synced supplier_name on ${count} PO row(s) (${oldName} → ${newName})`,
+      );
+    }
+    // Invalidate PO-related caches เพื่อให้หน้าอื่นเห็นชื่อใหม่
+    revalidatePath("/po");
+    revalidatePath("/po/[id]", "page");  // ทุก PO detail page (dynamic route)
+    revalidatePath("/po/pending-receipt");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/audit");
   }
 
   revalidatePath("/suppliers");
