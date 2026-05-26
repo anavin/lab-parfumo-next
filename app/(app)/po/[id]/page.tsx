@@ -24,6 +24,7 @@ import { AttachmentsSection } from "./_components/attachments-section";
 import { DeliveriesList } from "./_components/deliveries-list";
 import { LinkSupplierButton } from "./_components/link-supplier-button";
 import { ProcurementNotesCard } from "./_components/procurement-notes-card";
+import { EditPoSupplierButton } from "./_components/edit-po-supplier-button";
 import {
   PoCommentsSection,
   PoCommentsSectionSkeleton,
@@ -235,6 +236,16 @@ export default async function PoViewPage({
                         categories={supplierCategories}
                         banks={banks}
                         paymentTerms={paymentTerms}
+                      />
+                    )}
+                    {/* เปลี่ยน supplier (ใช้สำหรับ relink / fix drift / เปลี่ยน vendor) */}
+                    {po.status !== "ยกเลิก" && (
+                      <EditPoSupplierButton
+                        poId={po.id}
+                        poNumber={po.po_number}
+                        currentSupplierName={po.supplier_name}
+                        currentSupplierId={po.supplier_id}
+                        supplierOptions={supplierOptions}
                       />
                     )}
                   </>

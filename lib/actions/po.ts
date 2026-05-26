@@ -1377,6 +1377,103 @@ export async function updateProcurementNotesAction(
 }
 
 // ==================================================================
+// Set / change PO supplier (admin override) — แก้ Supplier ของ PO โดยตรง
+//
+// Use case: snapshot drift, ลิงก์ supplier ผิด, ต้องเปลี่ยน vendor หลังสั่งไปแล้ว
+// Permission: privileged (admin/supervisor)
+// Modes:
+//   - supplierId provided → set supplier_id + sync supplier_name จาก table จริง
+//   - supplierId = null + freeTextName provided → ตั้ง supplier_name + clear supplier_id
+//   - ทั้งสอง null → reject
+// ==================================================================
+export async function setPoSupplierAction(
+  poId: string,
+  opts: { supplierId: string | null; freeTextName?: string },
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poId) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const sb = getSupabaseAdmin();
+
+  // ตรวจสอบ PO มีจริง
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, supplier_name, supplier_id")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.status === "ยกเลิก") {
+    return { ok: false, error: "PO ถูกยกเลิกแล้ว — แก้ไขไม่ได้" };
+  }
+
+  let newSupplierName: string;
+  let newSupplierId: string | null = null;
+  const oldName = po.supplier_name ?? "";
+  const oldId = po.supplier_id;
+
+  if (opts.supplierId) {
+    // โหมด: link to existing supplier
+    const { data: sup } = await sb
+      .from("suppliers" as never)
+      .select("id, name, is_active")
+      .eq("id", opts.supplierId)
+      .maybeSingle();
+    type SupRow = { id: string; name: string; is_active: boolean };
+    const supRow = sup as SupRow | null;
+    if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+    newSupplierId = supRow.id;
+    newSupplierName = supRow.name;
+  } else {
+    // โหมด: free-text (unlink + set ชื่อตามที่พิมพ์)
+    const ft = (opts.freeTextName ?? "").trim();
+    if (!ft) return { ok: false, error: "กรุณาระบุ Supplier" };
+    if (ft.length > 120) return { ok: false, error: "ชื่อยาวเกินไป" };
+    newSupplierId = null;
+    newSupplierName = ft;
+  }
+
+  // Idempotent — ถ้าเหมือนเดิมไม่ต้อง update
+  if (oldName === newSupplierName && oldId === newSupplierId) {
+    return { ok: true, poId };
+  }
+
+  const { error } = await sb
+    .from("purchase_orders")
+    .update({
+      supplier_id: newSupplierId,
+      supplier_name: newSupplierName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", poId);
+  if (error) {
+    console.error("[po setPoSupplier] failed:", error);
+    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  await logActivity(
+    poId,
+    user.full_name,
+    user.role,
+    "supplier_changed",
+    `เปลี่ยน Supplier: "${oldName || "(ว่าง)"}" → "${newSupplierName}"`,
+  );
+
+  console.log(
+    `[po setPoSupplier] ${po.po_number}: "${oldName}" → "${newSupplierName}" (id: ${oldId} → ${newSupplierId})`,
+  );
+
+  revalidatePath(`/po/${poId}`);
+  revalidatePath("/po");
+  revalidatePath("/po/pending-receipt");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return { ok: true, poId };
+}
+
+// ==================================================================
 // PO number generator — ใช้ RPC ถ้ามี (atomic), fallback ถ้าไม่มี
 //
 // ⚠️ RPC คือ source of truth — Postgres `next_po_number()` atomic
