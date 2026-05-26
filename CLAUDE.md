@@ -705,6 +705,10 @@ UPSTASH_REDIS_REST_TOKEN          # @upstash/redis REST token
 
 # Storage migration (optional — flip when bucket goes private)
 PO_ATTACHMENTS_PRIVATE            # "true" → mint signed URLs for po-attachments
+
+# Force-delete feature flag (default: OFF)
+NEXT_PUBLIC_FORCE_DELETE_ENABLED  # "true" → /po แสดง "⚠️ บังคับลบทุกสถานะ" toggle
+                                  # (สำหรับ cleanup test data — ปิดกลับเมื่อใช้เสร็จ)
 ENCRYPTION_KEY                    # 32 bytes hex (openssl rand -hex 32)
 NEXT_PUBLIC_SENTRY_DSN            # Sentry — graceful no-op if missing
 ```

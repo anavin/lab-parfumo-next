@@ -37,6 +37,11 @@ export function PoListClient({
   const [forceMode, setForceMode] = useState(false);
   const [pending, start] = useTransition();
 
+  // Feature flag — ปิดไว้ default — เปิดด้วย NEXT_PUBLIC_FORCE_DELETE_ENABLED=true
+  // เปิดเมื่อจำเป็น (เช่น cleanup test data) แล้วปิดกลับ
+  const forceDeleteEnabled =
+    process.env.NEXT_PUBLIC_FORCE_DELETE_ENABLED === "true";
+
   // Staff view: plain list (no checkbox)
   if (!isPrivileged) {
     return (
@@ -123,8 +128,11 @@ export function PoListClient({
 
   return (
     <div className="space-y-2">
-      {/* Select-all + Force-mode toggle row — แสดงเสมอ (privileged) เพื่อให้ admin
-          เข้าถึง force toggle ได้แม้ list มีแต่ PO active */}
+      {/* Select-all + Force-mode toggle row — แสดงเมื่อ:
+            (1) มี PO ที่ normally deletable, หรือ
+            (2) force-delete flag เปิด (admin จะได้กดเข้าใช้)
+            ไม่แสดงเลยถ้าทั้งสองข้อไม่ใช่ → ไม่มี toolbar ว่างเปล่า */}
+      {(selectablePos.length > 0 || forceDeleteEnabled) && (
       <div className="flex items-center gap-3 px-1 py-1 text-xs text-muted-foreground flex-wrap">
         {selectablePos.length > 0 && (
           <div className="inline-flex items-center gap-2">
@@ -141,23 +149,26 @@ export function PoListClient({
           </div>
         )}
 
-        {/* Force mode toggle — admin/supervisor only (สำหรับล้าง test data) */}
-        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 border border-red-200">
-          <Checkbox
-            id="force-mode"
-            checked={forceMode}
-            onCheckedChange={(c) => handleToggleForceMode(c === true)}
-            disabled={pending}
-          />
-          <label
-            htmlFor="force-mode"
-            className="cursor-pointer select-none text-red-700 font-semibold inline-flex items-center gap-1"
-            title="ลบ PO ได้ทุกสถานะ (รวมที่กำลังดำเนินการ/เสร็จสมบูรณ์) — สำหรับล้างข้อมูลทดสอบ"
-          >
-            <AlertTriangle className="size-3" />
-            บังคับลบทุกสถานะ
-          </label>
-        </div>
+        {/* Force mode toggle — admin/supervisor only (สำหรับล้าง test data)
+            ปิดด้วย feature flag NEXT_PUBLIC_FORCE_DELETE_ENABLED — เปิดเฉพาะตอนต้องใช้ */}
+        {forceDeleteEnabled && (
+          <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 border border-red-200">
+            <Checkbox
+              id="force-mode"
+              checked={forceMode}
+              onCheckedChange={(c) => handleToggleForceMode(c === true)}
+              disabled={pending}
+            />
+            <label
+              htmlFor="force-mode"
+              className="cursor-pointer select-none text-red-700 font-semibold inline-flex items-center gap-1"
+              title="ลบ PO ได้ทุกสถานะ (รวมที่กำลังดำเนินการ/เสร็จสมบูรณ์) — สำหรับล้างข้อมูลทดสอบ"
+            >
+              <AlertTriangle className="size-3" />
+              บังคับลบทุกสถานะ
+            </label>
+          </div>
+        )}
 
         {selected.size > 0 && (
           <button
@@ -170,6 +181,7 @@ export function PoListClient({
           </button>
         )}
       </div>
+      )}
 
       {/* List */}
       {pos.map((po) => {

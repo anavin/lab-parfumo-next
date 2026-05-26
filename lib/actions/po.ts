@@ -383,7 +383,23 @@ export async function bulkDeletePoAction(
   }
 
   const sb = getSupabaseAdmin();
-  const isForce = options?.force === true;
+
+  // Feature flag: force-delete ต้องเปิดผ่าน env (NEXT_PUBLIC_FORCE_DELETE_ENABLED=true)
+  // ปิดไว้ default — กันลบผิด + ใช้เมื่อจำเป็นจริง (เช่น cleanup test data)
+  const forceEnabled =
+    process.env.NEXT_PUBLIC_FORCE_DELETE_ENABLED === "true";
+  const isForce = options?.force === true && forceEnabled;
+  if (options?.force === true && !forceEnabled) {
+    console.warn(
+      `[bulkDelete] user ${user.full_name} attempted force-delete but flag is disabled`,
+    );
+    return {
+      ok: false,
+      error: "Force-delete ถูกปิดอยู่ — ติดต่อ admin เพื่อเปิดผ่าน env",
+      deleted: 0,
+      blocked: 0,
+    };
+  }
 
   // 1) ดึง PO ทั้งหมด — ตรวจ status + เก็บ URLs ของ attachments + delivery images
   //    เพื่อ cleanup storage blobs (กัน orphan files + privacy concern)
