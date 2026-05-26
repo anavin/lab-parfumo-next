@@ -167,10 +167,8 @@ export function SuppliersClient({
     startHardDelTransition(async () => {
       const res = await hardDeleteSupplierAction(hardDelTarget.id);
       if (res.ok) {
-        const unlinked = res.unlinkedPoCount ?? 0;
         toast.success(
-          `🗑️ ลบถาวร ${hardDelTarget.name} แล้ว` +
-            (unlinked > 0 ? ` — unlinked ${unlinked} PO` : ""),
+          `🗑️ ย้าย ${hardDelTarget.name} ไปถังขยะแล้ว — กู้คืนได้ที่ /trash`,
         );
       } else {
         toast.error(res.error ?? "ลบไม่สำเร็จ");
@@ -364,7 +362,7 @@ export function SuppliersClient({
         onConfirm={handleDelete}
       />
 
-      {/* Hard delete confirm — ลบถาวร */}
+      {/* Move to trash confirm */}
       <ConfirmDialog
         open={!!hardDelTarget}
         onOpenChange={(o) => {
@@ -373,36 +371,39 @@ export function SuppliersClient({
             setHardDelPoCount(null);
           }
         }}
-        title={`🗑️ ลบถาวร ${hardDelTarget?.name ?? ""}?`}
+        title={`🗑️ ลบ ${hardDelTarget?.name ?? ""}?`}
         description={
           <div className="space-y-2 text-sm">
             <div>
-              จะลบ Supplier นี้ออกจากระบบ <strong>ถาวร</strong> ไม่สามารถกู้คืนได้
+              Supplier นี้จะถูกย้ายไป <strong>ถังขยะ</strong> — สามารถกู้คืนได้ที่{" "}
+              <Link href="/trash" className="text-primary underline">
+                /trash
+              </Link>
             </div>
             {hardDelPoCount === null ? (
               <div className="text-muted-foreground italic">กำลังตรวจ PO ที่เชื่อมโยง…</div>
             ) : hardDelPoCount > 0 ? (
-              <div className="p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              <div className="p-2.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-xs">
                 <div className="font-bold inline-flex items-center gap-1">
                   <AlertTriangle className="size-3.5" /> มี PO {hardDelPoCount} ใบ link Supplier นี้
                 </div>
                 <div className="mt-1">
-                  หลังลบ — PO เหล่านั้นจะ <strong>คงชื่อ Supplier เดิม</strong> ไว้ (snapshot) แต่
-                  unlink (`supplier_id = null`) — เหมือน PO ที่พิมพ์ชื่อ free-text
+                  PO เหล่านั้นยังคง <strong>link Supplier นี้</strong> ไว้ตามปกติ —
+                  ไม่กระทบจนกว่าจะกด &ldquo;ลบถาวร&rdquo; จากถังขยะ
                 </div>
               </div>
             ) : (
               <div className="text-emerald-700 text-xs">
-                ✓ ไม่มี PO ที่ link Supplier นี้ — ลบได้เลย
+                ✓ ไม่มี PO ที่ link Supplier นี้
               </div>
             )}
-            <div className="text-destructive font-semibold pt-1">
-              ⚠️ ไม่สามารถ undo ได้ — แนะนำใช้ &ldquo;ปิดใช้งาน&rdquo; แทนหากต้องการเก็บประวัติ
+            <div className="text-xs text-muted-foreground pt-1">
+              💡 ถ้าต้องการแค่ &ldquo;ซ่อน&rdquo; จาก dropdown ใช้ปุ่ม &ldquo;ปิดใช้งาน&rdquo; แทน (เก็บประวัติ + อยู่ที่นี่)
             </div>
           </div>
         }
-        confirmText="ลบถาวร"
-        variant="danger"
+        confirmText="ลบ (ไปถังขยะ)"
+        variant="warning"
         loading={hardDelPending}
         onConfirm={handleHardDelete}
       />
@@ -557,8 +558,8 @@ function SupplierRow({
                 <Button
                   size="sm" variant="secondary" onClick={onHardDelete}
                   className="!text-red-700 !bg-red-50 hover:!bg-red-100 !border-red-200"
-                  title="ลบถาวร — ลบ Supplier ออกจาก DB"
-                  aria-label="ลบถาวร"
+                  title="ลบ — ย้ายไปถังขยะ (กู้คืนได้)"
+                  aria-label="ลบ"
                 >
                   <Trash className="size-3.5" />
                 </Button>
@@ -571,7 +572,7 @@ function SupplierRow({
                 <Button
                   size="sm" variant="secondary" onClick={onDelete}
                   className="!text-red-600 hover:!bg-red-50"
-                  title="ปิดใช้งาน — เก็บ record ไว้ใน DB"
+                  title="ปิดใช้งาน — ซ่อนจาก dropdown ตอนสั่ง PO (เก็บประวัติ)"
                   aria-label="ปิดใช้งาน"
                 >
                   <Trash2 className="size-3.5" />
@@ -579,8 +580,8 @@ function SupplierRow({
                 <Button
                   size="sm" variant="secondary" onClick={onHardDelete}
                   className="!text-red-700 !bg-red-50 hover:!bg-red-100 !border-red-200"
-                  title="ลบถาวร — ลบ Supplier ออกจาก DB (ใช้กรณีต้องการทิ้งจริง)"
-                  aria-label="ลบถาวร"
+                  title="ลบ — ย้ายไปถังขยะ (กู้คืนได้)"
+                  aria-label="ลบ"
                 >
                   <Trash className="size-3.5" />
                 </Button>

@@ -107,11 +107,11 @@ export function PoListClient({
       const ids = Array.from(selected);
       const r = await bulkDeletePoAction(ids, { force: forceMode });
       if (r.ok) {
-        let msg = `ลบ ${r.deleted} ใบเรียบร้อย`;
+        let msg = `🗑️ ย้าย ${r.deleted} ใบไปถังขยะ — กู้คืนได้ที่ /trash`;
         if (r.blocked > 0) {
           msg += ` (ข้าม ${r.blocked} ใบที่อยู่ใน workflow active)`;
         }
-        if (forceMode) msg = `🧹 ${msg} (force mode)`;
+        if (forceMode) msg = `🧹 ${msg}`;
         toast.success(msg);
         setSelected(new Set());
         setConfirmOpen(false);
@@ -257,52 +257,42 @@ export function PoListClient({
         onOpenChange={setConfirmOpen}
         title={
           forceMode
-            ? `🧹 บังคับลบ ${selected.size} ใบ PO (force mode)?`
-            : `ลบ ${selected.size} ใบ PO ?`
+            ? `🧹 ลบ ${selected.size} ใบ PO (force mode)?`
+            : `🗑️ ลบ ${selected.size} ใบ PO?`
         }
         description={
           <div className="space-y-1.5">
             <div>
-              จะลบ <strong>{selected.size}</strong> ใบ PO ที่เลือก รวมถึงข้อมูลที่เกี่ยวข้อง:
+              จะย้าย <strong>{selected.size}</strong> ใบ PO ที่เลือกไป <strong>ถังขยะ</strong> —
+              สามารถกู้คืนได้ที่ /trash
             </div>
             <ul className="text-xs list-disc pl-5 space-y-0.5 text-muted-foreground">
-              <li>กิจกรรม + ความคิดเห็น</li>
-              <li>ประวัติการรับของ + รูปภาพ</li>
-              <li>การแจ้งเตือนที่อ้างถึง PO นี้</li>
-              {forceMode && (
-                <>
-                  <li className="text-red-600 font-semibold">Lots ที่สร้างจาก PO เหล่านี้</li>
-                  <li className="text-red-600 font-semibold">withdrawal_lot_usage rows ที่อ้าง lots</li>
-                </>
-              )}
+              <li>กิจกรรม + ความคิดเห็น + ประวัติการรับของ ยังอยู่ใน DB</li>
+              <li>ไฟล์แนบ + รูปการรับของยังไม่ถูกลบ</li>
+              <li>PO จะไม่ปรากฏใน list หลัก จนกว่าจะกู้คืน หรือลบถาวร</li>
             </ul>
             {forceMode && (
-              <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-200 text-red-800 text-xs space-y-1">
+              <div className="mt-2 p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs space-y-1">
                 <div className="font-bold inline-flex items-center gap-1">
                   <AlertTriangle className="size-3.5" />
-                  คำเตือน Force Mode
+                  Force Mode
                 </div>
                 <div>
-                  จะลบ PO ทุกสถานะรวมที่ <strong>สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์</strong>
-                </div>
-                <div>
-                  ❗ <strong>ไม่</strong> rollback stock ของ equipment ที่ deliveries ลด/เพิ่ม — แก้ stock ด้วยตนเองหากจำเป็น
+                  ลบได้ทุกสถานะรวมที่ <strong>สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์</strong>
                 </div>
               </div>
             )}
-            <div className="text-destructive font-semibold mt-2">
-              ⚠️ ไม่สามารถ undo ได้
+            <div className="text-xs text-muted-foreground mt-2">
+              💡 กดลบถาวรในถังขยะเมื่อต้องการลบจริง (จะลบไฟล์ + cascade related rows)
             </div>
           </div>
         }
         confirmText={
           pending
             ? "กำลังลบ..."
-            : forceMode
-              ? `🧹 บังคับลบ ${selected.size} ใบ`
-              : `ลบ ${selected.size} ใบ`
+            : `ลบ ${selected.size} ใบ (ไปถังขยะ)`
         }
-        variant="danger"
+        variant="warning"
         loading={pending}
         onConfirm={handleDelete}
       />

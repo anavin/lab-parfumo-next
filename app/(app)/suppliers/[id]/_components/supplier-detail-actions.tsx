@@ -64,13 +64,11 @@ export function SupplierDetailActions({
     startHardDelTransition(async () => {
       const res = await hardDeleteSupplierAction(supplier.id);
       if (res.ok) {
-        const unlinked = res.unlinkedPoCount ?? 0;
         toast.success(
-          `🗑️ ลบถาวร ${supplier.name} แล้ว` +
-            (unlinked > 0 ? ` — unlinked ${unlinked} PO` : ""),
+          `🗑️ ย้าย ${supplier.name} ไปถังขยะแล้ว — กู้คืนได้ที่ /trash`,
         );
         setConfirmHardDel(false);
-        // กลับไปหน้า list (supplier นี้หายแล้ว)
+        // กลับไปหน้า list (supplier นี้หายจาก list active แล้ว)
         router.push("/suppliers");
         router.refresh();
       } else {
@@ -112,9 +110,9 @@ export function SupplierDetailActions({
           onClick={openHardDelete}
           disabled={pending || hardDelPending}
           className="!text-red-700 !bg-red-50 hover:!bg-red-100 !border-red-200"
-          title="ลบ Supplier ออกจาก DB ถาวร"
+          title="ลบ — ย้ายไปถังขยะ (กู้คืนได้ที่ /trash)"
         >
-          <Trash className="size-3.5" /> ลบถาวร
+          <Trash className="size-3.5" /> ลบ
         </Button>
       </div>
 
@@ -159,36 +157,36 @@ export function SupplierDetailActions({
             setHardDelPoCount(null);
           }
         }}
-        title={`🗑️ ลบถาวร ${supplier.name}?`}
+        title={`🗑️ ลบ ${supplier.name}?`}
         description={
           <div className="space-y-2 text-sm">
             <div>
-              จะลบ Supplier นี้ออกจากระบบ <strong>ถาวร</strong> ไม่สามารถกู้คืนได้
+              Supplier นี้จะถูกย้ายไป <strong>ถังขยะ</strong> — กู้คืนได้ที่ /trash
             </div>
             {hardDelPoCount === null ? (
               <div className="text-muted-foreground italic">กำลังตรวจ PO ที่เชื่อมโยง…</div>
             ) : hardDelPoCount > 0 ? (
-              <div className="p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              <div className="p-2.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-xs">
                 <div className="font-bold inline-flex items-center gap-1">
                   <AlertTriangle className="size-3.5" /> มี PO {hardDelPoCount} ใบ link Supplier นี้
                 </div>
                 <div className="mt-1">
-                  หลังลบ — PO เหล่านั้นจะ <strong>คงชื่อ Supplier เดิม</strong> ไว้ (snapshot) แต่
-                  unlink (supplier_id = null)
+                  PO เหล่านั้นยัง <strong>link Supplier นี้</strong> ไว้ตามปกติ —
+                  ไม่กระทบจนกว่าจะกด &ldquo;ลบถาวร&rdquo; จากถังขยะ
                 </div>
               </div>
             ) : (
               <div className="text-emerald-700 text-xs">
-                ✓ ไม่มี PO ที่ link Supplier นี้ — ลบได้เลย
+                ✓ ไม่มี PO ที่ link Supplier นี้
               </div>
             )}
-            <div className="text-destructive font-semibold pt-1">
-              ⚠️ ไม่สามารถ undo ได้
+            <div className="text-xs text-muted-foreground pt-1">
+              💡 ถ้าต้องการเก็บประวัติแต่ซ่อนจาก dropdown ใช้ &ldquo;ปิดใช้งาน&rdquo; แทน
             </div>
           </div>
         }
-        confirmText="ลบถาวร"
-        variant="danger"
+        confirmText="ลบ (ไปถังขยะ)"
+        variant="warning"
         loading={hardDelPending}
         onConfirm={handleHardDelete}
       />
