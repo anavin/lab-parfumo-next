@@ -439,3 +439,103 @@ export async function restoreSupplierAction(id: string): Promise<ActionResult> {
   revalidateTag("suppliers");
   return { ok: true, supplierId: id };
 }
+
+// ==================================================================
+// Hard delete — ลบ Supplier ออกจาก DB ถาวร
+//
+// ⚠️ ใช้เมื่อ admin มั่นใจว่าไม่ต้องการ record นี้แล้ว (เช่น duplicate, ข้อมูลผิด)
+// - FK: purchase_orders.supplier_id → ON DELETE SET NULL
+//   PO ที่ link supplier นี้ → supplier_id = null (supplier_name snapshot คงเดิม)
+// - Audit: ใช้ console.log (DB log ไม่มีเพราะ row หายแล้ว)
+// ==================================================================
+export interface HardDeleteResult extends ActionResult {
+  /** จำนวน PO ที่ supplier_id ถูก SET NULL หลังลบ */
+  unlinkedPoCount?: number;
+}
+
+/**
+ * Preview — เช็คก่อนลบว่าจะกระทบกี่ PO (อ่านอย่างเดียว ไม่แก้ DB)
+ * ใช้ใน UI confirm dialog เพื่อแสดง warning ที่ถูกต้อง
+ */
+export async function previewSupplierDeleteAction(
+  id: string,
+): Promise<{ ok: boolean; error?: string; supplierName?: string; linkedPoCount?: number }> {
+  const me = await getCurrentUser();
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!id) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const sb = getSupabaseAdmin();
+
+  const { data: sup } = await sb
+    .from("suppliers" as never)
+    .select("name")
+    .eq("id", id)
+    .maybeSingle();
+  const supName = (sup as { name?: string } | null)?.name;
+  if (!supName) return { ok: false, error: "ไม่พบ Supplier" };
+
+  const { count } = await sb
+    .from("purchase_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("supplier_id", id);
+
+  return {
+    ok: true,
+    supplierName: supName,
+    linkedPoCount: count ?? 0,
+  };
+}
+
+export async function hardDeleteSupplierAction(id: string): Promise<HardDeleteResult> {
+  const me = await getCurrentUser();
+  if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!id) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  const sb = getSupabaseAdmin();
+
+  // อ่าน info ก่อนลบ (สำหรับ log)
+  const { data: sup } = await sb
+    .from("suppliers" as never)
+    .select("name")
+    .eq("id", id)
+    .maybeSingle();
+  const supName = (sup as { name?: string } | null)?.name ?? "(ไม่ทราบชื่อ)";
+
+  // นับ PO ที่จะถูก unlink
+  const { count: linkedPoCount } = await sb
+    .from("purchase_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("supplier_id", id);
+
+  const { error } = await sb
+    .from("suppliers" as never)
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("[suppliers] hard delete failed:", error);
+    return { ok: false, error: `ลบไม่สำเร็จ: ${error.message ?? "unknown"}` };
+  }
+
+  console.log(
+    `[suppliers HARD-DELETE] user=${me.full_name} (${me.role}) deleted "${supName}" (${id})` +
+      ` — unlinked ${linkedPoCount ?? 0} PO(s) — supplier_id ของ PO เหล่านั้นถูกตั้งเป็น null`,
+  );
+
+  revalidatePath("/suppliers");
+  revalidatePath("/po");
+  revalidatePath("/po/[id]", "page");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidateTag("suppliers");
+
+  return {
+    ok: true,
+    supplierId: id,
+    unlinkedPoCount: linkedPoCount ?? 0,
+  };
+}

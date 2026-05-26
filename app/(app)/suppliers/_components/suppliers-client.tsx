@@ -9,9 +9,9 @@ import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Plus, Edit2, Trash2, RotateCcw, Search, RefreshCw,
+  Plus, Edit2, Trash2, RotateCcw, Search, RefreshCw, Trash,
   Building2, CheckCircle2, DollarSign, ArrowRight,
-  Phone, Mail, FileText, Trophy, Tag, MapPin,
+  Phone, Mail, FileText, Trophy, Tag, MapPin, AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import { toast } from "@/components/ui/sonner";
 import type { SupplierWithStats, Lookup } from "@/lib/types/db";
 import {
   deleteSupplierAction, restoreSupplierAction, syncAllSupplierSnapshotsAction,
+  hardDeleteSupplierAction, previewSupplierDeleteAction,
 } from "@/lib/actions/suppliers";
 import { SupplierDialog } from "./supplier-dialog";
 
@@ -53,7 +54,10 @@ export function SuppliersClient({
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [delTarget, setDelTarget] = useState<SupplierWithStats | null>(null);
+  const [hardDelTarget, setHardDelTarget] = useState<SupplierWithStats | null>(null);
+  const [hardDelPoCount, setHardDelPoCount] = useState<number | null>(null);
   const [delPending, startDelTransition] = useTransition();
+  const [hardDelPending, startHardDelTransition] = useTransition();
   const [syncPending, startSyncTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -146,6 +150,33 @@ export function SuppliersClient({
       } else {
         toast.error(res.error ?? "เปิดใช้งานไม่สำเร็จ");
       }
+      router.refresh();
+    });
+  }
+
+  // Hard delete — เปิด confirm dialog หลังเช็คจำนวน PO ที่จะ unlink
+  async function openHardDelete(s: SupplierWithStats) {
+    setHardDelTarget(s);
+    setHardDelPoCount(null);
+    // Preview PO count (parallel กับเปิด dialog เพื่อให้ขึ้นทันที)
+    const preview = await previewSupplierDeleteAction(s.id);
+    if (preview.ok) setHardDelPoCount(preview.linkedPoCount ?? 0);
+  }
+  function handleHardDelete() {
+    if (!hardDelTarget) return;
+    startHardDelTransition(async () => {
+      const res = await hardDeleteSupplierAction(hardDelTarget.id);
+      if (res.ok) {
+        const unlinked = res.unlinkedPoCount ?? 0;
+        toast.success(
+          `🗑️ ลบถาวร ${hardDelTarget.name} แล้ว` +
+            (unlinked > 0 ? ` — unlinked ${unlinked} PO` : ""),
+        );
+      } else {
+        toast.error(res.error ?? "ลบไม่สำเร็จ");
+      }
+      setHardDelTarget(null);
+      setHardDelPoCount(null);
       router.refresh();
     });
   }
@@ -280,6 +311,7 @@ export function SuppliersClient({
                 onEdit={() => setEditId(s.id)}
                 onDelete={() => setDelTarget(s)}
                 onRestore={() => handleRestore(s)}
+                onHardDelete={() => openHardDelete(s)}
               />
             ))}
           </div>
@@ -331,6 +363,49 @@ export function SuppliersClient({
         loading={delPending}
         onConfirm={handleDelete}
       />
+
+      {/* Hard delete confirm — ลบถาวร */}
+      <ConfirmDialog
+        open={!!hardDelTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setHardDelTarget(null);
+            setHardDelPoCount(null);
+          }
+        }}
+        title={`🗑️ ลบถาวร ${hardDelTarget?.name ?? ""}?`}
+        description={
+          <div className="space-y-2 text-sm">
+            <div>
+              จะลบ Supplier นี้ออกจากระบบ <strong>ถาวร</strong> ไม่สามารถกู้คืนได้
+            </div>
+            {hardDelPoCount === null ? (
+              <div className="text-muted-foreground italic">กำลังตรวจ PO ที่เชื่อมโยง…</div>
+            ) : hardDelPoCount > 0 ? (
+              <div className="p-2.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                <div className="font-bold inline-flex items-center gap-1">
+                  <AlertTriangle className="size-3.5" /> มี PO {hardDelPoCount} ใบ link Supplier นี้
+                </div>
+                <div className="mt-1">
+                  หลังลบ — PO เหล่านั้นจะ <strong>คงชื่อ Supplier เดิม</strong> ไว้ (snapshot) แต่
+                  unlink (`supplier_id = null`) — เหมือน PO ที่พิมพ์ชื่อ free-text
+                </div>
+              </div>
+            ) : (
+              <div className="text-emerald-700 text-xs">
+                ✓ ไม่มี PO ที่ link Supplier นี้ — ลบได้เลย
+              </div>
+            )}
+            <div className="text-destructive font-semibold pt-1">
+              ⚠️ ไม่สามารถ undo ได้ — แนะนำใช้ &ldquo;ปิดใช้งาน&rdquo; แทนหากต้องการเก็บประวัติ
+            </div>
+          </div>
+        }
+        confirmText="ลบถาวร"
+        variant="danger"
+        loading={hardDelPending}
+        onConfirm={handleHardDelete}
+      />
     </>
   );
 }
@@ -339,7 +414,7 @@ export function SuppliersClient({
 // Supplier Row
 // ==================================================================
 function SupplierRow({
-  supplier: s, isTopSpender, canManage, onEdit, onDelete, onRestore,
+  supplier: s, isTopSpender, canManage, onEdit, onDelete, onRestore, onHardDelete,
 }: {
   supplier: SupplierWithStats;
   isTopSpender: boolean;
@@ -347,6 +422,7 @@ function SupplierRow({
   onEdit: () => void;
   onDelete: () => void;
   onRestore: () => void;
+  onHardDelete: () => void;
 }) {
   const isInactive = !s.is_active;
   const initials = (s.name || "?").trim().slice(0, 2).toUpperCase();
@@ -468,15 +544,25 @@ function SupplierRow({
           </Link>
           {canManage && (
             isInactive ? (
-              <Button
-                size="sm" variant="secondary"
-                onClick={onRestore}
-                className="!text-emerald-700"
-                title="เปิดใช้งานใหม่"
-                aria-label="เปิดใช้งาน"
-              >
-                <RotateCcw className="size-3.5" />
-              </Button>
+              <>
+                <Button
+                  size="sm" variant="secondary"
+                  onClick={onRestore}
+                  className="!text-emerald-700"
+                  title="เปิดใช้งานใหม่"
+                  aria-label="เปิดใช้งาน"
+                >
+                  <RotateCcw className="size-3.5" />
+                </Button>
+                <Button
+                  size="sm" variant="secondary" onClick={onHardDelete}
+                  className="!text-red-700 !bg-red-50 hover:!bg-red-100 !border-red-200"
+                  title="ลบถาวร — ลบ Supplier ออกจาก DB"
+                  aria-label="ลบถาวร"
+                >
+                  <Trash className="size-3.5" />
+                </Button>
+              </>
             ) : (
               <>
                 <Button size="sm" variant="secondary" onClick={onEdit}>
@@ -485,10 +571,18 @@ function SupplierRow({
                 <Button
                   size="sm" variant="secondary" onClick={onDelete}
                   className="!text-red-600 hover:!bg-red-50"
-                  title="ปิดใช้งาน"
+                  title="ปิดใช้งาน — เก็บ record ไว้ใน DB"
                   aria-label="ปิดใช้งาน"
                 >
                   <Trash2 className="size-3.5" />
+                </Button>
+                <Button
+                  size="sm" variant="secondary" onClick={onHardDelete}
+                  className="!text-red-700 !bg-red-50 hover:!bg-red-100 !border-red-200"
+                  title="ลบถาวร — ลบ Supplier ออกจาก DB (ใช้กรณีต้องการทิ้งจริง)"
+                  aria-label="ลบถาวร"
+                >
+                  <Trash className="size-3.5" />
                 </Button>
               </>
             )
