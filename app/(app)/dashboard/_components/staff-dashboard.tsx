@@ -325,14 +325,18 @@ function PersonalHero({
             tone="default"
           />
           <MiniStat
-            href="/po?status=รอจัดซื้อดำเนินการ"
+            // "กำลังดำเนินการ" รวม 3 สถานะ (รอจัดซื้อ + สั่งซื้อแล้ว + กำลังขนส่ง)
+            // /po ไม่ filter multi-status — link ไป /po เฉยๆ ให้ user ใช้ filter chips ต่อ
+            href="/po"
             label="กำลังดำเนินการ"
             value={active}
             unit="ใบ"
             tone={active > 0 ? "warn" : "default"}
           />
           <MiniStat
-            href={`/po?status=${encodeURIComponent("เสร็จสมบูรณ์")}`}
+            // "เสร็จเดือนนี้" รวม "รับของแล้ว" + "เสร็จสมบูรณ์" (ดู filter ใน
+            // computeStats) — link ไป /po เฉยๆ เลี่ยง count mismatch
+            href="/po"
             label="เสร็จเดือนนี้"
             value={completedThisMonth}
             unit="ใบ"

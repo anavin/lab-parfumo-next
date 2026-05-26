@@ -12,8 +12,16 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function EquipmentPage() {
+export default async function EquipmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lowOnly?: string }>;
+}) {
   await requirePrivileged();
+
+  const sp = await searchParams;
+  // ?lowOnly=1 → pre-filter to low-stock (จาก dashboard LowStockAlert click)
+  const initialLowOnly = sp.lowOnly === "1";
 
   const [equipment, categories, pending, units] = await Promise.all([
     getEquipmentList({ activeOnly: false }),
@@ -41,6 +49,7 @@ export default async function EquipmentPage() {
         categories={categories}
         pending={pending}
         units={units}
+        initialLowOnly={initialLowOnly}
       />
     </div>
   );

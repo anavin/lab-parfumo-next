@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PoListClient } from "./_components/po-list-client";
 import { requireUser } from "@/lib/auth/require-user";
 import {
-  getPos, applyPoFilters, type PoFilters, type PoSortKey,
+  getPos, applyPoFilters, sumSpend, type PoFilters, type PoSortKey,
 } from "@/lib/db/po";
 import { PO_STATUSES, type PoStatus } from "@/lib/types/db";
 import { FilterChips } from "./_components/filter-chips";
@@ -81,15 +81,9 @@ export default async function PoListPage({
   const completed = byStatus["เสร็จสมบูรณ์"] ?? 0;
   const problems = byStatus["มีปัญหา"] ?? 0;
 
-  // Total spend (admin only)
-  const totalSpend = isAdmin
-    ? allPos.reduce((s, p) => {
-        if (["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "เสร็จสมบูรณ์"].includes(p.status)) {
-          return s + (p.total ?? 0);
-        }
-        return s;
-      }, 0)
-    : 0;
+  // Total spend (admin only) — ใช้ shared `sumSpend` helper เพื่อให้ตรงกับ
+  // dashboard/reports (เคยมี 3-4 definitions ต่างกัน ทำให้ตัวเลขไม่ match)
+  const totalSpend = isAdmin ? sumSpend(allPos) : 0;
 
   // Parse filters from URL
   const status = (sp.status && (PO_STATUSES as readonly string[]).includes(sp.status))

@@ -53,17 +53,22 @@ export async function GET(req: Request) {
   const pos = (posRaw ?? []) as PurchaseOrder[];
 
   const newPoCount = pos.filter((p) => p.created_at >= startUtc.toISOString() && p.created_at < endUtc.toISOString()).length;
+  // ของที่อยู่ระหว่างขนส่งทั้งหมด (ไม่ใช่แค่วันนี้ — เพราะมาจาก status snapshot)
+  // ตั้งใจสะกดให้ตรงคำว่า "shippedToday" ใน DigestData เพื่อ backward compat
+  // แต่ template label ปรับเป็น "อยู่ระหว่างขนส่ง" — สื่อกับความหมายจริง
   const shippedToday = pos.filter((p) => p.status === "กำลังขนส่ง").length;
   const receivedToday = pos.filter((p) =>
     p.status === "รับของแล้ว" &&
     p.received_date && p.received_date >= startUtc.toISOString().slice(0, 10),
   ).length;
 
-  // Overdue: expected < today and status not received/done/cancel
+  // Overdue: expected < today and not yet received/done/cancel
+  // ตรงกับ dashboard `computeStats.overdueCount` (PENDING_RECEIPT = สั่งซื้อแล้ว + กำลังขนส่ง)
+  // หมายเหตุ: "มีปัญหา" ถือว่ารับของแล้ว → ไม่นับ overdue (ตรงกับ dashboard)
   const today = startOfTodayICT.toISOString().slice(0, 10);
   const overdueCount = pos.filter((p) =>
     p.expected_date && p.expected_date < today &&
-    !["รับของแล้ว", "เสร็จสมบูรณ์", "ยกเลิก", "มีปัญหา"].includes(p.status),
+    ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(p.status),
   ).length;
 
   // Total value of POs created today

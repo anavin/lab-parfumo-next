@@ -17,19 +17,21 @@ import { CategoryManager } from "./category-manager";
 import type { Lookup } from "@/lib/types/db";
 
 export function EquipmentClient({
-  equipment, categories, pending, units,
+  equipment, categories, pending, units, initialLowOnly,
 }: {
   equipment: Equipment[];
   categories: string[];
   pending: Equipment[];
   units: Lookup[];
+  /** Pre-toggle "low stock only" filter — set จาก dashboard LowStockAlert link */
+  initialLowOnly?: boolean;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("ทั้งหมด");
   const [sortBy, setSortBy] = useState<"name" | "stock_low" | "reorder">("name");
-  const [showLowOnly, setShowLowOnly] = useState(false);
+  const [showLowOnly, setShowLowOnly] = useState(initialLowOnly ?? false);
 
   const filtered = useMemo(() => {
     let out = equipment;

@@ -361,7 +361,7 @@ export async function sendDailyDigest(opts: {
             <tr><td colspan="3" style="height:8px;"></td></tr>
             <tr>
               <td style="padding:14px; background:#F1F5F9; border-radius:10px; vertical-align:top;">
-                <div style="font-size:11px; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">🚚 ส่งของ</div>
+                <div style="font-size:11px; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">🚚 อยู่ระหว่างขนส่ง</div>
                 <div style="font-size:24px; font-weight:700; color:#1E293B; margin-top:4px;">${d.shippedToday}</div>
               </td>
               <td style="width:8px;"></td>
@@ -391,7 +391,7 @@ export async function sendDailyDigest(opts: {
 
 📥 สร้างใหม่: ${d.newPoCount} ใบ
 💰 ยอดรวมวันนี้: ${fmt(d.totalValueToday)}
-🚚 ส่งของ: ${d.shippedToday}
+🚚 อยู่ระหว่างขนส่ง: ${d.shippedToday}
 📦 รับของ: ${d.receivedToday}
 ${d.overdueCount > 0 ? `⚠️ เลยกำหนด: ${d.overdueCount} ใบ\n` : ""}${d.pendingApprovalCount > 0 ? `⚠️ รออนุมัติ: ${d.pendingApprovalCount}\n` : ""}
 Top รายการ:

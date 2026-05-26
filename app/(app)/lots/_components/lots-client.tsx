@@ -50,7 +50,9 @@ export function LotsClient({
   }
 
   function setStatus(s: LotStatus | "all") {
-    goto({ status: s === "all" ? undefined : s, expiring: undefined });
+    // เคลียร์ search + expiring → ตัวเลขใน KPI card (มาจาก getLotStatusCounts
+    // ที่ไม่ filter) จะตรงกับ list ที่แสดงหลัง click
+    goto({ status: s === "all" ? undefined : s, expiring: undefined, q: undefined });
   }
 
   function setExpiring(days: number) {

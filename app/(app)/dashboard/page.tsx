@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { requireUser } from "@/lib/auth/require-user";
 import {
   getPos, getPosPendingReceipt, computeStats, pickActionItems,
-  buildMonthlyTrend, topSuppliers,
+  buildMonthlyTrend, topSuppliers, sumSpend,
 } from "@/lib/db/po";
 import { getLowStockEquipment } from "@/lib/db/equipment";
 import { getExpiringSoonCount } from "@/lib/db/lots";
@@ -265,7 +265,10 @@ export default async function DashboardPage() {
               </div>
               {actionItems.length > 0 && (
                 <Link
-                  href="/po?status=รอจัดซื้อดำเนินการ"
+                  // actionItems รวม รอจัดซื้อ + มีปัญหา + overdue/upcoming —
+                  // link ไป /po (no filter) ให้ user เห็นรายการเต็ม + ใช้
+                  // filter chips ต่อ (กัน count mismatch กับ destination)
+                  href="/po"
                   className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
                 >
                   ดูทั้งหมด
@@ -676,9 +679,10 @@ function InsightCards({
   pos: PurchaseOrder[];
 }) {
   const sup = topSuppliers(pos, 1)[0];
-  const totalSpend = pos
-    .filter((p) => p.supplier_name && p.total)
-    .reduce((s, p) => s + (p.total ?? 0), 0);
+  // ใช้ sumSpend helper เพื่อ consistency กับ /po และ /reports
+  // (เดิม count ทุก PO ที่มี supplier+total — รวม ยกเลิก/รอจัดซื้อ — ทำให้
+  // ตัวเลข % ของ top supplier เพี้ยน)
+  const totalSpend = sumSpend(pos);
   const supPct = sup && totalSpend ? (sup.spend / totalSpend) * 100 : 0;
 
   const trendUp = stats.spendGrowth >= 0;

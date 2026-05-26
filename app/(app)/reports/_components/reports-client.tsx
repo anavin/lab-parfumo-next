@@ -100,7 +100,13 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
     [pos, start, end],
   );
 
-  const valid = filtered.filter((p) => p.status !== "ยกเลิก");
+  // "valid" = PO ที่ commit ค่าใช้จ่ายแล้ว — ตรงกับ COUNTED_FOR_SPEND ใน lib/db/po.ts
+  // เดิม filter เฉพาะ != "ยกเลิก" ทำให้ รอจัดซื้อ ติดเข้ามา → ตัวเลข total spend
+  // ไม่ตรงกับ dashboard/po ที่ใช้ sumSpend()
+  const COUNTED_STATUSES: PoStatus[] = [
+    "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์",
+  ];
+  const valid = filtered.filter((p) => COUNTED_STATUSES.includes(p.status));
 
   // Previous period stats for trend
   const prevValid = useMemo(() => {
@@ -109,7 +115,8 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
         const d = (p.created_at ?? "").slice(0, 10);
         return d >= prevRange.start && d <= prevRange.end;
       })
-      .filter((p) => p.status !== "ยกเลิก");
+      .filter((p) => COUNTED_STATUSES.includes(p.status));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos, prevRange]);
 
   const totalOrders = filtered.length;

@@ -22,6 +22,23 @@ const COUNTED_FOR_SPEND: PoStatus[] = [
   "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์",
 ];
 
+/**
+ * รวมยอดเงินของ PO ที่ "เกิด commitment การใช้จ่ายแล้ว" — เพื่อใช้สำหรับ
+ * total spend / report / KPI ทั่วระบบ
+ *
+ * นับ status: สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์
+ * (ตัด: รอจัดซื้อ — ยังไม่ commit, ยกเลิก — ไม่เกิดค่าใช้จ่ายจริง)
+ *
+ * Single source of truth — ใช้แทน inline reduce ในทุกหน้าเพื่อกัน drift
+ */
+export function sumSpend(pos: Pick<PurchaseOrder, "status" | "total">[]): number {
+  let total = 0;
+  for (const p of pos) {
+    if (COUNTED_FOR_SPEND.includes(p.status)) total += p.total ?? 0;
+  }
+  return total;
+}
+
 interface GetPosOpts {
   userId?: string;
   role?: Role;
@@ -82,9 +99,13 @@ export interface DashboardStats {
 
 export function computeStats(pos: PurchaseOrder[]): DashboardStats {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const weekAgo = new Date(now.getTime() - 7 * 86400_000).toISOString().slice(0, 10);
-  const upcomingCutoff = new Date(now.getTime() + 3 * 86400_000).toISOString().slice(0, 10);
+  // ใช้ Bangkok-shifted ISO date — เลี่ยง bug ที่ตอนเช้า ICT (00:00–07:00)
+  // toISOString() จะคืน yesterday-UTC → ทำให้ overdue/upcoming/this-week
+  // เพี้ยน 1 วัน (เคยแก้ที่ ActionRow แล้ว — ที่นี่แก้แบบเดียวกัน)
+  const ictNow = now.getTime() + 7 * 3600_000;
+  const today = new Date(ictNow).toISOString().slice(0, 10);
+  const weekAgo = new Date(ictNow - 7 * 86400_000).toISOString().slice(0, 10);
+  const upcomingCutoff = new Date(ictNow + 3 * 86400_000).toISOString().slice(0, 10);
 
   const byStatus: Record<string, number> = {};
   let pending = 0;
