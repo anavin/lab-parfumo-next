@@ -42,3 +42,26 @@ export async function requireAdmin(): Promise<User> {
 export function isPrivileged(user: User | null | undefined): boolean {
   return !!user && (user.role === "admin" || user.role === "supervisor");
 }
+
+/**
+ * Server-action helper — return error result instead of redirecting
+ * (redirect() ใน action จะ throw NEXT_REDIRECT exception ที่ client เข้าใจไม่ตรง)
+ *
+ * Usage:
+ *   const auth = await requirePrivilegedAction();
+ *   if (!auth.ok) return { ok: false, error: auth.error };
+ *   const me = auth.user;
+ */
+export async function requirePrivilegedAction(): Promise<
+  | { ok: true; user: User }
+  | { ok: false; error: string }
+> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
+  }
+  if (user.role !== "admin" && user.role !== "supervisor") {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  return { ok: true, user };
+}

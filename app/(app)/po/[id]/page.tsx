@@ -14,7 +14,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import {
   getPoById, getPoDeliveries,
 } from "@/lib/db/po";
-import { getSupplierOptions } from "@/lib/db/suppliers";
+import { getSupplierOptions, getSupplierTrashedStatus } from "@/lib/db/suppliers";
 import { getEquipmentById } from "@/lib/db/equipment";
 import { getLookups } from "@/lib/db/lookups";
 import type { Equipment, Lookup } from "@/lib/types/db";
@@ -100,14 +100,21 @@ export default async function PoViewPage({
       : Promise.resolve([[], [], []]);
 
   // Activities + Comments stream via Suspense (defer fetch — see below)
+  // Supplier trashed status — ตรวจถ้า PO link supplier_id อยู่ → แสดง state ถ้า trash
+  const supplierStatusP = isAdmin && po.supplier_id
+    ? getSupplierTrashedStatus(po.supplier_id)
+    : Promise.resolve({ exists: true, trashed: false, name: null as string | null });
+
   const [
     deliveries, supplierOptions, equipmentList,
     [supplierCategories, banks, paymentTerms],
+    supplierStatus,
   ] = await Promise.all([
     getPoDeliveries(po.id),
     isAdmin ? getSupplierOptions() : Promise.resolve([]),
     Promise.all(eqIds.map((id) => getEquipmentById(id))),
     lookupsP,
+    supplierStatusP,
   ]);
 
   // Build equipment lookup map (filter nulls)
@@ -210,7 +217,7 @@ export default async function PoViewPage({
                 <SectionTitle icon={<Truck className="h-4 w-4" />}>Supplier</SectionTitle>
                 {po.supplier_name ? (
                   <>
-                    {po.supplier_id ? (
+                    {po.supplier_id && supplierStatus.exists && !supplierStatus.trashed ? (
                       <Link
                         href={`/suppliers/${po.supplier_id}`}
                         className="font-bold text-slate-900 hover:text-primary inline-flex items-center gap-1.5 group"
@@ -219,6 +226,18 @@ export default async function PoViewPage({
                         {po.supplier_name}
                         <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </Link>
+                    ) : po.supplier_id && supplierStatus.trashed ? (
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-900 inline-flex items-center gap-1.5">
+                          {po.supplier_name}
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                            🗑️ ในถังขยะ
+                          </span>
+                        </div>
+                        <Link href="/trash" className="text-[11px] text-amber-600 hover:text-amber-800 underline inline-flex items-center gap-0.5">
+                          กู้คืน Supplier ที่ /trash
+                        </Link>
+                      </div>
                     ) : (
                       <div className="font-bold text-slate-900">{po.supplier_name}</div>
                     )}

@@ -559,18 +559,43 @@ export async function restoreSupplierFromTrashAction(id: string): Promise<Action
   if (!id) return { ok: false, error: "ข้อมูลไม่ครบ" };
 
   const sb = getSupabaseAdmin();
-  const { error } = await sb
+
+  // Race protection — ตรวจก่อนว่ายังอยู่ในถังขยะจริง
+  const { data: sup } = await sb
     .from("suppliers" as never)
-    .update({ deleted_at: null, deleted_by_name: null } as never)
+    .select("name, deleted_at")
     .eq("id", id)
-    .not("deleted_at", "is", null);
+    .maybeSingle();
+  type SupRow = { name: string; deleted_at: string | null };
+  const supRow = sup as SupRow | null;
+  if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+  if (!supRow.deleted_at) {
+    return {
+      ok: false,
+      error: "Supplier ถูกกู้คืนโดยผู้ใช้คนอื่นแล้ว — refresh หน้าเพื่อดูข้อมูลล่าสุด",
+    };
+  }
+
+  const { error, count } = await sb
+    .from("suppliers" as never)
+    .update({ deleted_at: null, deleted_by_name: null } as never, { count: "exact" })
+    .eq("id", id);
   if (error) {
     console.error("[suppliers] restore from trash failed:", error);
     return { ok: false, error: "กู้คืนไม่สำเร็จ" };
   }
-  console.log(`[suppliers RESTORE] user=${me.full_name} restored supplier ${id} from trash`);
+  if (!count) {
+    return { ok: false, error: "ไม่พบ Supplier ที่กู้คืน" };
+  }
+  console.log(`[suppliers RESTORE] user=${me.full_name} restored "${supRow.name}" (${id}) from trash`);
 
+  // Comprehensive cache invalidation — supplier กลับมาแสดงในหน้าอื่นๆ
   revalidatePath("/suppliers");
+  revalidatePath(`/suppliers/${id}`);
+  revalidatePath("/po");
+  revalidatePath("/po/[id]", "page");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
   revalidatePath("/trash");
   revalidateTag("suppliers");
   return { ok: true, supplierId: id };

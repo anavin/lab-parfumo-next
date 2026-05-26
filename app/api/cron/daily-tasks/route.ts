@@ -83,6 +83,7 @@ export async function GET(req: Request) {
     .in("status", ["รับของแล้ว", "มีปัญหา"])
     .lte("received_date", cutoffDate)
     .or(`last_close_reminder_sent_at.is.null,last_close_reminder_sent_at.lte.${reminderCutoff}`)
+    .is("deleted_at", null) // exclude trashed POs
     .order("received_date", { ascending: true })
     .limit(200);
 
@@ -229,6 +230,7 @@ export async function GET(req: Request) {
       .select("id, po_number, status, items, created_by, created_by_name, created_at")
       .eq("status", "รอจัดซื้อดำเนินการ")
       .lte("created_at", oneDayAgoIso)
+      .is("deleted_at", null) // exclude trashed
       .order("created_at", { ascending: true })
       .limit(200);
 
@@ -238,6 +240,7 @@ export async function GET(req: Request) {
       .select("id, po_number, status, items, created_by, created_by_name, created_at, updated_at")
       .eq("status", "มีปัญหา")
       .lte("updated_at", oneDayAgoIso)
+      .is("deleted_at", null) // exclude trashed
       .order("updated_at", { ascending: true })
       .limit(200);
 

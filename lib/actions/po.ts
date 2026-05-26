@@ -403,9 +403,10 @@ export async function bulkDeletePoAction(
 
   // 1) ดึง PO ทั้งหมด — ตรวจ status + เก็บ URLs ของ attachments + delivery images
   //    เพื่อ cleanup storage blobs (กัน orphan files + privacy concern)
+  //    + created_by เพื่อ notify creator
   const { data: pos } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status, attachment_urls")
+    .select("id, po_number, status, attachment_urls, created_by")
     .in("id", poIds);
 
   type Row = {
@@ -413,6 +414,7 @@ export async function bulkDeletePoAction(
     po_number: string;
     status: PoStatus;
     attachment_urls: PoAttachment[] | null;
+    created_by: string | null;
   };
   const rows = (pos ?? []) as Row[];
 
@@ -491,6 +493,40 @@ export async function bulkDeletePoAction(
     }
   }
 
+  // Audit log — เขียน activity ของแต่ละ PO (visible ใน /audit page)
+  try {
+    const activities = deletable.map((p) => ({
+      po_id: p.id,
+      user_name: user.full_name,
+      user_role: user.role,
+      action: "trashed",
+      description: `ย้ายไปถังขยะ${isForce ? " (force mode)" : ""} — สถานะตอนลบ: ${p.status}`,
+    }));
+    if (activities.length > 0) {
+      await sb.from("po_activities" as never).insert(activities as never);
+    }
+  } catch (e) {
+    console.warn("[bulkDelete] activity log failed:", e);
+  }
+
+  // Notify creators (in-app) — ถ้าไม่ใช่คนลบเอง → creator จะรู้ว่า PO ของตัวเองถูกย้ายไปถังขยะ
+  // (in-app only — ไม่ส่ง email เพราะถังขยะกู้คืนได้ ไม่ critical เท่ายกเลิก)
+  try {
+    const notifications = deletable
+      .filter((p) => p.created_by && p.created_by !== user.id)
+      .map((p) => ({
+        user_id: p.created_by!,
+        po_id: p.id,
+        title: `🗑️ ${p.po_number} ถูกย้ายไปถังขยะ`,
+        message: `โดย ${user.full_name} — กู้คืนได้ที่ /trash`,
+      }));
+    if (notifications.length > 0) {
+      await sb.from("notifications").insert(notifications as never);
+    }
+  } catch (e) {
+    console.warn("[bulkDelete] notify creators failed:", e);
+  }
+
   console.log(
     `[bulkDelete TRASH${isForce ? " FORCE" : ""}] user=${user.full_name} (${user.role}) moved ${deletable.length} PO(s) to trash: ${
       deletable.map((p) => `${p.po_number}(${p.status})`).join(", ")
@@ -530,21 +566,58 @@ export async function restorePoFromTrashAction(
   if (poIds.length > 100) return { ok: false, error: "กู้คืนสูงสุด 100 ใบ/ครั้ง" };
 
   const sb = getSupabaseAdmin();
+  // อ่าน PO ที่จะกู้คืนก่อน (สำหรับ activity log + race check)
+  const { data: rowsToRestore } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status")
+    .in("id", poIds)
+    .not("deleted_at", "is", null);
+  type RestoreRow = { id: string; po_number: string; status: string };
+  const validIds = ((rowsToRestore ?? []) as RestoreRow[]).map((r) => r.id);
+
+  // Race protection — ถ้าไม่มีอะไรอยู่ในถังขยะตามที่เลือก → คนอื่นกู้ไปก่อนแล้ว
+  if (validIds.length === 0) {
+    return {
+      ok: false,
+      error: "PO ทุกใบที่เลือกถูกกู้คืนโดยผู้ใช้คนอื่นแล้ว — refresh หน้าเพื่อดูข้อมูลล่าสุด",
+    };
+  }
+
   const { error, count } = await sb
     .from("purchase_orders")
     .update({ deleted_at: null, deleted_by_name: null } as never, { count: "exact" })
-    .in("id", poIds)
-    .not("deleted_at", "is", null);
+    .in("id", validIds);
   if (error) {
     console.error("[po restoreFromTrash] failed:", error);
     return { ok: false, error: "กู้คืนไม่สำเร็จ" };
   }
 
+  // Audit log — เขียน activity ให้แต่ละ PO
+  try {
+    const activities = ((rowsToRestore ?? []) as RestoreRow[]).map((p) => ({
+      po_id: p.id,
+      user_name: user.full_name,
+      user_role: user.role,
+      action: "restored",
+      description: `กู้คืนจากถังขยะ — สถานะ: ${p.status}`,
+    }));
+    if (activities.length > 0) {
+      await sb.from("po_activities" as never).insert(activities as never);
+    }
+  } catch (e) {
+    console.warn("[po restoreFromTrash] activity log failed:", e);
+  }
+
   console.log(`[po RESTORE] user=${user.full_name} restored ${count ?? 0} PO(s) from trash`);
 
+  // Comprehensive cache invalidation (match bulkDelete revalidate list)
   revalidatePath("/po");
   revalidatePath("/po/[id]", "page");
+  revalidatePath("/po/pending-receipt");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidatePath("/audit");
+  revalidatePath("/lots");
   revalidatePath("/trash");
   return { ok: true, restored: count ?? 0 };
 }
@@ -654,7 +727,9 @@ export async function permanentDeletePoAction(
 
   revalidatePath("/trash");
   revalidatePath("/po");
+  revalidatePath("/po/pending-receipt");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
   revalidatePath("/audit");
   revalidatePath("/lots");
 
@@ -662,15 +737,27 @@ export async function permanentDeletePoAction(
 }
 
 export async function closePoAction(poId: string): Promise<ActionResult> {
+  // Permission: creator + privileged (admin/supervisor) เท่านั้น
+  // (เดิม: ไม่มี role gate — staff คนใดๆ ก็เรียกได้)
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
+
   // Workflow gate: ปิดงานได้เฉพาะหลังจากรับของแล้วเท่านั้น
-  // ก่อนหน้า: ปิดได้จากทุก state (แม้ draft) → audit "BROKEN"
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("status")
+    .select("status, created_by, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
+  // Permission check: privileged หรือ creator
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  if (!isPrivileged && po.created_by !== user.id) {
+    return { ok: false, error: "คุณไม่ใช่เจ้าของ PO นี้" };
+  }
   if (!CLOSEABLE_STATUSES.includes(po.status as PoStatus)) {
     return {
       ok: false,
@@ -771,10 +858,13 @@ export async function cancelPoAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("created_by, status")
+    .select("created_by, status, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   // Permission: requester ยกเลิกได้เฉพาะของตัวเอง
   if (user.role === "requester" && po.created_by !== user.id) {
@@ -840,6 +930,9 @@ export async function revertStatusAction(
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   const currentStatus = po.status as PoStatus;
   const prevStatus = STATUS_PREDECESSORS[currentStatus];
@@ -1186,10 +1279,13 @@ export async function addCommentAction(
   //  - Requester: เฉพาะ PO ของตัวเอง หรือ PO ที่ status >= "สั่งซื้อแล้ว" (team-visible)
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("created_by, status")
+    .select("created_by, status, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   const isPrivileged = user.role === "admin" || user.role === "supervisor";
   const isCreator = po.created_by === user.id;
@@ -1238,7 +1334,7 @@ export async function addPoAttachmentsAction(
   const sb = getSupabaseAdmin();
   const { data: po, error: selectErr } = await sb
     .from("purchase_orders")
-    .select("id, attachment_urls, po_number, created_by, status")
+    .select("id, attachment_urls, po_number, created_by, status, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (selectErr) {
@@ -1248,6 +1344,9 @@ export async function addPoAttachmentsAction(
   if (!po) {
     console.error(`[po addPoAttachmentsAction] PO not found with id=${poId}`);
     return { ok: false, error: `ไม่พบใบ PO (id=${poId.slice(0, 8)}...)` };
+  }
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
   }
 
   // Permission gate: privileged หรือ creator เท่านั้น
@@ -1301,10 +1400,13 @@ export async function removePoAttachmentAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("attachment_urls, created_by, status")
+    .select("attachment_urls, created_by, status, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   // Permission gate: privileged หรือ creator เท่านั้น
   const isPrivileged = user.role === "admin" || user.role === "supervisor";
@@ -1358,20 +1460,22 @@ export async function linkSupplierToPoAction(
   }
 
   const sb = getSupabaseAdmin();
-  // Sanity check: supplier มีจริง + active
+  // Sanity check: supplier มีจริง + active + ไม่อยู่ในถังขยะ
   const { data: sup } = await sb
     .from("suppliers" as never)
-    .select("id, name, is_active")
+    .select("id, name, is_active, deleted_at")
     .eq("id", supplierId)
+    .is("deleted_at", null)
     .maybeSingle();
-  type SupRow = { id: string; name: string; is_active: boolean };
+  type SupRow = { id: string; name: string; is_active: boolean; deleted_at: string | null };
   const supRow = sup as SupRow | null;
-  if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+  if (!supRow) return { ok: false, error: "ไม่พบ Supplier (หรืออยู่ในถังขยะ)" };
 
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, supplier_name, supplier_id")
+    .select("id, po_number, supplier_name, supplier_id, deleted_at")
     .eq("id", poId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
 
@@ -1455,10 +1559,13 @@ export async function updateProcurementNotesAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status, procurement_notes")
+    .select("id, po_number, status, procurement_notes, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
   if (po.status === "ยกเลิก") {
     return { ok: false, error: "แก้ไขหมายเหตุไม่ได้ — PO ถูกยกเลิกแล้ว" };
   }
@@ -1518,13 +1625,16 @@ export async function setPoSupplierAction(
 
   const sb = getSupabaseAdmin();
 
-  // ตรวจสอบ PO มีจริง
+  // ตรวจสอบ PO มีจริง + ไม่อยู่ในถังขยะ
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status, supplier_name, supplier_id")
+    .select("id, po_number, status, supplier_name, supplier_id, deleted_at")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
   if (po.status === "ยกเลิก") {
     return { ok: false, error: "PO ถูกยกเลิกแล้ว — แก้ไขไม่ได้" };
   }
@@ -1535,15 +1645,16 @@ export async function setPoSupplierAction(
   const oldId = po.supplier_id;
 
   if (opts.supplierId) {
-    // โหมด: link to existing supplier
+    // โหมด: link to existing supplier (exclude trashed)
     const { data: sup } = await sb
       .from("suppliers" as never)
-      .select("id, name, is_active")
+      .select("id, name, is_active, deleted_at")
       .eq("id", opts.supplierId)
+      .is("deleted_at", null)
       .maybeSingle();
-    type SupRow = { id: string; name: string; is_active: boolean };
+    type SupRow = { id: string; name: string; is_active: boolean; deleted_at: string | null };
     const supRow = sup as SupRow | null;
-    if (!supRow) return { ok: false, error: "ไม่พบ Supplier" };
+    if (!supRow) return { ok: false, error: "ไม่พบ Supplier (หรืออยู่ในถังขยะ)" };
     newSupplierId = supRow.id;
     newSupplierName = supRow.name;
   } else {
@@ -1820,6 +1931,9 @@ export async function updateProcurementAction(
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   const items = (po.items ?? []) as PoItem[];
   if (input.itemUpdates.length !== items.length) {
@@ -1900,6 +2014,7 @@ export async function updateProcurementAction(
 
   // ค้นหา supplier_id จาก name (case-insensitive) — link FK เพื่อ PO history
   // ถ้าไม่เจอ → supplier_id = null (admin ต้อง create supplier ใน /suppliers ก่อน)
+  // ไม่ match suppliers ที่อยู่ในถังขยะ — เลี่ยง link ไปยัง supplier ที่ถูกลบ
   let supplierId: string | null = null;
   const supplierName = input.supplierName.trim();
   if (supplierName) {
@@ -1907,6 +2022,7 @@ export async function updateProcurementAction(
       .from("suppliers" as never)
       .select("id")
       .ilike("name", supplierName)
+      .is("deleted_at", null)
       .limit(1)
       .maybeSingle();
     supplierId = ((matched as { id: string } | null)?.id) ?? null;
@@ -2012,6 +2128,9 @@ export async function addDeliveryAction(
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
 
   // Note: ทุก user (admin + staff) สามารถกดรับสินค้าได้บน PO ใดๆ ก็ได้
   // ผู้กดรับจะถูกบันทึกใน received_by_name ด้านล่าง

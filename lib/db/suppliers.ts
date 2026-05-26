@@ -66,6 +66,26 @@ export const getSupplierById = cache(
   },
 );
 
+/** ตรวจ Supplier ว่ายังอยู่ใน DB หรือถูกลบไปแล้ว — ไม่ filter deleted_at
+ *  ใช้ใน PO detail page เพื่อแสดง "ถูกลบ (ในถังขยะ)" inline state */
+export const getSupplierTrashedStatus = cache(
+  async (id: string): Promise<{ exists: boolean; trashed: boolean; name: string | null }> => {
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("suppliers" as never)
+      .select("name, deleted_at")
+      .eq("id", id)
+      .maybeSingle();
+    const row = data as { name?: string; deleted_at?: string | null } | null;
+    if (!row) return { exists: false, trashed: false, name: null };
+    return {
+      exists: true,
+      trashed: !!row.deleted_at,
+      name: row.name ?? null,
+    };
+  },
+);
+
 /**
  * ทุก supplier พร้อม stats (PO count + spend)
  * ใช้ใน /suppliers list page — คำนวณจาก PO data (exclude trashed POs + suppliers)

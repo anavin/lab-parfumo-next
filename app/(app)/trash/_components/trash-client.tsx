@@ -227,7 +227,7 @@ export function TrashClient({
               <li>กิจกรรม + ความคิดเห็น + ประวัติการรับของ</li>
               <li>ไฟล์แนบ + รูปการรับของ (Storage)</li>
               <li>การแจ้งเตือนที่อ้างถึง PO นี้</li>
-              <li>Lots ที่สร้างจาก PO นี้ — supplier_id และ po_id จะถูก set NULL (preserve lot history)</li>
+              <li>Lots ที่สร้างจาก PO นี้ — <code>po_id</code> จะถูกตั้งเป็น NULL (lot history ยังอยู่)</li>
             </ul>
             <div className="text-destructive font-semibold pt-1">
               ⚠️ ไม่สามารถ undo ได้ — แนะนำใช้ &ldquo;กู้คืน&rdquo; ถ้ายังไม่แน่ใจ
