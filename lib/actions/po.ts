@@ -1541,6 +1541,94 @@ export async function linkSupplierToPoAction(
 //             เป็น admin-only field อยู่แล้ว (staff มองไม่เห็น)
 // Status gate: ห้ามแก้ตอน PO ถูก "ยกเลิก" (terminal — preserve audit trail)
 // ==================================================================
+// ==================================================================
+// Update expected delivery date — แก้ "วันที่คาดว่าจะได้รับ" หลังสั่งไปแล้ว
+//
+// Use case: supplier เลื่อนส่ง / อัปเดต ETA ใหม่
+// Permission: privileged (admin/supervisor)
+// Status gate: เฉพาะ "สั่งซื้อแล้ว" / "กำลังขนส่ง" (ในระหว่างรอของ)
+//   — รอจัดซื้อ: ตั้งตอน order, ยกเลิก/เสร็จ/รับแล้ว: irrelevant
+// ==================================================================
+export async function updateExpectedDateAction(
+  poId: string,
+  expectedDate: string,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poId) return { ok: false, error: "ข้อมูลไม่ครบ" };
+
+  // Validate date — strict ISO YYYY-MM-DD
+  if (!expectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(expectedDate)) {
+    return { ok: false, error: "รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)" };
+  }
+  const d = new Date(expectedDate + "T00:00:00.000Z");
+  if (isNaN(d.getTime())) {
+    return { ok: false, error: "วันที่ไม่ถูกต้อง" };
+  }
+
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, expected_date, created_by, deleted_at")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
+  const EDITABLE_STATUSES: PoStatus[] = ["สั่งซื้อแล้ว", "กำลังขนส่ง"];
+  if (!EDITABLE_STATUSES.includes(po.status as PoStatus)) {
+    return {
+      ok: false,
+      error: `แก้วันที่ได้เฉพาะ PO ที่ "สั่งซื้อแล้ว" หรือ "กำลังขนส่ง" — สถานะปัจจุบัน "${po.status}"`,
+    };
+  }
+
+  const oldDate = po.expected_date ?? null;
+  if (oldDate === expectedDate) {
+    return { ok: true, poId }; // idempotent
+  }
+
+  const { error } = await sb
+    .from("purchase_orders")
+    .update({ expected_date: expectedDate, updated_at: new Date().toISOString() })
+    .eq("id", poId);
+  if (error) {
+    console.error("[po updateExpectedDate] failed:", error);
+    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  await logActivity(
+    poId,
+    user.full_name,
+    user.role,
+    "expected_date_changed",
+    `แก้วันที่คาดว่าจะได้รับ: ${oldDate ?? "(ไม่ระบุ)"} → ${expectedDate}`,
+  );
+
+  // Notify creator (in-app) ถ้าไม่ใช่คนแก้เอง — ETA เปลี่ยนเป็นข้อมูลที่ creator ควรรู้
+  try {
+    if (po.created_by && po.created_by !== user.id) {
+      await sb.from("notifications").insert({
+        user_id: po.created_by,
+        po_id: poId,
+        title: `📅 ${po.po_number} อัปเดตวันที่คาดว่าจะได้รับ`,
+        message: `เป็น ${expectedDate} โดย ${user.full_name}`,
+      } as never);
+    }
+  } catch (e) {
+    console.warn("[po updateExpectedDate] notify failed:", e);
+  }
+
+  revalidatePath(`/po/${poId}`);
+  revalidatePath("/po");
+  revalidatePath("/po/pending-receipt");
+  revalidatePath("/dashboard");
+  return { ok: true, poId };
+}
+
 export async function updateProcurementNotesAction(
   poId: string,
   notes: string,

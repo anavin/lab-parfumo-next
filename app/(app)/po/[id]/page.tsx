@@ -25,6 +25,7 @@ import { DeliveriesList } from "./_components/deliveries-list";
 import { LinkSupplierButton } from "./_components/link-supplier-button";
 import { ProcurementNotesCard } from "./_components/procurement-notes-card";
 import { EditPoSupplierButton } from "./_components/edit-po-supplier-button";
+import { EditableExpectedDate } from "./_components/editable-expected-date";
 import {
   PoCommentsSection,
   PoCommentsSectionSkeleton,
@@ -289,10 +290,12 @@ export default async function PoViewPage({
             <dl className="space-y-1.5 text-sm">
               <DateRow label="สร้าง" value={fmtDate(po.created_at)} />
               {po.ordered_date && <DateRow label="สั่ง supplier" value={fmtDate(po.ordered_date)} />}
-              {po.expected_date && (
-                <DateRow
-                  label="คาดว่าจะได้รับ"
-                  value={fmtDate(po.expected_date)}
+              {/* คาดว่าจะได้รับ — แก้ได้ (admin/supervisor + สั่งซื้อแล้ว/กำลังขนส่ง) */}
+              {(po.expected_date || ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(po.status)) && (
+                <EditableExpectedDate
+                  poId={po.id}
+                  initialDate={po.expected_date}
+                  canEdit={isAdmin && ["สั่งซื้อแล้ว", "กำลังขนส่ง"].includes(po.status)}
                   highlight={expectedWarning?.tone}
                 />
               )}
