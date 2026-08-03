@@ -39,22 +39,13 @@ function registerFontOnce() {
 // Use \u escape sequences (not literal Thai chars) so that Next.js/turbopack
 // minifier and any transport encoding preserves the exact codepoints.
 const THAI_RANGE = /[\u0E00-\u0E7F]/;
-const ZWSP = "\u200B";
-let _safeThaiDebugLogged = false;
+// Prepend 2\u00D7 ZWSP as extra buffer \u2014 single ZWSP wasn't enough on Vercel:
+// even with ZWSP + \u0E1D + \u0E32, both ZWSP AND \u0E1D still got dropped by the shaper.
+// Double ZWSP should sacrifice both to the shaper and preserve real \u0E1D.
+const ZWSP2 = "\u200B\u200B";
 function safeThai(s: string | null | undefined): string {
   if (!s) return "";
-  if (!THAI_RANGE.test(s)) return s;
-  const out = ZWSP + s;
-  // DEBUG (log once per process): verify safeThai is actually running + ZWSP is preserved through build
-  if (!_safeThaiDebugLogged) {
-    _safeThaiDebugLogged = true;
-    console.log(
-      `[safeThai-debug] ZWSP charCode=${ZWSP.charCodeAt(0).toString(16)} (want 200b) | ` +
-      `out first3codes=[${[...out.slice(0, 3)].map(c => c.charCodeAt(0).toString(16)).join(",")}] | ` +
-      `input="${s.slice(0, 15)}" output="${out.slice(0, 15)}"`,
-    );
-  }
-  return out;
+  return THAI_RANGE.test(s) ? ZWSP2 + s : s;
 }
 
 // ==================================================================
