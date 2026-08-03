@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { getPoById } from "@/lib/db/po";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { PoStatus, PoItem } from "@/lib/types/db";
-import { PrintTrigger } from "./_print-trigger";
+import { PrintTrigger, PrintNowButton } from "./_print-trigger";
 
 export const dynamic = "force-dynamic";
 
@@ -132,20 +132,14 @@ export default async function PrintPoPage({
           flexWrap: "wrap", gap: 8,
         }}
       >
-        <span>🖨️ พรีวิวสำหรับพิมพ์ — กด Ctrl/Cmd+P หรือปุ่มขวา</span>
+        <span>🖨️ พรีวิวสำหรับพิมพ์ — กด <strong>Ctrl/Cmd + P</strong> → เลือก &ldquo;Save as PDF&rdquo; (Thai render ถูกต้อง)</span>
         <span style={{ display: "flex", gap: 8 }}>
           <a href={`/po/${po.id}`} style={{ color: "#A8C0E0", textDecoration: "underline" }}>
             ← กลับหน้า PO
           </a>
-          <a
-            href={`/api/po/${po.id}/pdf`}
-            style={{
-              background: "#3A5A8C", color: "#fff", padding: "4px 12px",
-              borderRadius: 6, textDecoration: "none", fontWeight: 600,
-            }}
-          >
-            ดาวน์โหลด PDF
-          </a>
+          {/* Trigger browser print dialog (Save as PDF from there — Thai renders correctly)
+              NOT linking to /api/po/[id]/pdf because @react-pdf drops leading ฝ/ผ/ฟ */}
+          <PrintNowButton />
         </span>
       </div>
 
