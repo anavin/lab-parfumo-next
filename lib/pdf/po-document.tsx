@@ -16,27 +16,32 @@ const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
 let fontRegistered = false;
 function registerFontOnce() {
   if (fontRegistered) return;
+  // Noto Sans Thai — has ZWSP glyph (unlike Sarabun) → safe for prepend workaround
+  // Sarabun still available in fonts dir as fallback if needed
   Font.register({
-    family: "Sarabun",
+    family: "NotoSansThai",
     fonts: [
-      { src: path.join(FONTS_DIR, "Sarabun-Regular.ttf"), fontWeight: "normal" },
-      { src: path.join(FONTS_DIR, "Sarabun-Bold.ttf"), fontWeight: "bold" },
+      { src: path.join(FONTS_DIR, "NotoSansThai-Regular.ttf"), fontWeight: "normal" },
+      { src: path.join(FONTS_DIR, "NotoSansThai-Bold.ttf"), fontWeight: "bold" },
     ],
   });
-  // ⚠️ Thai text bug in @react-pdf/renderer:
-  //   default hyphenator splits Thai text at wrong boundaries because it doesn't
-  //   handle Thai word segmentation. Result: leading consonants get dropped
-  //   (e.g. "ฝาแม่เหล็ก" renders as "าแม่เหล็ก" — ฝ หายไป).
-  //   Fix: return [word] to prevent any splitting — PDF layout wraps by char
-  //   which is fine for Thai (no spaces between words anyway).
   Font.registerHyphenationCallback((word) => [word]);
   fontRegistered = true;
 }
 
-// Note: previously had a `s` prepending U+FEFF (BOM) to work
-// around @react-pdf v4 Thai shaping bug. Sarabun font doesn't have BOM
-// glyph → rendered as tofu boxes → worse than original.
-// Fix moved to upgrading @react-pdf/renderer to latest (bug fixed upstream).
+// ==================================================================
+// Thai text safe-render — Workaround for @react-pdf/renderer v4 bug
+// ==================================================================
+// Bug: text shaper drops the FIRST character of Thai runs (e.g. "ฝา" → "า")
+// Fix: prepend U+200B (ZWSP) — Noto Sans Thai renders it as truly invisible
+//      so the shaper consumes ZWSP instead of the real leading consonant.
+//      (Sarabun-Regular subset doesn't include ZWSP → renders as tofu box,
+//       which is why we switched to Noto Sans Thai as the primary Thai font.)
+function safeThai(s: string | null | undefined): string {
+  if (!s) return "";
+  // Thai Unicode block: U+0E00 – U+0E7F
+  return /[฀-๿]/.test(s) ? "​" + s : s;
+}
 
 // ==================================================================
 // Color tokens
@@ -90,7 +95,7 @@ const STATUS_COLOR: Record<PoStatus, { fg: string; bg: string }> = {
 // ==================================================================
 const styles = StyleSheet.create({
   page: {
-    fontFamily: "Sarabun",
+    fontFamily: "NotoSansThai",
     fontSize: 10,
     paddingTop: 36,
     paddingBottom: 56,
@@ -427,21 +432,21 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {/* Header — company info left, doc info right */}
         <View style={styles.header}>
           <View style={styles.brandRow}>
-            <Text style={styles.companyName}>{company.name || "Lab Parfumo"}</Text>
+            <Text style={styles.companyName}>{safeThai(company.name) || "Lab Parfumo"}</Text>
             {company.name_th && (
-              <Text style={styles.companyMeta}>{company.name_th}</Text>
+              <Text style={styles.companyMeta}>{safeThai(company.name_th)}</Text>
             )}
             {company.address && (
-              <Text style={styles.companyMeta}>{company.address}</Text>
+              <Text style={styles.companyMeta}>{safeThai(company.address)}</Text>
             )}
             {company.phone && (
-              <Text style={styles.companyMeta}>โทร {company.phone}</Text>
+              <Text style={styles.companyMeta}>{safeThai("โทร " + company.phone)}</Text>
             )}
             {company.email && (
               <Text style={styles.companyMeta}>{company.email}</Text>
             )}
             {company.tax_id && (
-              <Text style={styles.companyMeta}>เลขผู้เสียภาษี {company.tax_id}</Text>
+              <Text style={styles.companyMeta}>{safeThai("เลขผู้เสียภาษี " + company.tax_id)}</Text>
             )}
           </View>
 
@@ -468,9 +473,9 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
             <Text style={styles.infoEyebrow}>SUPPLIER</Text>
             {showPrices && po.supplier_name ? (
               <>
-                <Text style={styles.infoStrong}>{po.supplier_name}</Text>
+                <Text style={styles.infoStrong}>{safeThai(po.supplier_name)}</Text>
                 {po.supplier_contact && (
-                  <Text style={styles.infoText}>{po.supplier_contact}</Text>
+                  <Text style={styles.infoText}>{safeThai(po.supplier_contact)}</Text>
                 )}
               </>
             ) : (
@@ -535,15 +540,15 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
             >
               <Text style={[styles.colNo, styles.td]}>{i + 1}</Text>
               <View style={styles.colName}>
-                <Text style={styles.td}>{it.name}</Text>
+                <Text style={styles.td}>{safeThai(it.name)}</Text>
                 {it.notes && (
-                  <Text style={styles.tdMuted}>{it.notes}</Text>
+                  <Text style={styles.tdMuted}>{safeThai(it.notes)}</Text>
                 )}
               </View>
               <Text style={[styles.colQty, styles.td]}>
                 {(it.qty ?? 0).toLocaleString("th-TH")}
               </Text>
-              <Text style={[styles.colUnit, styles.td]}>{it.unit || "ชิ้น"}</Text>
+              <Text style={[styles.colUnit, styles.td]}>{safeThai(it.unit || "ชิ้น")}</Text>
               {showPrices && (
                 <>
                   <Text style={[styles.colPrice, styles.td]}>
@@ -604,14 +609,14 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {po.notes && (
           <View style={styles.notesBox} wrap={false}>
             <Text style={styles.notesLabel}>หมายเหตุ</Text>
-            <Text style={styles.notesText}>{po.notes}</Text>
+            <Text style={styles.notesText}>{safeThai(po.notes)}</Text>
           </View>
         )}
 
         {po.procurement_notes && showPrices && (
           <View style={styles.notesBox} wrap={false}>
             <Text style={styles.notesLabel}>หมายเหตุจัดซื้อ</Text>
-            <Text style={styles.notesText}>{po.procurement_notes}</Text>
+            <Text style={styles.notesText}>{safeThai(po.procurement_notes)}</Text>
           </View>
         )}
 
