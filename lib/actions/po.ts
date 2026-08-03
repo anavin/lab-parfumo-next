@@ -1683,19 +1683,37 @@ export async function updatePoPricesAction(
 
   const items = (po.items ?? []) as PoItem[];
   if (input.itemPrices.length !== items.length) {
-    return { ok: false, error: "จำนวนราคาไม่ตรงกับ items" };
+    console.error(
+      `[po updatePoPrices] length mismatch — prices=${input.itemPrices.length} items=${items.length}`,
+    );
+    return {
+      ok: false,
+      error: `จำนวนราคาไม่ตรงกับ items (ส่ง ${input.itemPrices.length} vs DB มี ${items.length})`,
+    };
   }
-  for (const p of input.itemPrices) {
-    if (!Number.isFinite(p) || p < 0) {
-      return { ok: false, error: "ราคาต้องเป็นเลข ≥ 0" };
+
+  // Coerce → Number (guard string/undefined จาก Server Action serialization)
+  const numericPrices = input.itemPrices.map((p, i) => {
+    const n = Number(p);
+    if (!Number.isFinite(n) || n < 0) {
+      return { valid: false as const, idx: i, raw: p };
     }
+    return { valid: true as const, value: n };
+  });
+  const invalid = numericPrices.find((r) => !r.valid);
+  if (invalid && !invalid.valid) {
+    return {
+      ok: false,
+      error: `ราคาไม่ถูกต้อง (รายการที่ ${invalid.idx + 1}): "${String(invalid.raw)}"`,
+    };
   }
 
   const oldTotal = po.total ?? 0;
 
   // สร้าง items ใหม่ — เก็บ qty เดิม, เปลี่ยนแค่ราคา
   const newItems: PoItem[] = items.map((it, idx) => {
-    const newPrice = input.itemPrices[idx];
+    const priceEntry = numericPrices[idx];
+    const newPrice = priceEntry.valid ? priceEntry.value : 0;
     const qty = it.qty ?? 0;
     return {
       ...it,
@@ -1708,7 +1726,14 @@ export async function updatePoPricesAction(
   const vat = subtotal * input.vatRate;
   const total = subtotal - input.discount + input.shippingFee + vat;
 
-  const { error } = await sb
+  console.log(
+    `[po updatePoPrices] ENTER poId=${poId} items=${items.length} ` +
+      `subtotal=${subtotal} discount=${input.discount} shipping=${input.shippingFee} ` +
+      `vat=${vat} total=${total}`,
+  );
+
+  // .select() → return updated row เพื่อ verify save จริง
+  const { data: updated, error } = await sb
     .from("purchase_orders")
     .update({
       items: newItems,
@@ -1719,11 +1744,24 @@ export async function updatePoPricesAction(
       total,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", poId);
+    .eq("id", poId)
+    .select("id, po_number, subtotal, total")
+    .maybeSingle();
   if (error) {
-    console.error("[po updatePoPrices] failed:", error);
-    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+    console.error("[po updatePoPrices] UPDATE failed:", error);
+    return { ok: false, error: `บันทึกไม่สำเร็จ: ${error.message ?? "unknown"}` };
   }
+  if (!updated) {
+    console.error(
+      `[po updatePoPrices] UPDATE returned no row — id=${poId} may have moved to trash between fetch and update`,
+    );
+    return { ok: false, error: "บันทึกไม่สำเร็จ — ไม่พบ PO ที่จะแก้ (อาจถูกลบระหว่างนี้)" };
+  }
+  console.log(
+    `[po updatePoPrices] OK — po=${(updated as { po_number?: string }).po_number} ` +
+      `saved subtotal=${(updated as { subtotal?: number }).subtotal} ` +
+      `total=${(updated as { total?: number }).total}`,
+  );
 
   // อัปเดต last_cost ของ equipment ที่มีราคาใหม่ (ตามที่ OrderForm ทำ)
   for (const it of newItems) {
