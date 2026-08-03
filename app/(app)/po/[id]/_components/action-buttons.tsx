@@ -140,28 +140,29 @@ export function ActionButtons({
           gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
         }}
       >
-        {/* PDF download */}
-        {po.status !== "รอจัดซื้อดำเนินการ" && (
-          <a
-            href={`/api/po/${po.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all"
-          >
-            <Download className="h-3.5 w-3.5" /> ดาวน์โหลด PDF
-          </a>
-        )}
-
-        {/* Print preview — เปิดหน้าใหม่ + auto popup print dialog */}
+        {/* Print / Save as PDF — primary (browser render — Thai perfect) */}
         {po.status !== "รอจัดซื้อดำเนินการ" && (
           <a
             href={`/po/${po.id}/print`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg border border-border bg-card text-foreground hover:bg-accent hover:-translate-y-px transition-all"
-            title="พรีวิวสำหรับพิมพ์ — เปิดหน้าใหม่"
+            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all"
+            title="เปิดหน้าพรีวิว → กด Cmd/Ctrl+P → Save as PDF (แนะนำ — Thai render ถูกต้อง)"
           >
-            <Printer className="h-3.5 w-3.5" /> พิมพ์
+            <Printer className="h-3.5 w-3.5" /> พิมพ์ / บันทึก PDF
+          </a>
+        )}
+
+        {/* Legacy PDF download — @react-pdf has known Thai render bug (leading consonant drops) */}
+        {po.status !== "รอจัดซื้อดำเนินการ" && (
+          <a
+            href={`/api/po/${po.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg border border-border bg-card text-foreground hover:bg-accent hover:-translate-y-px transition-all"
+            title="⚠️ @react-pdf มี bug กับ Thai — บาง consonant (ฝ/ผ/ฟ) อาจหาย. แนะนำใช้ 'พิมพ์' แทน"
+          >
+            <Download className="h-3.5 w-3.5" /> PDF (legacy)
           </a>
         )}
 

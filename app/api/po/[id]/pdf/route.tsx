@@ -54,19 +54,6 @@ export async function GET(
   const company = await getCompanyInfo();
   const showPrices = (user.role === "admin" || user.role === "supervisor");
 
-  // DEBUG: log actual item names + codepoints going into PDF
-  // (temporary — remove after "ฝ missing" bug is confirmed root-caused)
-  try {
-    const items = (po.items ?? []) as Array<{ name?: string }>;
-    for (const [i, it] of items.entries()) {
-      const name = it.name ?? "";
-      const codes = [...name.slice(0, 5)]
-        .map((c) => `U+${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`)
-        .join(" ");
-      console.log(`[pdf-debug] ${po.po_number} item[${i}] name="${name}" first5codes=[${codes}] len=${name.length}`);
-    }
-  } catch { /* ignore debug errors */ }
-
   try {
     const buffer = await renderToBuffer(
       <PoDocument po={po} company={company} showPrices={showPrices} />,
