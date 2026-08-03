@@ -26,6 +26,7 @@ import { LinkSupplierButton } from "./_components/link-supplier-button";
 import { ProcurementNotesCard } from "./_components/procurement-notes-card";
 import { EditPoSupplierButton } from "./_components/edit-po-supplier-button";
 import { EditableExpectedDate } from "./_components/editable-expected-date";
+import { TotalsCard } from "./_components/totals-card";
 import {
   PoCommentsSection,
   PoCommentsSectionSkeleton,
@@ -329,25 +330,22 @@ export default async function PoViewPage({
         </CardContent>
       </Card>
 
-      {/* ยอดสุทธิ (admin) */}
-      {isAdmin && po.total != null && po.total > 0 && (
-        <Card>
-          <CardContent className="p-5">
-            <SectionTitle>💰 ยอดสุทธิ</SectionTitle>
-            <dl className="space-y-1.5 text-sm">
-              <SumRow label="ยอดรวม" value={po.subtotal ?? 0} />
-              {po.discount! > 0 && <SumRow label="ส่วนลด" value={-(po.discount ?? 0)} />}
-              {po.shipping_fee! > 0 && <SumRow label="ค่าส่ง" value={po.shipping_fee ?? 0} />}
-              {po.vat! > 0 && <SumRow label="VAT" value={po.vat ?? 0} />}
-              <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-base font-bold text-slate-900">รวมสุทธิ</span>
-                <span className="text-2xl font-bold text-brand-700 tabular-nums">
-                  ฿{(po.total ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
+      {/* ยอดสุทธิ (admin) — แสดงเสมอเมื่อ status post-order (แม้ total=0 ก็ยังโชว์ให้แก้ราคาได้) */}
+      {isAdmin && !["รอจัดซื้อดำเนินการ"].includes(po.status) && (
+        <TotalsCard
+          poId={po.id}
+          poNumber={po.po_number}
+          status={po.status}
+          items={po.items ?? []}
+          subtotal={po.subtotal ?? 0}
+          discount={po.discount ?? 0}
+          shippingFee={po.shipping_fee ?? 0}
+          vat={po.vat ?? 0}
+          total={po.total ?? 0}
+          canEdit={
+            isAdmin && !["รอจัดซื้อดำเนินการ", "ยกเลิก"].includes(po.status)
+          }
+        />
       )}
 
       {/* Notes */}
@@ -439,16 +437,6 @@ function DateRow({
   );
 }
 
-function SumRow({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex justify-between items-center">
-      <dt className="text-slate-600">{label}:</dt>
-      <dd className="text-slate-800 tabular-nums">
-        {value < 0 ? "−" : ""}฿{Math.abs(value).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </dd>
-    </div>
-  );
-}
 
 function RequesterStatusInfo({ status }: { status: string }) {
   const map: Record<string, { tone: string; msg: string }> = {

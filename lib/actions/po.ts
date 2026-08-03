@@ -1629,6 +1629,133 @@ export async function updateExpectedDateAction(
   return { ok: true, poId };
 }
 
+// ==================================================================
+// Edit prices — แก้ราคาต่อรายการ + discount/shipping/vat หลังสั่งไปแล้ว
+//
+// Use case: admin กรอกราคาผิด หรือได้ราคาใหม่จาก supplier
+// Permission: privileged (admin/supervisor)
+// Status gate: ทุกสถานะยกเว้น "รอจัดซื้อดำเนินการ" (ใช้ OrderForm) + "ยกเลิก"
+// (สั่งซื้อแล้ว / กำลังขนส่ง / รับของแล้ว / มีปัญหา / เสร็จสมบูรณ์ แก้ได้หมด)
+// ==================================================================
+export interface EditPricesInput {
+  itemPrices: number[];       // 1 ค่า per item ตามลำดับ items เดิม
+  discount: number;
+  shippingFee: number;
+  vatRate: number;             // 0 หรือ 0.07
+}
+
+export async function updatePoPricesAction(
+  poId: string,
+  input: EditPricesInput,
+): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
+    return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  if (!poId) return { ok: false, error: "ข้อมูลไม่ครบ" };
+  if (![0, 0.07].includes(input.vatRate)) {
+    return { ok: false, error: "VAT rate ต้องเป็น 0 หรือ 0.07" };
+  }
+  if (input.discount < 0 || input.shippingFee < 0) {
+    return { ok: false, error: "discount / shipping ต้อง ≥ 0" };
+  }
+
+  const sb = getSupabaseAdmin();
+  const { data: po } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, items, subtotal, total, deleted_at")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
+  const status = po.status as PoStatus;
+  if (status === "รอจัดซื้อดำเนินการ") {
+    return {
+      ok: false,
+      error: "สถานะนี้ให้แก้ผ่านปุ่ม \"สั่งซื้อ\" (OrderForm) แทน",
+    };
+  }
+  if (status === "ยกเลิก") {
+    return { ok: false, error: "PO ถูกยกเลิกแล้ว — แก้ไขไม่ได้" };
+  }
+
+  const items = (po.items ?? []) as PoItem[];
+  if (input.itemPrices.length !== items.length) {
+    return { ok: false, error: "จำนวนราคาไม่ตรงกับ items" };
+  }
+  for (const p of input.itemPrices) {
+    if (!Number.isFinite(p) || p < 0) {
+      return { ok: false, error: "ราคาต้องเป็นเลข ≥ 0" };
+    }
+  }
+
+  const oldTotal = po.total ?? 0;
+
+  // สร้าง items ใหม่ — เก็บ qty เดิม, เปลี่ยนแค่ราคา
+  const newItems: PoItem[] = items.map((it, idx) => {
+    const newPrice = input.itemPrices[idx];
+    const qty = it.qty ?? 0;
+    return {
+      ...it,
+      unit_price: newPrice,
+      subtotal: newPrice * qty,
+    };
+  });
+
+  const subtotal = newItems.reduce((s, it) => s + (it.subtotal ?? 0), 0);
+  const vat = subtotal * input.vatRate;
+  const total = subtotal - input.discount + input.shippingFee + vat;
+
+  const { error } = await sb
+    .from("purchase_orders")
+    .update({
+      items: newItems,
+      subtotal,
+      discount: input.discount,
+      shipping_fee: input.shippingFee,
+      vat,
+      total,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", poId);
+  if (error) {
+    console.error("[po updatePoPrices] failed:", error);
+    return { ok: false, error: "บันทึกไม่สำเร็จ" };
+  }
+
+  // อัปเดต last_cost ของ equipment ที่มีราคาใหม่ (ตามที่ OrderForm ทำ)
+  for (const it of newItems) {
+    if (it.equipment_id && (it.unit_price ?? 0) > 0) {
+      try {
+        await sb
+          .from("equipment")
+          .update({ last_cost: it.unit_price })
+          .eq("id", it.equipment_id);
+      } catch { /* ok */ }
+    }
+  }
+
+  const fmtMoney = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+  await logActivity(
+    poId,
+    user.full_name,
+    user.role,
+    "prices_edited",
+    `แก้ราคา: ยอดรวม ฿${fmtMoney(oldTotal)} → ฿${fmtMoney(total)}` +
+      ` (subtotal ฿${fmtMoney(subtotal)} + shipping ฿${fmtMoney(input.shippingFee)}` +
+      ` - discount ฿${fmtMoney(input.discount)} + vat ฿${fmtMoney(vat)})`,
+  );
+
+  revalidatePath(`/po/${poId}`);
+  revalidatePath("/po");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  revalidatePath("/budget");
+  return { ok: true, poId };
+}
+
 export async function updateProcurementNotesAction(
   poId: string,
   notes: string,
