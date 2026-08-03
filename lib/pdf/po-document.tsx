@@ -34,6 +34,25 @@ function registerFontOnce() {
 }
 
 // ==================================================================
+// Thai text safe-render — Workaround for @react-pdf/renderer v4 bug
+// ==================================================================
+// Bug: text shaper drops the FIRST character of Thai runs that start
+// with certain consonant + spacing-vowel clusters (e.g. "ฝา" → "า",
+// "ผา" → "า"). Font subset is intact — issue is in shaping, not glyph.
+//
+// Fix: prepend U+FEFF (zero-width no-break space) to the string.
+// The shaper "consumes" the invisible ZWNBSP instead of ฝ, and the
+// user sees the intended text. Adds 3 bytes to each cell — negligible.
+//
+// Only applied when the text actually contains Thai characters
+// (0x0E00–0x0E7F) so pure-Latin text is untouched.
+function safeThai(s: string | null | undefined): string {
+  if (!s) return "";
+  // Thai Unicode block: U+0E00 – U+0E7F
+  return /[฀-๿]/.test(s) ? "﻿" + s : s;
+}
+
+// ==================================================================
 // Color tokens
 // ==================================================================
 const C = {
@@ -422,12 +441,12 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {/* Header — company info left, doc info right */}
         <View style={styles.header}>
           <View style={styles.brandRow}>
-            <Text style={styles.companyName}>{company.name || "Lab Parfumo"}</Text>
+            <Text style={styles.companyName}>{safeThai(company.name) || "Lab Parfumo"}</Text>
             {company.name_th && (
-              <Text style={styles.companyMeta}>{company.name_th}</Text>
+              <Text style={styles.companyMeta}>{safeThai(company.name_th)}</Text>
             )}
             {company.address && (
-              <Text style={styles.companyMeta}>{company.address}</Text>
+              <Text style={styles.companyMeta}>{safeThai(company.address)}</Text>
             )}
             {company.phone && (
               <Text style={styles.companyMeta}>โทร {company.phone}</Text>
@@ -463,9 +482,9 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
             <Text style={styles.infoEyebrow}>SUPPLIER</Text>
             {showPrices && po.supplier_name ? (
               <>
-                <Text style={styles.infoStrong}>{po.supplier_name}</Text>
+                <Text style={styles.infoStrong}>{safeThai(po.supplier_name)}</Text>
                 {po.supplier_contact && (
-                  <Text style={styles.infoText}>{po.supplier_contact}</Text>
+                  <Text style={styles.infoText}>{safeThai(po.supplier_contact)}</Text>
                 )}
               </>
             ) : (
@@ -530,15 +549,15 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
             >
               <Text style={[styles.colNo, styles.td]}>{i + 1}</Text>
               <View style={styles.colName}>
-                <Text style={styles.td}>{it.name}</Text>
+                <Text style={styles.td}>{safeThai(it.name)}</Text>
                 {it.notes && (
-                  <Text style={styles.tdMuted}>{it.notes}</Text>
+                  <Text style={styles.tdMuted}>{safeThai(it.notes)}</Text>
                 )}
               </View>
               <Text style={[styles.colQty, styles.td]}>
                 {(it.qty ?? 0).toLocaleString("th-TH")}
               </Text>
-              <Text style={[styles.colUnit, styles.td]}>{it.unit || "ชิ้น"}</Text>
+              <Text style={[styles.colUnit, styles.td]}>{safeThai(it.unit || "ชิ้น")}</Text>
               {showPrices && (
                 <>
                   <Text style={[styles.colPrice, styles.td]}>
@@ -599,14 +618,14 @@ export function PoDocument({ po, company, showPrices }: PoDocumentProps) {
         {po.notes && (
           <View style={styles.notesBox} wrap={false}>
             <Text style={styles.notesLabel}>หมายเหตุ</Text>
-            <Text style={styles.notesText}>{po.notes}</Text>
+            <Text style={styles.notesText}>{safeThai(po.notes)}</Text>
           </View>
         )}
 
         {po.procurement_notes && showPrices && (
           <View style={styles.notesBox} wrap={false}>
             <Text style={styles.notesLabel}>หมายเหตุจัดซื้อ</Text>
-            <Text style={styles.notesText}>{po.procurement_notes}</Text>
+            <Text style={styles.notesText}>{safeThai(po.procurement_notes)}</Text>
           </View>
         )}
 
