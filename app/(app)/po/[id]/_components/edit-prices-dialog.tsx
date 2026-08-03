@@ -77,6 +77,15 @@ export function EditPricesDialog({
       setError("ยอดรวมต้อง > 0 — กรุณากรอกราคาอย่างน้อย 1 รายการ");
       return;
     }
+    // Debug — log what's being sent (visible in browser DevTools)
+    console.log("[EditPricesDialog] SAVE", {
+      poId, poNumber,
+      itemsLength: items.length,
+      pricesLength: prices.length,
+      prices,
+      discount, shippingFee, vatRate,
+      computedSubtotal: subtotal, computedTotal: total,
+    });
     startTransition(async () => {
       const res = await updatePoPricesAction(poId, {
         itemPrices: prices,
@@ -84,10 +93,12 @@ export function EditPricesDialog({
         shippingFee,
         vatRate,
       });
+      console.log("[EditPricesDialog] RESPONSE", res);
       if (res.ok) {
         toast.success(`✅ แก้ราคา ${poNumber} แล้ว — ยอดรวม ฿${fmtMoney(total)}`);
-        onClose();
+        // Refresh first, then close — matches OrderForm pattern
         router.refresh();
+        onClose();
       } else {
         setError(res.error ?? "บันทึกไม่สำเร็จ");
       }
