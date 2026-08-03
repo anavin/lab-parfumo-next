@@ -23,6 +23,13 @@ function registerFontOnce() {
       { src: path.join(FONTS_DIR, "Sarabun-Bold.ttf"), fontWeight: "bold" },
     ],
   });
+  // ⚠️ Thai text bug in @react-pdf/renderer:
+  //   default hyphenator splits Thai text at wrong boundaries because it doesn't
+  //   handle Thai word segmentation. Result: leading consonants get dropped
+  //   (e.g. "ฝาแม่เหล็ก" renders as "าแม่เหล็ก" — ฝ หายไป).
+  //   Fix: return [word] to prevent any splitting — PDF layout wraps by char
+  //   which is fine for Thai (no spaces between words anyway).
+  Font.registerHyphenationCallback((word) => [word]);
   fontRegistered = true;
 }
 
