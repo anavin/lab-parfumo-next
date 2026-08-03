@@ -35,12 +35,14 @@ function registerFontOnce() {
 // Bug: text shaper drops the FIRST character of Thai runs (e.g. "ฝา" → "า")
 // Fix: prepend U+200B (ZWSP) — Noto Sans Thai renders it as truly invisible
 //      so the shaper consumes ZWSP instead of the real leading consonant.
-//      (Sarabun-Regular subset doesn't include ZWSP → renders as tofu box,
-//       which is why we switched to Noto Sans Thai as the primary Thai font.)
+//
+// Use \u escape sequences (not literal Thai chars) so that Next.js/turbopack
+// minifier and any transport encoding preserves the exact codepoints.
+const THAI_RANGE = /[\u0E00-\u0E7F]/;
+const ZWSP = "\u200B";
 function safeThai(s: string | null | undefined): string {
   if (!s) return "";
-  // Thai Unicode block: U+0E00 – U+0E7F
-  return /[฀-๿]/.test(s) ? "​" + s : s;
+  return THAI_RANGE.test(s) ? ZWSP + s : s;
 }
 
 // ==================================================================
