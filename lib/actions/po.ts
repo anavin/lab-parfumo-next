@@ -1763,16 +1763,21 @@ export async function updatePoPricesAction(
       `total=${(updated as { total?: number }).total}`,
   );
 
-  // อัปเดต last_cost ของ equipment ที่มีราคาใหม่ (ตามที่ OrderForm ทำ)
-  for (const it of newItems) {
-    if (it.equipment_id && (it.unit_price ?? 0) > 0) {
-      try {
-        await sb
-          .from("equipment")
-          .update({ last_cost: it.unit_price })
-          .eq("id", it.equipment_id);
-      } catch { /* ok */ }
-    }
+  // อัปเดต last_cost ของ equipment ที่มีราคาใหม่ — parallel (กัน Vercel timeout)
+  //   เดิมเป็น sequential loop → ถ้ามีหลาย items → หลาย round trips ต่อเนื่อง
+  //   อาจใช้เวลานานจน Vercel function timeout ทำให้ response ไม่ถึง client
+  //   แม้ DB save เสร็จแล้ว (log แสดง OK แต่ POST status = ---)
+  const eqUpdates = newItems
+    .filter((it) => it.equipment_id && (it.unit_price ?? 0) > 0)
+    .map((it) =>
+      sb
+        .from("equipment")
+        .update({ last_cost: it.unit_price })
+        .eq("id", it.equipment_id!),
+    );
+  if (eqUpdates.length > 0) {
+    // allSettled — ไม่ throw แม้บาง update fail (best-effort)
+    await Promise.allSettled(eqUpdates);
   }
 
   const fmtMoney = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
