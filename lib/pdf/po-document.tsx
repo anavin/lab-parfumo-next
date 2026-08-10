@@ -2,7 +2,6 @@
  * PO PDF document — premium B2B design
  * ภาษาไทย ใช้ฟอนต์ Sarabun
  */
-import path from "path";
 import {
   Document, Page, Text, View, StyleSheet, Font,
 } from "@react-pdf/renderer";
@@ -11,18 +10,22 @@ import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
 // ==================================================================
 // Fonts
 // ==================================================================
-const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
-
 /**
- * แหล่งฟอนต์ — รองรับ 2 runtime:
- *   • Node/Vercel  : อ่านจาก filesystem (process.cwd()/public/fonts) — เร็ว, default
- *   • Cloudflare   : ตั้ง env `PDF_FONT_BASE_URL=https://<domain>` → @react-pdf จะ fetch
- *                    ฟอนต์ผ่าน HTTPS (Workers ไม่มี fs เข้าถึง public/)
+ * แหล่งฟอนต์ — ใช้ URL เสมอ (ทำงานได้ทั้ง browser และ Cloudflare Workers)
+ * @react-pdf จะ fetch ฟอนต์ผ่าน HTTP — ไม่แตะ filesystem (Workers/browser ไม่มี fs)
+ *
+ *   • browser (client render) : NEXT_PUBLIC_APP_URL (inline ตอน build) หรือ relative /fonts/*
+ *   • server                  : NEXT_PUBLIC_APP_URL / PDF_FONT_BASE_URL
+ *
+ * ฟอนต์อยู่ที่ public/fonts → เสิร์ฟที่ /fonts/*.ttf
  */
 function fontSource(file: string): string {
-  const base = process.env.PDF_FONT_BASE_URL?.trim();
-  if (base) return `${base.replace(/\/+$/, "")}/fonts/${file}`;
-  return path.join(FONTS_DIR, file);
+  const base = (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.PDF_FONT_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  return `${base}/fonts/${file}`;
 }
 
 let fontRegistered = false;

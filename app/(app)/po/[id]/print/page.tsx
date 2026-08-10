@@ -12,6 +12,7 @@ import { getPoById } from "@/lib/db/po";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { PoStatus, PoItem } from "@/lib/types/db";
 import { PrintTrigger } from "./_print-trigger";
+import { PdfDownloadButton } from "../_components/pdf-download-button";
 
 export const dynamic = "force-dynamic";
 
@@ -137,15 +138,11 @@ export default async function PrintPoPage({
           <a href={`/po/${po.id}`} style={{ color: "#A8C0E0", textDecoration: "underline" }}>
             ← กลับหน้า PO
           </a>
-          <a
-            href={`/api/po/${po.id}/pdf`}
-            style={{
-              background: "#3A5A8C", color: "#fff", padding: "4px 12px",
-              borderRadius: 6, textDecoration: "none", fontWeight: 600,
-            }}
-          >
-            ดาวน์โหลด PDF
-          </a>
+          <PdfDownloadButton
+            poId={po.id}
+            poNumber={po.po_number}
+            className="inline-flex items-center gap-1.5 border-0 cursor-pointer bg-[#3A5A8C] text-white font-semibold rounded-md px-3 py-1 disabled:opacity-60 disabled:cursor-wait"
+          />
         </span>
       </div>
 

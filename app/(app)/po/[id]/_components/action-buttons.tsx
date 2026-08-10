@@ -8,7 +8,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Copy, X, CheckCircle2, Undo2,
-  ShoppingCart, Truck, PackageOpen, Download, Printer,
+  ShoppingCart, Truck, PackageOpen, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -21,6 +21,7 @@ import type { SupplierOption } from "@/lib/types/db";
 import { OrderForm } from "./order-form";
 import { ShipForm } from "./ship-form";
 import { ReceiveForm } from "./receive-form";
+import { PdfDownloadButton } from "./pdf-download-button";
 
 type FormMode = null | "order" | "ship" | "receive";
 
@@ -140,16 +141,13 @@ export function ActionButtons({
           gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
         }}
       >
-        {/* PDF download */}
+        {/* PDF download — render ฝั่ง browser (Workers รัน @react-pdf ไม่ได้) */}
         {po.status !== "รอจัดซื้อดำเนินการ" && (
-          <a
-            href={`/api/po/${po.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all"
-          >
-            <Download className="h-3.5 w-3.5" /> ดาวน์โหลด PDF
-          </a>
+          <PdfDownloadButton
+            poId={po.id}
+            poNumber={po.po_number}
+            className="inline-flex items-center justify-center gap-2 h-10 px-3 text-xs font-semibold rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-sm hover:shadow-brand hover:-translate-y-px transition-all disabled:opacity-60 disabled:cursor-wait"
+          />
         )}
 
         {/* Print preview — เปิดหน้าใหม่ + auto popup print dialog */}
