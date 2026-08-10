@@ -13,6 +13,18 @@ import type { PurchaseOrder, PoStatus } from "@/lib/types/db";
 // ==================================================================
 const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
 
+/**
+ * แหล่งฟอนต์ — รองรับ 2 runtime:
+ *   • Node/Vercel  : อ่านจาก filesystem (process.cwd()/public/fonts) — เร็ว, default
+ *   • Cloudflare   : ตั้ง env `PDF_FONT_BASE_URL=https://<domain>` → @react-pdf จะ fetch
+ *                    ฟอนต์ผ่าน HTTPS (Workers ไม่มี fs เข้าถึง public/)
+ */
+function fontSource(file: string): string {
+  const base = process.env.PDF_FONT_BASE_URL?.trim();
+  if (base) return `${base.replace(/\/+$/, "")}/fonts/${file}`;
+  return path.join(FONTS_DIR, file);
+}
+
 let fontRegistered = false;
 function registerFontOnce() {
   if (fontRegistered) return;
@@ -21,8 +33,8 @@ function registerFontOnce() {
   Font.register({
     family: "NotoSansThai",
     fonts: [
-      { src: path.join(FONTS_DIR, "NotoSansThai-Regular.ttf"), fontWeight: "normal" },
-      { src: path.join(FONTS_DIR, "NotoSansThai-Bold.ttf"), fontWeight: "bold" },
+      { src: fontSource("NotoSansThai-Regular.ttf"), fontWeight: "normal" },
+      { src: fontSource("NotoSansThai-Bold.ttf"), fontWeight: "bold" },
     ],
   });
   Font.registerHyphenationCallback((word) => [word]);

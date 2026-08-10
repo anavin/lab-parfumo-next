@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lab-parfumo-next",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-03-25",
+  // nodejs_compat            — จำเป็นสำหรับ OpenNext (Next.js ใช้ Node API)
+  // global_fetch_strictly_public — ให้ fetch ไปโดเมนตัวเอง (เช่นโหลดฟอนต์ PDF /fonts/*.ttf)
+  //                                วิ่งออกทางอินเทอร์เน็ตสาธารณะได้ตามปกติ
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+  // Cron: OpenNext worker ไม่ export scheduled() — ตั้ง cron ผ่าน external scheduler
+  //       หรือ separate cron worker แทน (ดูวิธีใน CLOUDFLARE.md)
+}

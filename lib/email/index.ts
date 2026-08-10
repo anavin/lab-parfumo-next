@@ -1,27 +1,33 @@
 /**
- * Email sender — SMTP via nodemailer
+ * Email sender — รองรับ 2 transport:
+ *   • Resend (HTTP API)   — ใช้เมื่อมี env `RESEND_API_KEY` → ทำงานบน Cloudflare Workers ได้
+ *   • SMTP (nodemailer)   — fallback เมื่อไม่มี Resend → ใช้บน Node runtime (Vercel)
  *
- * Config sources (in priority order):
- *   1) Env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD,
- *                FROM_EMAIL, FROM_NAME
+ * เลือก provider อัตโนมัติผ่าน `emailProvider()`
+ *
+ * Config sources ของ SMTP (in priority order):
+ *   1) Env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL, FROM_NAME
  *   2) DB: company_settings.smtp_*  (admin ตั้งผ่าน UI)
  *
- * ถ้าไม่มีทั้งคู่ — function return ok=false (ไม่ส่ง)
- *
- * Cache: transporter ถูก cache ตาม config string เพื่อให้
- * เปลี่ยน config ใน UI แล้วใช้ได้ทันที (ไม่ต้อง restart)
+ * ⚠️ nodemailer ถูก import แบบ dynamic (ในฟังก์ชัน) เพื่อไม่ให้ถูก bundle
+ *    เข้า Cloudflare Workers — Workers เปิด TCP socket ต่อ SMTP ไม่ได้
  */
-import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 import { getEmailSettings } from "@/lib/db/email-settings";
+
+/** เลือก transport: มี RESEND_API_KEY → Resend, ไม่มี → SMTP */
+function emailProvider(): "resend" | "smtp" {
+  return process.env.RESEND_API_KEY ? "resend" : "smtp";
+}
 
 interface CachedTransporter {
   key: string;
-  transporter: nodemailer.Transporter;
+  transporter: Transporter;
 }
 let _cached: CachedTransporter | null = null;
 
 type ConfigStatus =
-  | { ok: true; transporter: nodemailer.Transporter; fromEmail: string; fromName: string }
+  | { ok: true; transporter: Transporter; fromEmail: string; fromName: string }
   | { ok: false; reason: "not-configured" | "migration-needed" | "db-error"; detail?: string };
 
 async function getTransporter(): Promise<ConfigStatus> {
@@ -47,6 +53,8 @@ async function getTransporter(): Promise<ConfigStatus> {
     };
   }
 
+  // Dynamic import — nodemailer โหลดเฉพาะตอนใช้ SMTP (ไม่ถูก bundle บน Workers)
+  const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
     host: s.host,
     port: s.port,
@@ -163,11 +171,124 @@ function reasonToResult(reason: "not-configured" | "migration-needed" | "db-erro
   };
 }
 
+// ==================================================================
+// Resend transport (HTTP API) — ใช้บน Cloudflare Workers
+// ==================================================================
+
 /**
- * ตรวจ SMTP โดยไม่ส่งอีเมลจริง (ใช้ `transporter.verify()`)
+ * หา From identity สำหรับ Resend
+ * Priority: env RESEND_FROM_EMAIL/NAME → DB company_settings → onboarding@resend.dev
+ * ⚠️ โดเมนของ fromEmail ต้อง verify ใน Resend ก่อน ไม่งั้นจะส่งไม่ผ่าน
+ *    (ยกเว้น onboarding@resend.dev ที่ส่งได้เฉพาะถึงอีเมลเจ้าของบัญชี Resend)
+ */
+async function resolveResendFrom(): Promise<{ fromEmail: string; fromName: string }> {
+  const envEmail = process.env.RESEND_FROM_EMAIL?.trim();
+  const envName = process.env.RESEND_FROM_NAME?.trim();
+  if (envEmail) {
+    return { fromEmail: envEmail, fromName: envName || "Lab Parfumo PO" };
+  }
+  // fallback: ใช้ from_email/from_name ที่ admin ตั้งไว้ใน DB
+  try {
+    const s = await getEmailSettings();
+    if ((s.source === "db" || s.source === "env") && s.fromEmail) {
+      return { fromEmail: s.fromEmail, fromName: s.fromName || "Lab Parfumo PO" };
+    }
+  } catch {
+    /* ignore — ใช้ default ด้านล่าง */
+  }
+  return { fromEmail: "onboarding@resend.dev", fromName: "Lab Parfumo PO" };
+}
+
+async function sendViaResend(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<SendResult> {
+  const apiKey = process.env.RESEND_API_KEY!;
+  const { fromEmail, fromName } = await resolveResendFrom();
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: [opts.to],
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text,
+      }),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text();
+      const kind: NonNullable<SendResult["errorKind"]> =
+        res.status === 401 || res.status === 403 ? "auth"
+        : res.status === 422 ? "from"
+        : "send";
+      console.error("[email] resend send failed:", res.status, detail);
+      return {
+        ok: false,
+        errorKind: kind,
+        error:
+          kind === "auth"
+            ? "RESEND_API_KEY ไม่ถูกต้อง — ตรวจ API key ใน Cloudflare env"
+            : kind === "from"
+              ? "From email ถูกปฏิเสธ — ต้อง verify domain ใน Resend ก่อน (หรือใช้ onboarding@resend.dev สำหรับทดสอบ)"
+              : `ส่งไม่สำเร็จ (${res.status}): ${detail}`,
+        errorDetail: detail,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[email] resend exception:", detail);
+    return {
+      ok: false,
+      errorKind: "connect",
+      error: "เชื่อมต่อ Resend API ไม่ได้ — ตรวจ network",
+      errorDetail: detail,
+    };
+  }
+}
+
+/** ตรวจว่า RESEND_API_KEY ใช้งานได้ (เรียก /domains แบบ read-only) */
+async function verifyResend(): Promise<SendResult> {
+  const apiKey = process.env.RESEND_API_KEY!;
+  try {
+    const res = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, errorKind: "auth", error: "RESEND_API_KEY ไม่ถูกต้อง" };
+    }
+    if (!res.ok) {
+      const detail = await res.text();
+      return {
+        ok: false,
+        errorKind: "send",
+        error: `Resend ตอบกลับผิดปกติ (${res.status})`,
+        errorDetail: detail,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return { ok: false, errorKind: "connect", error: "เชื่อมต่อ Resend API ไม่ได้", errorDetail: detail };
+  }
+}
+
+/**
+ * ตรวจการเชื่อมต่ออีเมลโดยไม่ส่งจริง — Resend: เช็ค API key / SMTP: `transporter.verify()`
  * เหมาะสำหรับปุ่ม "ตรวจสอบการเชื่อมต่อ" ใน UI
  */
 export async function verifyEmail(): Promise<SendResult> {
+  if (emailProvider() === "resend") return verifyResend();
+
   const t = await getTransporter();
   if (!t.ok) return reasonToResult(t.reason, t.detail);
 
@@ -187,6 +308,8 @@ export async function sendEmail(opts: {
   html: string;
   text?: string;
 }): Promise<SendResult> {
+  if (emailProvider() === "resend") return sendViaResend(opts);
+
   const t = await getTransporter();
   if (!t.ok) return reasonToResult(t.reason, t.detail);
 
