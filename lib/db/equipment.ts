@@ -64,6 +64,24 @@ export const getEquipmentById = cache(
 );
 
 /**
+ * ดึง equipment หลายตัวใน 1 roundtrip (batch) — แทน Promise.all(map(getEquipmentById))
+ * Return map keyed by id (สะดวก lookup ใน UI)
+ */
+export const getEquipmentByIds = cache(
+  async (ids: string[]): Promise<Record<string, Equipment>> => {
+    if (ids.length === 0) return {};
+    const sb = getSupabaseAdmin();
+    const { data } = await sb
+      .from("equipment")
+      .select("*")
+      .in("id", ids);
+    const map: Record<string, Equipment> = {};
+    for (const r of ((data ?? []) as Equipment[])) map[r.id] = r;
+    return map;
+  },
+);
+
+/**
  * Categories — เปลี่ยนน้อยมาก → cache 5 นาทีบน server
  * (revalidate ผ่าน revalidateTag ใน mutator)
  */

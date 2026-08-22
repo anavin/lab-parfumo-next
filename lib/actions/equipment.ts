@@ -332,30 +332,43 @@ export async function bulkApproveEquipmentAction(
   let success = 0;
   let failed = 0;
 
-  for (const eqId of equipmentIds) {
-    try {
-      const { data: eq } = await sb
-        .from("equipment").select("*").eq("id", eqId).maybeSingle();
-      if (!eq) { failed++; continue; }
+  // ก่อน: N iterations × (SELECT + UPDATE) = 2N sequential roundtrips
+  //   20 items → 40 calls → Vercel 10s timeout เสี่ยง
+  // หลัง: 1 SELECT batch (in) + N parallel UPDATEs
+  const { data: batch } = await sb
+    .from("equipment")
+    .select("id, sku, unit, description, suggested_notes")
+    .in("id", equipmentIds);
+  type EqRow = {
+    id: string; sku: string | null; unit: string | null;
+    description: string | null; suggested_notes: string | null;
+  };
+  const eqMap = new Map<string, EqRow>();
+  for (const r of ((batch ?? []) as EqRow[])) eqMap.set(r.id, r);
 
-      const sku = eq.sku || `AUTO-${eqId.slice(0, 8)}`;
-      const { error } = await sb
-        .from("equipment")
-        .update({
-          sku,
-          category: defaultCategory,
-          unit: eq.unit || "ชิ้น",
-          description: eq.suggested_notes || eq.description || "",
-          approval_status: "approved",
-          approved_by_name: user.full_name,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", eqId);
-      if (error) failed++;
-      else success++;
-    } catch {
-      failed++;
-    }
+  const nowIso = new Date().toISOString();
+  const updates = equipmentIds.map(async (eqId) => {
+    const eq = eqMap.get(eqId);
+    if (!eq) return { ok: false };
+    const sku = eq.sku || `AUTO-${eqId.slice(0, 8)}`;
+    const { error } = await sb
+      .from("equipment")
+      .update({
+        sku,
+        category: defaultCategory,
+        unit: eq.unit || "ชิ้น",
+        description: eq.suggested_notes || eq.description || "",
+        approval_status: "approved",
+        approved_by_name: user.full_name,
+        approved_at: nowIso,
+      })
+      .eq("id", eqId);
+    return { ok: !error };
+  });
+  const results = await Promise.allSettled(updates);
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.ok) success++;
+    else failed++;
   }
 
   revalidatePath("/equipment");

@@ -15,7 +15,7 @@ import {
   getPoById, getPoDeliveries,
 } from "@/lib/db/po";
 import { getSupplierOptions, getSupplierTrashedStatus } from "@/lib/db/suppliers";
-import { getEquipmentById } from "@/lib/db/equipment";
+import { getEquipmentByIds } from "@/lib/db/equipment";
 import { getLookups } from "@/lib/db/lookups";
 import type { Equipment, Lookup } from "@/lib/types/db";
 import { ItemsList } from "./_components/items-list";
@@ -108,22 +108,18 @@ export default async function PoViewPage({
     : Promise.resolve({ exists: true, trashed: false, name: null as string | null });
 
   const [
-    deliveries, supplierOptions, equipmentList,
+    deliveries, supplierOptions, equipmentMap,
     [supplierCategories, banks, paymentTerms],
     supplierStatus,
   ] = await Promise.all([
     getPoDeliveries(po.id),
     isAdmin ? getSupplierOptions() : Promise.resolve([]),
-    Promise.all(eqIds.map((id) => getEquipmentById(id))),
+    // Batch fetch equipment ทีเดียว (1 SELECT WHERE id IN (...))
+    //   ก่อน: Promise.all(eqIds.map(getEquipmentById)) = N HTTP roundtrips
+    getEquipmentByIds(eqIds),
     lookupsP,
     supplierStatusP,
   ]);
-
-  // Build equipment lookup map (filter nulls)
-  const equipmentMap: Record<string, Equipment> = {};
-  for (const eq of equipmentList) {
-    if (eq) equipmentMap[eq.id] = eq;
-  }
 
   const itemsCount = po.items?.length ?? 0;
   const supplier = po.supplier_name || "(ยังไม่ระบุ supplier)";
