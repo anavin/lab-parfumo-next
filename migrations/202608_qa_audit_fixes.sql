@@ -138,8 +138,14 @@ END $$;
 -- 5) increment_equipment_stock — RAISE instead of GREATEST(0, ...)
 -- ก่อน: clamp ที่ 0 ปิด over-subtract → stock ผิดเงียบๆ
 -- หลัง: RAISE EXCEPTION 'stock_underflow' → caller เห็น error + rollback
+--
+-- ต้อง DROP overload เก่า (INT signature) ก่อน CREATE ใหม่ (NUMERIC)
+-- ไม่งั้น Postgres จะเก็บทั้ง 2 overload → COMMENT/GRANT ambiguous
 -- ==================================================================
-CREATE OR REPLACE FUNCTION increment_equipment_stock(p_id UUID, p_qty NUMERIC)
+DROP FUNCTION IF EXISTS increment_equipment_stock(UUID, INT);
+DROP FUNCTION IF EXISTS increment_equipment_stock(UUID, NUMERIC);
+
+CREATE FUNCTION increment_equipment_stock(p_id UUID, p_qty NUMERIC)
 RETURNS NUMERIC AS $$
 DECLARE
   v_new_stock NUMERIC;
@@ -169,7 +175,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION increment_equipment_stock IS
+COMMENT ON FUNCTION increment_equipment_stock(UUID, NUMERIC) IS
   'Atomic stock delta. RAISE stock_underflow ถ้า negative delta ทำให้ stock < 0';
 
 
@@ -307,7 +313,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION withdraw_atomic IS
+COMMENT ON FUNCTION withdraw_atomic(UUID, NUMERIC, UUID, TEXT, TEXT, TEXT, TIMESTAMPTZ) IS
   'F1 (updated 2026-08) — Atomic withdraw. RAISE unallocated_stock ถ้า lots ไม่พอ (rollback ทั้ง tx)';
 
 
