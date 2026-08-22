@@ -292,7 +292,7 @@ export function PoListClient({
             ? "กำลังลบ..."
             : `ลบ ${selected.size} ใบ (ไปถังขยะ)`
         }
-        variant="warning"
+        variant={forceMode ? "danger" : "warning"}
         loading={pending}
         onConfirm={handleDelete}
       />

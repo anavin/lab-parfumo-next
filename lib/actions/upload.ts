@@ -49,6 +49,62 @@ function verifyImageMagicBytes(buffer: Buffer): boolean {
   return false;
 }
 
+/**
+ * Verify magic bytes for non-image attachment types (PDF/Word/Excel/CSV/text/etc.)
+ * ทำให้ user rename .exe → .pdf ก็ upload ไม่ได้
+ * ปล่อย csv/txt/json ผ่านเสมอ (ไม่มี signature มาตรฐาน)
+ */
+function verifyAttachmentMagicBytes(
+  buffer: Buffer,
+  ext: string,
+): { ok: boolean; reason?: string } {
+  if (buffer.length < 8) return { ok: false, reason: "empty" };
+  const b = buffer;
+  switch (ext) {
+    case "pdf":
+      // %PDF-
+      if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return { ok: true };
+      return { ok: false, reason: "not-pdf" };
+    case "doc":
+      // OLE compound: D0 CF 11 E0 A1 B1 1A E1
+      if (
+        b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0 &&
+        b[4] === 0xa1 && b[5] === 0xb1 && b[6] === 0x1a && b[7] === 0xe1
+      ) return { ok: true };
+      return { ok: false, reason: "not-doc" };
+    case "xls":
+      if (
+        b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0
+      ) return { ok: true };
+      return { ok: false, reason: "not-xls" };
+    case "docx":
+    case "xlsx":
+    case "pptx":
+    case "zip":
+      // ZIP (docx/xlsx are zip containers): 50 4B 03 04 หรือ 50 4B 05 06 หรือ 50 4B 07 08
+      if (b[0] === 0x50 && b[1] === 0x4b && (b[2] === 0x03 || b[2] === 0x05 || b[2] === 0x07)) {
+        return { ok: true };
+      }
+      return { ok: false, reason: `not-${ext}` };
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "webp":
+      // Reuse image check
+      return { ok: verifyImageMagicBytes(b), reason: "not-image" };
+    // ไฟล์ text-based ไม่มี signature ตายตัว → ปล่อยผ่าน
+    case "csv":
+    case "txt":
+    case "json":
+    case "md":
+      return { ok: true };
+    default:
+      // ไม่รู้จัก → block
+      return { ok: false, reason: `unknown-ext-${ext}` };
+  }
+}
+
 interface UploadResult {
   ok: boolean;
   url?: string;
@@ -231,6 +287,17 @@ export async function uploadSingleAttachmentAction(
 
   const arr = await file.arrayBuffer();
   const buffer = Buffer.from(arr);
+
+  // Magic-byte verify — ป้องกัน rename .exe → .pdf/.xlsx/.docx
+  //   image types + pdf + office (doc/docx/xls/xlsx) + zip = check signature
+  //   text (csv/txt/json/md) = pass
+  const magicCheck = verifyAttachmentMagicBytes(buffer, ext);
+  if (!magicCheck.ok) {
+    return {
+      ok: false,
+      error: `ไฟล์ไม่ตรงกับนามสกุล .${ext} (${magicCheck.reason ?? "invalid"})`,
+    };
+  }
 
   const sb = getSupabaseAdmin();
 

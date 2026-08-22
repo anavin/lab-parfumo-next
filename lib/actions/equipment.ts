@@ -141,12 +141,26 @@ export async function bulkCreateEquipmentAction(
 
   const sb = getSupabaseAdmin();
 
-  // 1. Pre-fetch existing names (case-insensitive dedupe)
-  const { data: existing } = await sb
-    .from("equipment")
-    .select("name");
+  // 1. Pre-fetch existing names (case-insensitive dedupe) + master lists
+  //    (category + unit ต่ำสุด — สำหรับ warning ถ้ามี typo)
+  const [
+    { data: existing },
+    { data: cats },
+    { data: units },
+  ] = await Promise.all([
+    // เกิน default 1000 หลุด dedup — ใช้ range 0-9999 (ครอบคลุมส่วนใหญ่)
+    sb.from("equipment").select("name").range(0, 9999),
+    sb.from("equipment_categories" as never).select("name"),
+    sb.from("lookups" as never).select("value").eq("type", "unit"),
+  ]);
   const existingSet = new Set(
     ((existing ?? []) as Array<{ name: string }>).map((e) => e.name.trim().toLowerCase()),
+  );
+  const catSet = new Set(
+    ((cats ?? []) as Array<{ name: string }>).map((c) => c.name.trim().toLowerCase()),
+  );
+  const unitSet = new Set(
+    ((units ?? []) as Array<{ value: string }>).map((u) => u.value.trim().toLowerCase()),
   );
 
   // 2. Validation rules per row (Zod-like + formula injection guard)
@@ -192,6 +206,18 @@ export async function bulkCreateEquipmentAction(
     const sku = safeText(r.sku).slice(0, 50) || null;
     const unit = safeText(r.unit).slice(0, 20) || "ชิ้น";
     const description = safeText(r.description).slice(0, DESC_MAX);
+    // Warn (ไม่ block) ถ้า category/unit ไม่ตรง master — user อาจพิมพ์ผิด
+    //   → จะสร้าง master value ใหม่โดยไม่ตั้งใจ → cluttered
+    if (catSet.size > 0 && !catSet.has(category.toLowerCase()) && category !== "อุปกรณ์อื่นๆ") {
+      validationErrors.push(
+        `row ${rowNo}: category "${category}" ไม่ตรงกับ master — จะสร้างใหม่ (ตรวจก่อนอนุมัติ)`,
+      );
+    }
+    if (unitSet.size > 0 && !unitSet.has(unit.toLowerCase()) && unit !== "ชิ้น") {
+      validationErrors.push(
+        `row ${rowNo}: unit "${unit}" ไม่ตรงกับ master — จะสร้างใหม่`,
+      );
+    }
     const lastCost = Math.max(0, Math.min(NUM_MAX, Number(r.lastCost ?? 0) || 0));
     const stock = Math.max(0, Math.min(NUM_MAX, Math.floor(Number(r.stock ?? 0)) || 0));
     const reorderLevel = Math.max(0, Math.min(NUM_MAX, Math.floor(Number(r.reorderLevel ?? 0)) || 0));

@@ -31,16 +31,34 @@ interface Props {
 }
 
 const ACTION_LABEL: Record<string, string> = {
+  // create / lifecycle
   created: "สร้าง PO",
   ordered: "สั่งซื้อ",
   status_changed: "เปลี่ยนสถานะ",
   received: "รับของ",
   cancelled: "ยกเลิก",
   closed: "ปิดงาน",
+  cloned: "Clone",
+  // revert / edit
+  status_reverted: "ย้อนสถานะ",
+  prices_edited: "แก้ราคา",
+  expected_date_changed: "แก้วันคาดว่าจะได้รับ",
+  procurement_notes_edited: "แก้หมายเหตุจัดซื้อ",
+  qty_changed: "แก้จำนวน",
+  // supplier
+  supplier_linked: "ลิงก์ Supplier",
+  supplier_changed: "เปลี่ยน Supplier",
+  supplier_unlinked: "ยกเลิกลิงก์ Supplier",
+  // comment / attach
+  commented: "คอมเมนต์",
   comment: "คอมเมนต์",
+  attached: "แนบไฟล์",
   attachment_added: "แนบไฟล์",
   attachment_removed: "ลบไฟล์",
-  cloned: "Clone",
+  // trash
+  trashed: "ย้ายไปถังขยะ",
+  restored: "กู้คืน",
+  permanent_deleted: "ลบถาวร",
 };
 
 export function AuditClient({
