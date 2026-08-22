@@ -696,16 +696,27 @@ export async function permanentDeletePoAction(
     }
   } catch { /* ok */ }
 
-  // Cascade delete related (activities/comments/deliveries มี ON DELETE CASCADE)
-  try {
-    await sb.from("po_activities" as never).delete().in("po_id", ids);
-    await sb.from("po_comments" as never).delete().in("po_id", ids);
-    await sb.from("po_deliveries" as never).delete().in("po_id", ids);
-    await sb.from("notifications").delete().in("po_id", ids);
-    // lots: ON DELETE SET NULL — preserve lot history
-  } catch (e) {
-    console.warn("[permanentDelete] cascade partial fail:", e);
+  // Cascade delete related — parallel (each independent, no ordering dep)
+  //   ก่อน: sequential — 4x roundtrips + partial-fail leaves orphans
+  //   หลัง: Promise.allSettled — 1x wall clock + collect failures for retry
+  const cascadeResults = await Promise.allSettled([
+    sb.from("po_activities" as never).delete().in("po_id", ids),
+    sb.from("po_comments" as never).delete().in("po_id", ids),
+    sb.from("po_deliveries" as never).delete().in("po_id", ids),
+    sb.from("notifications").delete().in("po_id", ids),
+  ]);
+  const cascadeFailures = cascadeResults
+    .map((r, i) => ({
+      table: ["po_activities", "po_comments", "po_deliveries", "notifications"][i],
+      failed: r.status === "rejected"
+        ? r.reason
+        : (r.value as { error?: unknown })?.error,
+    }))
+    .filter((r) => r.failed);
+  if (cascadeFailures.length > 0) {
+    console.warn("[permanentDelete] cascade partial fail:", cascadeFailures);
   }
+  // lots: ON DELETE SET NULL — preserve lot history
 
   // Delete PO rows
   const { error } = await sb.from("purchase_orders").delete().in("id", ids);

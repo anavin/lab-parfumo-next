@@ -45,12 +45,20 @@ export async function GET(req: Request) {
   const startUtc = new Date(startOfTodayICT.getTime() - 7 * 3600_000 - 86400_000);
   const endUtc = new Date(startUtc.getTime() + 86400_000);
 
-  // Pull POs that touched activity today
+  // Pull POs that touched activity today — explicit columns + limit
+  //   ก่อน: select("*") ไม่มี limit → payload บวมตามอายุ + attachment_urls JSONB
+  //   หลัง: 8 คอลัมน์ที่ digest จริงๆ ใช้ + top-K items ผ่าน JSONB items เมื่อจำเป็น
+  //   Limit 2000 = สูงเกินพอสำหรับ digest 1 วัน (ปกติ &lt; 50 PO/วัน)
+  const DIGEST_COLS = [
+    "id", "po_number", "status", "created_at", "updated_at",
+    "expected_date", "received_date", "total", "items",
+  ].join(", ");
   const { data: posRaw } = await sb
     .from("purchase_orders")
-    .select("*")
-    .or(`created_at.gte.${startUtc.toISOString()},updated_at.gte.${startUtc.toISOString()}`);
-  const pos = (posRaw ?? []) as PurchaseOrder[];
+    .select(DIGEST_COLS)
+    .or(`created_at.gte.${startUtc.toISOString()},updated_at.gte.${startUtc.toISOString()}`)
+    .limit(2000);
+  const pos = (posRaw ?? []) as unknown as PurchaseOrder[];
 
   const newPoCount = pos.filter((p) => p.created_at >= startUtc.toISOString() && p.created_at < endUtc.toISOString()).length;
   // ของที่อยู่ระหว่างขนส่งทั้งหมด (ไม่ใช่แค่วันนี้ — เพราะมาจาก status snapshot)
