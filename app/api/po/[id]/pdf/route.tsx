@@ -9,6 +9,13 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getPoById } from "@/lib/db/po";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PoDocument, type CompanyInfo } from "@/lib/pdf/po-document";
+import type { PoStatus } from "@/lib/types/db";
+
+// Staff เห็น PO ของทีมได้เมื่อ status >= สั่งซื้อแล้ว
+// (ตรงกับ /po/[id] และ /po/[id]/print gates)
+const STAFF_VIEWABLE_STATUSES: PoStatus[] = [
+  "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์",
+];
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // ใช้ Node runtime (ไม่ใช่ Edge) เพราะ @react-pdf ใช้ FS
@@ -46,13 +53,20 @@ export async function GET(
     return new NextResponse("Not Found", { status: 404 });
   }
 
-  // Permission: requester เห็นเฉพาะของตัวเอง
-  if (user.role === "requester" && po.created_by !== user.id) {
+  // Permission — ต้องตรงกับ /po/[id] และ /po/[id]/print gates:
+  //   privileged | creator | team-visible status (สั่งซื้อแล้ว+)
+  // ก่อน: ตัด staff ที่ดู team-visible → 403 เมื่อกด PDF
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  const canView =
+    isPrivileged ||
+    po.created_by === user.id ||
+    STAFF_VIEWABLE_STATUSES.includes(po.status);
+  if (!canView) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
   const company = await getCompanyInfo();
-  const showPrices = (user.role === "admin" || user.role === "supervisor");
+  const showPrices = isPrivileged;
 
   try {
     const buffer = await renderToBuffer(

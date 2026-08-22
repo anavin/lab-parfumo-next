@@ -264,6 +264,10 @@ async function _updateStatus(
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
+  // Reject mutations on trashed PO (P1 — ship/receive/close/reopen ต้อง gate ก่อน)
+  if (po.deleted_at) {
+    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+  }
   console.log(`[po _updateStatus] po.created_by=${po.created_by} po.po_number=${po.po_number}`);
 
   const update: Record<string, unknown> = {
@@ -932,6 +936,23 @@ export async function cancelPoAction(
     };
   }
 
+  // Extra gate: requester ยกเลิกได้เฉพาะช่วงต้น flow เท่านั้น
+  //   - รอจัดซื้อ / สั่งซื้อแล้ว → OK
+  //   - กำลังขนส่ง / รับของแล้ว / มีปัญหา → ต้องแอดมิน (stock/lot สลับซับซ้อน)
+  if (user.role === "requester") {
+    const requesterCancellable: PoStatus[] = [
+      "รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว",
+    ];
+    if (!requesterCancellable.includes(po.status as PoStatus)) {
+      return {
+        ok: false,
+        error:
+          `ยกเลิกเองไม่ได้ — สถานะ "${po.status}" แล้ว. ` +
+          `แจ้งแอดมินให้ยกเลิก (ต้อง revert stock/lot)`,
+      };
+    }
+  }
+
   // Stock rollback: ถ้าเคยรับของไปแล้ว → ถอย stock ออก
   let rollbackNote = "";
   if (RECEIVED_STATUSES.includes(po.status as PoStatus)) {
@@ -1255,7 +1276,11 @@ export async function shipPoAction(
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
-  return _updateStatus(poId, "กำลังขนส่ง", note, trackingNumber);
+  const tracking = (trackingNumber ?? "").trim();
+  if (!tracking) {
+    return { ok: false, error: "กรุณากรอกเลข tracking" };
+  }
+  return _updateStatus(poId, "กำลังขนส่ง", note, tracking);
 }
 
 // ==================================================================
@@ -2112,6 +2137,30 @@ export async function createPoAction(
     image_urls: it.image_urls ?? [],
   }));
 
+  // Dedup: รวมแถวซ้ำ (equipment_id ตรง หรือ custom ที่ name+unit ตรง) ก่อนบันทึก
+  // ก่อน: 2 แถวชื่อเดียวกัน → receive-form แยกไม่ออก, "รับแล้ว" total ผิด
+  // หลัง: qty รวมกัน, notes ต่อกัน (คั่นด้วย " | "), image_urls รวมแล้ว dedup
+  const mergedMap = new Map<string, PoItem>();
+  for (const it of cleanItems) {
+    // Key: prefer equipment_id (ของใน master), ตกเป็น name|unit (custom)
+    const key = it.equipment_id
+      ? `eq:${it.equipment_id}`
+      : `n:${(it.name ?? "").trim().toLowerCase()}|${it.unit ?? ""}`;
+    const existing = mergedMap.get(key);
+    if (existing) {
+      existing.qty += it.qty;
+      if (it.notes && it.notes !== existing.notes) {
+        existing.notes = [existing.notes, it.notes].filter(Boolean).join(" | ");
+      }
+      // Merge image URLs (dedup)
+      const imgs = new Set([...(existing.image_urls ?? []), ...(it.image_urls ?? [])]);
+      existing.image_urls = Array.from(imgs);
+    } else {
+      mergedMap.set(key, { ...it });
+    }
+  }
+  const dedupedItems = Array.from(mergedMap.values());
+
   // Retry on duplicate po_number — กัน race ตอน RPC fallback ใช้
   let newPo: { id: string; po_number: string } | null = null;
   let lastErr: { code?: string; message?: string } | null = null;
@@ -2121,7 +2170,7 @@ export async function createPoAction(
       .from("purchase_orders")
       .insert({
         po_number: poNumber,
-        items: cleanItems,
+        items: dedupedItems,
         purpose: "",
         notes,
         status: "รอจัดซื้อดำเนินการ",
@@ -2151,9 +2200,10 @@ export async function createPoAction(
   );
 
   // Suggest pending equipment สำหรับ custom items
+  //   ทำงานบน dedupedItems (สิ่งที่บันทึกจริง) — ไม่ใช่ cleanItems ก่อน dedup
   let anyLinked = false;
-  for (let i = 0; i < cleanItems.length; i++) {
-    const it = cleanItems[i];
+  for (let i = 0; i < dedupedItems.length; i++) {
+    const it = dedupedItems[i];
     if (!it.equipment_id && it.name) {
       const pending = await suggestEquipmentFromPo({
         name: it.name,
@@ -2165,7 +2215,7 @@ export async function createPoAction(
         suggestedFromPo: newPo.id,
       });
       if (pending) {
-        cleanItems[i].equipment_id = pending.id;
+        dedupedItems[i].equipment_id = pending.id;
         anyLinked = true;
       }
     }
@@ -2173,7 +2223,7 @@ export async function createPoAction(
   if (anyLinked) {
     await sb
       .from("purchase_orders")
-      .update({ items: cleanItems })
+      .update({ items: dedupedItems })
       .eq("id", newPo.id);
   }
 
@@ -2345,13 +2395,15 @@ export async function updateProcurementAction(
   // ค้นหา supplier_id จาก name (case-insensitive) — link FK เพื่อ PO history
   // ถ้าไม่เจอ → supplier_id = null (admin ต้อง create supplier ใน /suppliers ก่อน)
   // ไม่ match suppliers ที่อยู่ในถังขยะ — เลี่ยง link ไปยัง supplier ที่ถูกลบ
+  // Escape ILIKE wildcards (%, _) ในชื่อ user input — ไม่งั้นชื่อมี % จะ match ผิด
   let supplierId: string | null = null;
   const supplierName = input.supplierName.trim();
   if (supplierName) {
+    const escaped = supplierName.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
     const { data: matched } = await sb
       .from("suppliers" as never)
       .select("id")
-      .ilike("name", supplierName)
+      .ilike("name", escaped)
       .is("deleted_at", null)
       .limit(1)
       .maybeSingle();
