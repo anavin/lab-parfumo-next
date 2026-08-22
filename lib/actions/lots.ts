@@ -111,6 +111,18 @@ export async function updateLotAction(
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
+
+  // Validate: expiry_date ต้อง >= manufactured_date
+  //   (มี default OK, undefined = ไม่เปลี่ยนช่องนั้น)
+  const finalMfg = patch.manufacturedDate;
+  const finalExp = patch.expiryDate;
+  if (finalMfg && finalExp && finalExp < finalMfg) {
+    return {
+      ok: false,
+      error: `วันหมดอายุ (${finalExp}) ต้องไม่ก่อนวันผลิต (${finalMfg})`,
+    };
+  }
+
   const sb = getSupabaseAdmin();
   const update: Record<string, unknown> = {};
   if (patch.supplierLotNo !== undefined) {
@@ -130,17 +142,26 @@ export async function updateLotAction(
     .update(update as never)
     .eq("id", lotId);
   if (error) return { ok: false, error: "บันทึกไม่สำเร็จ" };
+
+  // Diagnostic log — lots ยังไม่มี audit table แยก
+  //   ใช้ console.log + prefix "[lots update]" grep เอาใน Vercel logs
+  console.log(
+    `[lots update] lotId=${lotId} by=${user.full_name} (${user.role}) ` +
+    `patch=${JSON.stringify(patch)}`,
+  );
+
   revalidatePath("/lots");
   revalidatePath(`/lots/${lotId}`);
   return { ok: true, lotId };
 }
 
 /**
- * เปลี่ยน status ของ lot — expired / discarded
+ * เปลี่ยน status ของ lot — active / expired / discarded
+ * เปลี่ยน active <-> discarded ต้องมีสิทธิ์ admin
  */
 export async function markLotStatusAction(
   lotId: string,
-  status: Exclude<LotStatus, "active">,
+  status: LotStatus,
   reason?: string,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
@@ -148,13 +169,33 @@ export async function markLotStatusAction(
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
   const sb = getSupabaseAdmin();
-  const update: Record<string, unknown> = { status };
-  if (reason) update.notes = reason;
+
+  // Preserve notes เดิม — ต่อ reason เข้าท้ายพร้อม timestamp
+  //   ก่อน: overwrite notes → ทับข้อมูลเก่าทิ้ง
+  //   หลัง: append pattern "prev\n---\n{iso} {actor} → {status} | reason"
+  const { data: existing } = await sb
+    .from("lots" as never)
+    .select("notes, status")
+    .eq("id", lotId)
+    .maybeSingle();
+  const existingNotes = ((existing as { notes?: string } | null)?.notes ?? "").trim();
+  const nowIso = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const entry = `${nowIso} ${user.full_name} → ${status}${reason ? ` | ${reason}` : ""}`;
+  const newNotes = existingNotes
+    ? `${existingNotes}\n---\n${entry}`
+    : entry;
+
   const { error } = await sb
     .from("lots" as never)
-    .update(update as never)
+    .update({ status, notes: newNotes } as never)
     .eq("id", lotId);
   if (error) return { ok: false, error: "บันทึกไม่สำเร็จ" };
+
+  console.log(
+    `[lots status] lotId=${lotId} by=${user.full_name} (${user.role}) ` +
+    `status=${status}${reason ? ` reason="${reason}"` : ""}`,
+  );
+
   revalidatePath("/lots");
   revalidatePath(`/lots/${lotId}`);
   return { ok: true, lotId };

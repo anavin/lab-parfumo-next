@@ -182,15 +182,23 @@ async function notifyUser(
   const sb = getSupabaseAdmin();
   const { data: u } = await sb
     .from("users")
-    .select("notification_prefs, email, full_name")
+    .select("notification_prefs, email, full_name, is_active")
     .eq("id", userId)
     .maybeSingle();
   const user = u as {
     notification_prefs: NotificationPrefs | null;
     email: string | null;
     full_name: string;
+    is_active: boolean | null;
   } | null;
   const prefs = user?.notification_prefs ?? null;
+
+  // ผู้ใช้ที่ถูก deactivate — ห้ามส่งทั้ง in-app + email
+  // ก่อน: notifyUser ไม่เช็ค is_active → deactivated user ยังได้อีเมล PO transitions
+  if (user && user.is_active === false) {
+    console.log(`[notifyUser] skip deactivated user ${userId} (${user.full_name})`);
+    return;
+  }
 
   // 1) In-app
   if (isAllowed(prefs, kind)) {
@@ -1771,7 +1779,7 @@ export async function updatePoPricesAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status, items, subtotal, total, deleted_at")
+    .select("id, po_number, status, items, subtotal, total, deleted_at, created_by")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
@@ -1899,6 +1907,22 @@ export async function updatePoPricesAction(
       ` - discount ฿${fmtMoney(input.discount)} + vat ฿${fmtMoney(vat)})`,
   );
 
+  // Notify creator (in-app) — ราคาเปลี่ยน = ข้อมูลที่ creator ควรรู้
+  //   ไม่ส่ง email (เป็น edit ไม่ใช่ status change) — เข้า /notifications แทน
+  try {
+    const poRow = po as { created_by: string | null; po_number: string };
+    if (poRow.created_by && poRow.created_by !== user.id) {
+      await sb.from("notifications").insert({
+        user_id: poRow.created_by,
+        po_id: poId,
+        title: `💰 ${poRow.po_number} มีการแก้ราคา`,
+        message: `ยอดรวม ฿${fmtMoney(oldTotal)} → ฿${fmtMoney(total)} โดย ${user.full_name}`,
+      } as never);
+    }
+  } catch (e) {
+    console.warn("[po updatePoPrices] notify failed:", e);
+  }
+
   revalidatePath(`/po/${poId}`);
   revalidatePath("/po");
   revalidatePath("/dashboard");
@@ -1925,7 +1949,7 @@ export async function updateProcurementNotesAction(
   const sb = getSupabaseAdmin();
   const { data: po } = await sb
     .from("purchase_orders")
-    .select("id, po_number, status, procurement_notes, deleted_at")
+    .select("id, po_number, status, procurement_notes, deleted_at, created_by")
     .eq("id", poId)
     .maybeSingle();
   if (!po) return { ok: false, error: "ไม่พบใบ PO" };
@@ -1964,6 +1988,22 @@ export async function updateProcurementNotesAction(
     "procurement_notes_edited",
     `แก้ไขหมายเหตุจัดซื้อ: "${oldPreview}${oldNotes.length > 60 ? "…" : ""}" → "${newPreview}${trimmed.length > 60 ? "…" : ""}"`,
   );
+
+  // Notify creator (in-app) — หมายเหตุจัดซื้ออาจกระทบการรับของ
+  //   Privacy: ไม่ใส่เนื้อหา notes ในข้อความ (creator เข้าดูใน /po/[id])
+  try {
+    const poRow = po as { created_by: string | null; po_number: string };
+    if (poRow.created_by && poRow.created_by !== user.id) {
+      await sb.from("notifications").insert({
+        user_id: poRow.created_by,
+        po_id: poId,
+        title: `📝 ${poRow.po_number} หมายเหตุจัดซื้อถูกแก้`,
+        message: `โดย ${user.full_name} — ดูเนื้อหาที่หน้า PO`,
+      } as never);
+    }
+  } catch (e) {
+    console.warn("[po updateProcurementNotes] notify failed:", e);
+  }
 
   revalidatePath(`/po/${poId}`);
   return { ok: true, poId };
