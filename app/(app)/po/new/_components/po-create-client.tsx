@@ -129,8 +129,13 @@ export function PoCreateClient({
   }
 
   function updateQty(idx: number, qty: number) {
+    // ยอมให้ 0 หรือค่า empty ระหว่างพิมพ์ (จะ enforce ตอน submit)
+    //   ก่อน: Math.max(1, qty) → พิมพ์ 0 หรือลบทั้งหมด = ระบบยัดกลับเป็น 1
+    //         → ล้างช่องก่อนพิมพ์ใหม่ไม่ได้เลย
+    //   หลัง: เก็บค่าเป็น NaN/0 ระหว่างพิมพ์ + handleSubmit บล็อกถ้า qty < 1
+    const safe = Number.isFinite(qty) && qty >= 0 ? qty : 0;
     setItems((cur) => cur.map((it, i) =>
-      i === idx ? { ...it, qty: Math.max(1, qty) } : it,
+      i === idx ? { ...it, qty: safe } : it,
     ));
   }
 
@@ -148,6 +153,12 @@ export function PoCreateClient({
     setError(null);
     if (!items.length) {
       setError("กรุณาเพิ่มรายการอย่างน้อย 1 รายการ");
+      return;
+    }
+    // Enforce qty >= 1 at submit (input allows 0 during editing)
+    const invalid = items.findIndex((it) => !it.qty || it.qty < 1);
+    if (invalid >= 0) {
+      setError(`รายการที่ ${invalid + 1} (${items[invalid].name}) จำนวนต้อง ≥ 1`);
       return;
     }
     startTransition(async () => {

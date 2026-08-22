@@ -2,20 +2,30 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, X, AlertTriangle, Trash2 } from "lucide-react";
+import { Pencil, X, AlertTriangle, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   updateLotAction,
   markLotStatusAction,
 } from "@/lib/actions/lots";
-import type { Lot } from "@/lib/types/db";
+import type { Lot, LotStatus } from "@/lib/types/db";
+
+const STATUS_LABEL: Record<LotStatus, string> = {
+  active: "ใช้งานอยู่",
+  depleted: "หมด",
+  expired: "หมดอายุ",
+  discarded: "ทิ้ง/ทำลาย",
+};
 
 export function LotEditClient({ lot }: { lot: Lot }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const [confirmStatus, setConfirmStatus] = useState<LotStatus | null>(null);
+  const [reason, setReason] = useState("");
 
   const [supplierLotNo, setSupplierLotNo] = useState(lot.supplier_lot_no ?? "");
   const [manufacturedDate, setManufacturedDate] = useState(lot.manufactured_date ?? "");
@@ -40,12 +50,20 @@ export function LotEditClient({ lot }: { lot: Lot }) {
     });
   }
 
-  function markStatus(status: "expired" | "discarded") {
-    if (!confirm(`ยืนยันทำเครื่องหมาย "${status === "expired" ? "หมดอายุ" : "ทิ้ง/ทำลาย"}"?`)) return;
+  function askMarkStatus(status: LotStatus) {
+    setReason("");
+    setConfirmStatus(status);
+  }
+
+  function doMarkStatus() {
+    if (!confirmStatus) return;
+    const target = confirmStatus;
     start(async () => {
-      const r = await markLotStatusAction(lot.id, status);
+      const r = await markLotStatusAction(lot.id, target, reason || undefined);
       if (r.ok) {
         toast.success("อัปเดตแล้ว");
+        setConfirmStatus(null);
+        setOpen(false);
         router.refresh();
       } else {
         toast.error(r.error ?? "ทำเครื่องหมายไม่สำเร็จ");
@@ -59,6 +77,34 @@ export function LotEditClient({ lot }: { lot: Lot }) {
         <Pencil className="size-3.5 mr-1.5" />
         แก้ไข
       </Button>
+
+      <ConfirmDialog
+        open={!!confirmStatus}
+        onOpenChange={(o) => !o && setConfirmStatus(null)}
+        title={confirmStatus
+          ? `ยืนยันทำเครื่องหมาย "${STATUS_LABEL[confirmStatus]}"?`
+          : ""}
+        description={
+          <div className="space-y-2">
+            <p className="text-sm">
+              Lot &quot;{lot.lot_no}&quot; จะถูกเปลี่ยนสถานะเป็น{" "}
+              <strong>{confirmStatus ? STATUS_LABEL[confirmStatus] : ""}</strong>.
+              เหตุผลจะถูกเก็บใน audit trail (notes ต่อท้าย).
+            </p>
+            <textarea
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="เหตุผล (ทางเลือก)"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+        }
+        variant={confirmStatus === "discarded" ? "danger" : "warning"}
+        loading={pending}
+        onConfirm={doMarkStatus}
+        confirmText="ยืนยัน"
+      />
 
       {open && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4 overflow-y-auto">
@@ -129,7 +175,7 @@ export function LotEditClient({ lot }: { lot: Lot }) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => markStatus("expired")}
+                      onClick={() => askMarkStatus("expired")}
                       disabled={pending}
                       className="text-red-600 border-red-200 hover:bg-red-50"
                     >
@@ -139,7 +185,7 @@ export function LotEditClient({ lot }: { lot: Lot }) {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => markStatus("discarded")}
+                      onClick={() => askMarkStatus("discarded")}
                       disabled={pending}
                       className="text-amber-700 border-amber-200 hover:bg-amber-50"
                     >
@@ -147,6 +193,24 @@ export function LotEditClient({ lot }: { lot: Lot }) {
                       ทิ้ง/ทำลาย
                     </Button>
                   </div>
+                </div>
+              )}
+              {lot.status === "discarded" && (
+                <div className="border-t pt-3 mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Lot นี้ถูกทำเครื่องหมายทิ้ง — สามารถกู้กลับได้:
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => askMarkStatus("active")}
+                    disabled={pending || lot.qty_remaining <= 0}
+                    className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                    title={lot.qty_remaining <= 0 ? "qty_remaining = 0 → trigger จะ set depleted" : ""}
+                  >
+                    <RotateCcw className="size-3.5 mr-1.5" />
+                    กลับเป็น active
+                  </Button>
                 </div>
               )}
 
