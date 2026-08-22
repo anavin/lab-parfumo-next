@@ -1448,55 +1448,100 @@ export async function addPoAttachmentsAction(
   }
 
   const sb = getSupabaseAdmin();
-  const { data: po, error: selectErr } = await sb
-    .from("purchase_orders")
-    .select("id, attachment_urls, po_number, created_by, status, deleted_at")
-    .eq("id", poId)
-    .maybeSingle();
-  if (selectErr) {
-    console.error("[po addPoAttachmentsAction] select error:", selectErr);
-    return { ok: false, error: `Query error: ${selectErr.message}` };
-  }
-  if (!po) {
-    console.error(`[po addPoAttachmentsAction] PO not found with id=${poId}`);
-    return { ok: false, error: `ไม่พบใบ PO (id=${poId.slice(0, 8)}...)` };
-  }
-  if (po.deleted_at) {
-    return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+
+  // Race-safe read-modify-write ด้วย optimistic lock บน updated_at:
+  //   ก่อน: 2 concurrent uploaders → each reads same attachment_urls → last write wins
+  //   หลัง: UPDATE ... WHERE updated_at=<seen> → conflict = re-read + retry (≤3)
+  interface PoRow {
+    id: string;
+    attachment_urls: PoAttachment[] | null;
+    po_number: string;
+    created_by: string | null;
+    status: string;
+    deleted_at: string | null;
+    updated_at: string;
   }
 
-  // Permission gate: privileged หรือ creator เท่านั้น
-  const isPrivileged = user.role === "admin" || user.role === "supervisor";
-  if (!isPrivileged && po.created_by !== user.id) {
-    return { ok: false, error: "คุณไม่ใช่เจ้าของ PO นี้" };
-  }
-  // ห้ามเพิ่มไฟล์เมื่อ PO อยู่ใน terminal state
-  if (po.status === "เสร็จสมบูรณ์" || po.status === "ยกเลิก") {
-    return { ok: false, error: `แนบไฟล์ไม่ได้ — PO ${po.status} แล้ว` };
-  }
-  console.log(`[po addPoAttachmentsAction] found PO ${po.po_number}, existing attachments=${(po.attachment_urls ?? []).length}`);
+  let retries = 0;
+  const MAX_RETRIES = 3;
+  let poRow: PoRow | null = null;
+  let mergedFinal = 0;
 
-  const existing: PoAttachment[] = (po.attachment_urls ?? []) as PoAttachment[];
-  const enriched = newAttachments.map((a) => ({
-    ...a,
-    category,
-    uploaded_by: user.full_name,
-  }));
-  const merged = [...existing, ...enriched];
+  while (retries < MAX_RETRIES) {
+    const { data, error: selectErr } = await sb
+      .from("purchase_orders")
+      .select("id, attachment_urls, po_number, created_by, status, deleted_at, updated_at")
+      .eq("id", poId)
+      .maybeSingle();
+    if (selectErr) {
+      console.error("[po addPoAttachmentsAction] select error:", selectErr);
+      return { ok: false, error: `Query error: ${selectErr.message}` };
+    }
+    if (!data) {
+      console.error(`[po addPoAttachmentsAction] PO not found with id=${poId}`);
+      return { ok: false, error: `ไม่พบใบ PO (id=${poId.slice(0, 8)}...)` };
+    }
+    poRow = data as unknown as PoRow;
 
-  const { error: updateErr } = await sb
-    .from("purchase_orders")
-    .update({
-      attachment_urls: merged,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", poId);
-  if (updateErr) {
-    console.error("[po addPoAttachmentsAction] update error:", updateErr);
-    return { ok: false, error: `บันทึกไม่สำเร็จ: ${updateErr.message}` };
+    if (poRow.deleted_at) {
+      return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
+    }
+    const isPrivileged = user.role === "admin" || user.role === "supervisor";
+    if (!isPrivileged && poRow.created_by !== user.id) {
+      return { ok: false, error: "คุณไม่ใช่เจ้าของ PO นี้" };
+    }
+    if (poRow.status === "เสร็จสมบูรณ์" || poRow.status === "ยกเลิก") {
+      return { ok: false, error: `แนบไฟล์ไม่ได้ — PO ${poRow.status} แล้ว` };
+    }
+
+    const existing: PoAttachment[] = (poRow.attachment_urls ?? []) as PoAttachment[];
+    const enriched = newAttachments.map((a) => ({
+      ...a,
+      category,
+      uploaded_by: user.full_name,
+    }));
+    const merged = [...existing, ...enriched];
+    mergedFinal = merged.length;
+
+    // Optimistic lock: UPDATE เฉพาะเมื่อ updated_at ยังตรงกับที่ read มา
+    const newUpdatedAt = new Date().toISOString();
+    const { data: updated, error: updateErr } = await sb
+      .from("purchase_orders")
+      .update({
+        attachment_urls: merged,
+        updated_at: newUpdatedAt,
+      })
+      .eq("id", poId)
+      .eq("updated_at", poRow.updated_at)
+      .select("id")
+      .maybeSingle();
+    if (updateErr) {
+      console.error("[po addPoAttachmentsAction] update error:", updateErr);
+      return { ok: false, error: `บันทึกไม่สำเร็จ: ${updateErr.message}` };
+    }
+    if (updated) {
+      console.log(
+        `[po addPoAttachmentsAction] SUCCESS retry=${retries} — total attachments now=${merged.length}`,
+      );
+      break;
+    }
+    // Version conflict — someone raced. Re-read + retry
+    retries++;
+    console.warn(
+      `[po addPoAttachmentsAction] version conflict, retry ${retries}/${MAX_RETRIES}`,
+    );
   }
-
-  console.log(`[po addPoAttachmentsAction] SUCCESS — total attachments now=${merged.length}`);
+  if (retries >= MAX_RETRIES) {
+    return {
+      ok: false,
+      error: "บันทึกไม่สำเร็จ — มีการแก้ไขพร้อมกัน กรุณาลองอีกครั้ง",
+    };
+  }
+  if (!poRow) {
+    return { ok: false, error: "ไม่พบใบ PO" };
+  }
+  const po = poRow;
+  void mergedFinal;
 
   await logActivity(
     poId, user.full_name, user.role, "attached",
