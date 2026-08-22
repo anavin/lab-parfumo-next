@@ -17,3 +17,12 @@ next-env.d.ts
 .vercel
 tsconfig.tsbuildinfo
 backups/
+
+# Cloudflare Workers / OpenNext build artifacts + local wrangler state
+.open-next
+.wrangler
+.dev.vars
+.dev.vars.*
+# extra env variants (main list above blocks .env / .env.local — also block prod inline)
+.env.production
+.env.staging
