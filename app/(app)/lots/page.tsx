@@ -14,6 +14,7 @@ interface SearchParams {
   status?: string;
   q?: string;
   expiring?: string;
+  page?: string;
 }
 
 export default async function LotsPage({
@@ -30,12 +31,14 @@ export default async function LotsPage({
       ? sp.status
       : "all";
   const expiringDays = sp.expiring === "30" ? 30 : sp.expiring === "7" ? 7 : 0;
+  const page = Math.max(0, parseInt(sp.page ?? "0", 10) || 0);
 
-  const [lots, counts] = await Promise.all([
+  const [lotsPaginated, counts] = await Promise.all([
     getLots({
       status: expiringDays > 0 ? "active" : status,
       search: sp.q,
       expiringWithinDays: expiringDays || undefined,
+      page,
     }),
     getLotStatusCounts(),
   ]);
@@ -49,7 +52,11 @@ export default async function LotsPage({
         </p>
       </div>
       <LotsClient
-        lots={lots}
+        lots={lotsPaginated.rows}
+        totalLots={lotsPaginated.total}
+        currentPage={lotsPaginated.page}
+        pageSize={lotsPaginated.pageSize}
+        hasMore={lotsPaginated.hasMore}
         counts={counts}
         currentStatus={status}
         currentSearch={sp.q ?? ""}

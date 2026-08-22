@@ -16,6 +16,10 @@ import { LOT_STATUS_LABEL } from "@/lib/types/db";
 
 interface Props {
   lots: Lot[];
+  totalLots: number;
+  currentPage: number;
+  pageSize: number;
+  hasMore: boolean;
   counts: Record<LotStatus, number>;
   currentStatus: LotStatus | "all";
   currentSearch: string;
@@ -30,7 +34,8 @@ const STATUS_TONE: Record<LotStatus, string> = {
 };
 
 export function LotsClient({
-  lots, counts, currentStatus, currentSearch, currentExpiring,
+  lots, totalLots, currentPage, pageSize, hasMore,
+  counts, currentStatus, currentSearch, currentExpiring,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -62,6 +67,13 @@ export function LotsClient({
 
   const total = lots.length;
   const today = new Date().toISOString().slice(0, 10);
+
+  const setPage = (p: number) => {
+    goto({ page: p > 0 ? String(p) : undefined });
+  };
+  const showPager = totalLots > pageSize;
+  const fromIdx = currentPage * pageSize + 1;
+  const toIdx = Math.min(totalLots, (currentPage + 1) * pageSize);
 
   return (
     <div className="space-y-4">
@@ -153,6 +165,7 @@ export function LotsClient({
           </div>
           <div className="text-xs text-muted-foreground mt-2">
             แสดง {total.toLocaleString()} lot
+            {showPager && ` (${fromIdx.toLocaleString()}–${toIdx.toLocaleString()} / ${totalLots.toLocaleString()})`}
           </div>
         </CardContent>
       </Card>
@@ -256,6 +269,23 @@ export function LotsClient({
               </Link>
             );
           })}
+          {showPager && (
+            <div className="flex items-center justify-between gap-2 pt-3 text-xs text-slate-600">
+              <span>{fromIdx.toLocaleString()}–{toIdx.toLocaleString()} / {totalLots.toLocaleString()} lot</span>
+              <div className="flex gap-1">
+                <Button
+                  variant="ghost" size="sm"
+                  disabled={currentPage <= 0 || pending}
+                  onClick={() => setPage(currentPage - 1)}
+                >← ก่อนหน้า</Button>
+                <Button
+                  variant="ghost" size="sm"
+                  disabled={!hasMore || pending}
+                  onClick={() => setPage(currentPage + 1)}
+                >ถัดไป →</Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

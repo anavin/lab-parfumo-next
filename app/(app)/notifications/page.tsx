@@ -3,8 +3,9 @@ import { Bell } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireUser } from "@/lib/auth/require-user";
-import { getNotificationsForUser } from "@/lib/db/users";
+import { getNotificationsPaginated } from "@/lib/db/users";
 import { NotificationsList } from "./_components/notifications-list";
+import { PageNav } from "./_components/page-nav";
 
 export const metadata: Metadata = {
   title: "การแจ้งเตือน — Lab Parfumo PO",
@@ -12,9 +13,16 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireUser();
-  const notifs = await getNotificationsForUser(user.id);
+  const sp = await searchParams;
+  const page = Math.max(0, parseInt(sp.page ?? "0", 10) || 0);
+  const paged = await getNotificationsPaginated(user.id, { page });
+  const notifs = paged.rows;
 
   const unread = notifs.filter((n) => !n.is_read);
   const read = notifs.filter((n) => n.is_read);
@@ -36,15 +44,21 @@ export default async function NotificationsPage() {
         />
       ) : (
         <>
-          {/* Stats */}
+          {/* Stats — show TOTAL across all pages */}
           <div className="grid grid-cols-3 gap-3">
-            <StatCard label="ทั้งหมด" value={notifs.length} icon="📬" />
-            <StatCard label="ยังไม่อ่าน" value={unread.length} icon="🔵"
+            <StatCard label="ทั้งหมด" value={paged.total} icon="📬" />
+            <StatCard label="ยังไม่อ่าน (หน้านี้)" value={unread.length} icon="🔵"
                       tone={unread.length > 0 ? "warning" : undefined} />
-            <StatCard label="อ่านแล้ว" value={read.length} icon="✓" />
+            <StatCard label="อ่านแล้ว (หน้านี้)" value={read.length} icon="✓" />
           </div>
 
           <NotificationsList notifications={notifs} hasUnread={unread.length > 0} />
+          <PageNav
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            hasMore={paged.hasMore}
+          />
         </>
       )}
     </div>

@@ -309,13 +309,18 @@ export interface PoActivity {
   created_at: string;
 }
 
+/**
+ * ดึงกิจกรรมของ PO — ล่าสุด 200 รายการ (มากพอสำหรับ PO ที่ค้างนาน ๆ)
+ * PO ที่มีมากกว่านี้ → ดูใน /audit page (paginated)
+ */
 export async function getPoActivities(poId: string): Promise<PoActivity[]> {
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("po_activities" as never)
     .select("*")
     .eq("po_id", poId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(200);
   return (data ?? []) as unknown as PoActivity[];
 }
 
@@ -328,13 +333,18 @@ export interface PoComment {
   created_at: string;
 }
 
+/**
+ * ดึงคอมเมนต์ของ PO — ล่าสุด 200 รายการ (ordering ascending → oldest แสดงบนสุด)
+ * ในกรณีเกิน limit → newest 200 (order desc + slice + reverse ก็ได้ ในอนาคต)
+ */
 export async function getPoComments(poId: string): Promise<PoComment[]> {
   const sb = getSupabaseAdmin();
   const { data } = await sb
     .from("po_comments" as never)
     .select("*")
     .eq("po_id", poId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(200);
   return (data ?? []) as unknown as PoComment[];
 }
 

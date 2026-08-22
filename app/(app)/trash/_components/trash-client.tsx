@@ -17,9 +17,47 @@ import {
 import {
   restoreSupplierFromTrashAction, permanentDeleteSupplierAction,
 } from "@/lib/actions/suppliers";
-import type { TrashedPo, TrashedSupplier } from "@/lib/db/trash";
+import type { TrashedPo, TrashedSupplier, Paginated } from "@/lib/db/trash";
 
 type Tab = "po" | "supplier";
+
+/** ปุ่ม prev/next + ข้อความ "N ของ M" */
+function Pager({
+  page, pageSize, total, hasMore, param,
+}: {
+  page: number; pageSize: number; total: number; hasMore: boolean; param: string;
+}) {
+  const router = useRouter();
+  const setPage = (p: number) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (p > 0) url.searchParams.set(param, String(p));
+    else url.searchParams.delete(param);
+    router.push(url.pathname + url.search, { scroll: false });
+  };
+  if (total <= pageSize) return null;
+  const from = page * pageSize + 1;
+  const to = Math.min(total, (page + 1) * pageSize);
+  return (
+    <div className="flex items-center justify-between gap-2 py-2 text-xs text-slate-600">
+      <span>{from.toLocaleString()}–{to.toLocaleString()} / {total.toLocaleString()}</span>
+      <div className="flex gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={page <= 0}
+          onClick={() => setPage(page - 1)}
+        >← ก่อนหน้า</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!hasMore}
+          onClick={() => setPage(page + 1)}
+        >ถัดไป →</Button>
+      </div>
+    </div>
+  );
+}
 
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString("th-TH", {
@@ -31,8 +69,8 @@ function fmtDateTime(iso: string): string {
 export function TrashClient({
   pos, suppliers,
 }: {
-  pos: TrashedPo[];
-  suppliers: TrashedSupplier[];
+  pos: Paginated<TrashedPo>;
+  suppliers: Paginated<TrashedSupplier>;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("po");
@@ -106,29 +144,33 @@ export function TrashClient({
           onClick={() => setTab("po")}
           icon={FileText}
           label="PO"
-          count={pos.length}
+          count={pos.total}
         />
         <TabButton
           active={tab === "supplier"}
           onClick={() => setTab("supplier")}
           icon={Building2}
           label="Supplier"
-          count={suppliers.length}
+          count={suppliers.total}
         />
       </div>
 
       {/* Empty state */}
-      {tab === "po" && pos.length === 0 && (
+      {tab === "po" && pos.rows.length === 0 && (
         <EmptyState label="PO" />
       )}
-      {tab === "supplier" && suppliers.length === 0 && (
+      {tab === "supplier" && suppliers.rows.length === 0 && (
         <EmptyState label="Supplier" />
       )}
 
       {/* PO list */}
-      {tab === "po" && pos.length > 0 && (
+      {tab === "po" && pos.rows.length > 0 && (
         <div className="space-y-2">
-          {pos.map((po) => (
+          <Pager
+            page={pos.page} pageSize={pos.pageSize}
+            total={pos.total} hasMore={pos.hasMore} param="poPage"
+          />
+          {pos.rows.map((po) => (
             <Card key={po.id} className="border-border">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -172,13 +214,21 @@ export function TrashClient({
               </CardContent>
             </Card>
           ))}
+          <Pager
+            page={pos.page} pageSize={pos.pageSize}
+            total={pos.total} hasMore={pos.hasMore} param="poPage"
+          />
         </div>
       )}
 
       {/* Supplier list */}
-      {tab === "supplier" && suppliers.length > 0 && (
+      {tab === "supplier" && suppliers.rows.length > 0 && (
         <div className="space-y-2">
-          {suppliers.map((s) => (
+          <Pager
+            page={suppliers.page} pageSize={suppliers.pageSize}
+            total={suppliers.total} hasMore={suppliers.hasMore} param="supPage"
+          />
+          {suppliers.rows.map((s) => (
             <Card key={s.id} className="border-border">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -212,6 +262,10 @@ export function TrashClient({
               </CardContent>
             </Card>
           ))}
+          <Pager
+            page={suppliers.page} pageSize={suppliers.pageSize}
+            total={suppliers.total} hasMore={suppliers.hasMore} param="supPage"
+          />
         </div>
       )}
 

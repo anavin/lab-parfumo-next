@@ -30,6 +30,38 @@ export const getNotificationsForUser = cache(async (
   return (data ?? []) as Notification[];
 });
 
+export interface PaginatedNotifications {
+  rows: Notification[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export const getNotificationsPaginated = cache(async (
+  userId: string,
+  { page = 0, pageSize = 50 }: { page?: number; pageSize?: number } = {},
+): Promise<PaginatedNotifications> => {
+  const sb = getSupabaseAdmin();
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  const { data, count } = await sb
+    .from("notifications")
+    .select("*", { count: "exact" })
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+  const rows = (data ?? []) as Notification[];
+  const total = count ?? rows.length;
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    hasMore: (page + 1) * pageSize < total,
+  };
+});
+
 export const getUnreadNotificationCount = cache(async (
   userId: string,
 ): Promise<number> => {

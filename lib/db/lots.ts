@@ -14,11 +14,28 @@ export interface LotFilters {
   /** lots ที่ใกล้หมดอายุภายใน N วัน */
   expiringWithinDays?: number;
   search?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export const getLots = cache(async (filters: LotFilters = {}): Promise<Lot[]> => {
+export interface PaginatedLots {
+  rows: Lot[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+const LOTS_PAGE_SIZE = 100;
+
+export const getLots = cache(async (
+  filters: LotFilters = {},
+): Promise<PaginatedLots> => {
   const sb = getSupabaseAdmin();
-  let q = sb.from("lots" as never).select("*");
+  const page = Math.max(0, filters.page ?? 0);
+  const pageSize = filters.pageSize ?? LOTS_PAGE_SIZE;
+
+  let q = sb.from("lots" as never).select("*", { count: "exact" });
 
   if (filters.status && filters.status !== "all") {
     q = q.eq("status", filters.status);
@@ -29,8 +46,10 @@ export const getLots = cache(async (filters: LotFilters = {}): Promise<Lot[]> =>
   if (filters.search) {
     const s = filters.search.trim();
     if (s) {
+      // Escape ILIKE wildcards
+      const esc = s.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
       q = q.or(
-        `lot_no.ilike.%${s}%,equipment_name.ilike.%${s}%,supplier_lot_no.ilike.%${s}%`,
+        `lot_no.ilike.%${esc}%,equipment_name.ilike.%${esc}%,supplier_lot_no.ilike.%${esc}%`,
       );
     }
   }
@@ -42,8 +61,21 @@ export const getLots = cache(async (filters: LotFilters = {}): Promise<Lot[]> =>
       .eq("status", "active");
   }
 
-  const { data } = await q.order("received_date", { ascending: false }).limit(1000);
-  return ((data ?? []) as unknown as Lot[]);
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  const { data, count } = await q
+    .order("received_date", { ascending: false })
+    .range(from, to);
+
+  const rows = ((data ?? []) as unknown as Lot[]);
+  const total = count ?? rows.length;
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    hasMore: (page + 1) * pageSize < total,
+  };
 });
 
 export const getLotById = cache(async (id: string): Promise<Lot | null> => {
