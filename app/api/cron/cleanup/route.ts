@@ -5,7 +5,8 @@
  *   1) login_attempts        — เก็บ 90 วันหลังสุด (เก่ากว่าลบ)
  *   2) po_activities         — เก็บ 365 วันหลังสุด
  *   3) notifications (read)  — เก็บ 180 วันหลังสุด (unread ไม่แตะ)
- *   4) user_sessions expired — expires_at < NOW() → ลบทิ้ง
+ *   4) user_sessions idle    — last_activity_at < NOW() - 24h → ลบทิ้ง
+ *      (SESSION_IDLE_MIN คือ 60 นาที; 24 ชม = margin เผื่อ user มีหลายอุปกรณ์)
  *
  * Security: Bearer Authorization header (CRON_SECRET)
  *
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
   const cutoff90d = new Date(now - 90 * day).toISOString();
   const cutoff180d = new Date(now - 180 * day).toISOString();
   const cutoff365d = new Date(now - 365 * day).toISOString();
-  const nowIso = new Date(now).toISOString();
+  const cutoffSession = new Date(now - day).toISOString(); // 24h idle → prune
 
   const results: Result[] = [];
 
@@ -92,9 +93,10 @@ export async function GET(req: Request) {
     ),
   );
 
-  // 4) user_sessions expired
+  // 4) user_sessions — idle > 24h (last_activity_at เก่ากว่านี้ = ตาย)
+  //    schema จริงไม่มี expires_at → เช็ค activity แทน (ตรงกับ SESSION_IDLE_MIN)
   results.push(
-    await pruneOlder(sb, "user_sessions", "expires_at", nowIso),
+    await pruneOlder(sb, "user_sessions", "last_activity_at", cutoffSession),
   );
 
   const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
@@ -109,6 +111,6 @@ export async function GET(req: Request) {
     ok: !anyError,
     totalDeleted,
     results,
-    ranAt: nowIso,
+    ranAt: new Date().toISOString(),
   });
 }

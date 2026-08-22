@@ -54,9 +54,12 @@ CREATE INDEX IF NOT EXISTS idx_login_created
 CREATE INDEX IF NOT EXISTS idx_login_username_created
   ON login_attempts (username, created_at DESC);
 
--- user_sessions — ยิงทุก request
-CREATE INDEX IF NOT EXISTS idx_sessions_expires
-  ON user_sessions (expires_at);
+-- user_sessions — ยิงทุก request (idle-timeout เช็คจาก last_activity_at)
+-- ไม่มี expires_at เพราะระบบใช้ SESSION_IDLE_MIN (60 นาที) เทียบกับ last_activity_at
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity
+  ON user_sessions (last_activity_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_token
+  ON user_sessions (token);
 
 -- withdrawals — audit + user pages
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user_created
