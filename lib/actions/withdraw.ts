@@ -177,8 +177,22 @@ export async function createWithdrawalAction(input: {
         return { ok: false, error: err };
       }
     }
-    // RPC ไม่อยู่หรือ error → fall through to legacy path
+    // RPC ไม่อยู่ / business RAISE / อื่นๆ — แยกกรณี
     if (atomicErr) {
+      const msg = (atomicErr as { message?: string })?.message?.toLowerCase() ?? "";
+      // Business RAISE จาก RPC (post migration 202608) — return ให้ user, ห้าม fall back
+      // เพราะ fall back จะ bypass invariant checks (unallocated_stock, stock_underflow)
+      if (msg.includes("unallocated_stock")) {
+        return {
+          ok: false,
+          error:
+            "สต็อกกับ Lot ไม่ตรงกัน — reconcile ก่อนเบิก (ไปที่ /lots ตรวจ qty_remaining)",
+        };
+      }
+      if (msg.includes("stock_underflow")) {
+        return { ok: false, error: "สต็อกไม่พอ" };
+      }
+      // RPC missing (function undefined) / connection / อื่นๆ — fall back OK
       console.warn("[withdraw] atomic RPC unavailable, falling back:", atomicErr.message);
     }
   } catch (e) {
@@ -264,7 +278,7 @@ export async function createWithdrawalAction(input: {
   }
   const withdrawalId = data.id;
 
-  // 3) FIFO: หา lot ที่จะใช้ + update lots + back-fill withdrawal.lot_id
+  // 3) FIFO: หา lot ที่จะใช้ + update lots + insert withdrawal_lot_usage
   //    (best-effort — ถ้า lots table ยังไม่ migrate หรือไม่มี active lot → skip)
   let primaryLotId: string | null = null;
   try {
@@ -286,6 +300,21 @@ export async function createWithdrawalAction(input: {
         .from("lots" as never)
         .update({ qty_remaining: newQty, status: newStatus })
         .eq("id", lot.id);
+
+      // F3 — บันทึก multi-lot consumption ทุก lot ที่ใช้ (ไม่ใช่แค่ primary)
+      // ก่อน: fallback path ไม่เขียน → deleteWithdrawalAction คืนได้แค่ primary lot
+      try {
+        await sb
+          .from("withdrawal_lot_usage" as never)
+          .insert({
+            withdrawal_id: withdrawalId,
+            lot_id: lot.id,
+            qty_used: used,
+          } as never);
+      } catch (e) {
+        console.warn("[withdraw] usage insert failed:", e);
+      }
+
       if (!primaryLotId) primaryLotId = lot.id;
       remaining -= used;
     }

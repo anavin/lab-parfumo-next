@@ -781,8 +781,12 @@ interface DeliveryItemRow {
 
 /**
  * ถอย stock ทั้งหมดที่เคยรับมาจาก deliveries ของ PO นี้
- * ใช้ select+update (non-atomic) — ในอนาคตจะใช้ atomic RPC เมื่อรัน migration
- * ป้องกันค่าติดลบด้วย Math.max(0, ...)
+ * ใช้ atomic RPC (post migration 202608 จะ RAISE stock_underflow ถ้าไม่พอ)
+ * + fallback non-atomic เมื่อ RPC ยังไม่ deploy
+ * + ลบ lots ที่สร้างจาก PO นี้ (คืน lot inventory ครบวง)
+ *
+ * Throws:
+ *   Error("stock_underflow") ถ้า RPC RAISE — caller ต้อง catch + rollback
  */
 async function rollbackPoStock(poId: string): Promise<{
   totalUnits: number;
@@ -810,14 +814,26 @@ async function rollbackPoStock(poId: string): Promise<{
   let totalUnits = 0;
   let itemsAffected = 0;
   for (const [eqId, qty] of totals) {
-    // Atomic decrement ผ่าน RPC (GREATEST(0, ...) กันค่าติดลบ)
+    // Atomic decrement ผ่าน RPC — RAISE stock_underflow ถ้าไม่พอ (post 202608)
     let useRpc = true;
     try {
       const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
         p_id: eqId, p_qty: -qty,
       });
-      if (rpcErr) useRpc = false;
-    } catch { useRpc = false; }
+      if (rpcErr) {
+        const msg = (rpcErr as { message?: string })?.message?.toLowerCase() ?? "";
+        // Business RAISE → propagate (caller ตัดสินใจว่าจะทำยังไง)
+        if (msg.includes("stock_underflow")) {
+          throw new Error(`stock_underflow: equipment=${eqId} qty=${qty}`);
+        }
+        // RPC missing / other DB error → fall back
+        useRpc = false;
+      }
+    } catch (e) {
+      // Only propagate business RAISE — RPC-missing errors fall through
+      if (e instanceof Error && e.message.startsWith("stock_underflow")) throw e;
+      useRpc = false;
+    }
 
     if (!useRpc) {
       console.warn(
@@ -841,7 +857,44 @@ async function rollbackPoStock(poId: string): Promise<{
     itemsAffected++;
   }
 
+  // ลบ lots ที่ถูกสร้างจาก PO นี้ — คืนสภาพก่อนรับของ
+  // (ถูก block ก่อนแล้วถ้ามี withdrawals ref lots พวกนี้ — ดู cancelPoAction)
+  try {
+    await sb.from("lots" as never).delete().eq("po_id", poId);
+  } catch (e) {
+    console.warn("[rollback] lots delete skipped:", e);
+  }
+
   return { totalUnits, itemsAffected };
+}
+
+/**
+ * เช็คว่ามี withdrawal ใดๆ ที่กิน lot ที่มาจาก PO นี้หรือไม่
+ * เช็คทั้ง 2 layer: legacy withdrawals.lot_id + withdrawal_lot_usage table (F3)
+ * Returns 0 ถ้าไม่มี — safe จะ delete lots + rollback stock ได้
+ */
+async function countWithdrawalsAgainstPoLots(poId: string): Promise<number> {
+  const sb = getSupabaseAdmin();
+  try {
+    const { data: lotRows } = await sb
+      .from("lots" as never)
+      .select("id")
+      .eq("po_id", poId);
+    const lotIds = ((lotRows ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (lotIds.length === 0) return 0;
+
+    const [legacy, usage] = await Promise.all([
+      sb.from("withdrawals").select("id", { count: "exact", head: true }).in("lot_id", lotIds),
+      sb
+        .from("withdrawal_lot_usage" as never)
+        .select("id", { count: "exact", head: true })
+        .in("lot_id", lotIds),
+    ]);
+    return Math.max(legacy.count ?? 0, usage.count ?? 0);
+  } catch {
+    // Tables may not exist yet — treat as 0
+    return 0;
+  }
 }
 
 export async function cancelPoAction(
@@ -882,14 +935,35 @@ export async function cancelPoAction(
   // Stock rollback: ถ้าเคยรับของไปแล้ว → ถอย stock ออก
   let rollbackNote = "";
   if (RECEIVED_STATUSES.includes(po.status as PoStatus)) {
+    // Block ถ้ามีการเบิกจาก lot ที่มาจาก PO นี้แล้ว (data-consistency guard)
+    // ไม่งั้น: cancel = ลด stock ทั้งก้อนคืน แต่ lots ที่ถูกเบิกไปแล้ว
+    // จะทำให้ SUM(lots.qty_remaining) > equipment.stock (drift)
+    const wCount = await countWithdrawalsAgainstPoLots(poId);
+    if (wCount > 0) {
+      return {
+        ok: false,
+        error:
+          `ยกเลิกไม่ได้ — มีการเบิก ${wCount} รายการจาก lot ของ PO นี้แล้ว. ` +
+          `ลบ withdrawal พวกนั้นก่อน หรือใช้ credit note ทาง manual`,
+      };
+    }
+
     try {
       const rb = await rollbackPoStock(poId);
       if (rb.totalUnits > 0) {
-        rollbackNote = ` | ถอย stock ${rb.totalUnits} ชิ้น (${rb.itemsAffected} รายการ)`;
+        rollbackNote = ` | ถอย stock ${rb.totalUnits} ชิ้น (${rb.itemsAffected} รายการ) + ลบ lots`;
       }
     } catch (e) {
-      // ถ้า rollback fail — log แต่ไม่ block การ cancel
-      // (สำคัญกว่าคือ PO เปลี่ยนเป็น cancelled — stock fix manual ทีหลังได้)
+      // Business errors (stock_underflow) จาก RPC RAISE — block cancel
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith("stock_underflow")) {
+        return {
+          ok: false,
+          error:
+            "ยกเลิกไม่ได้ — คืน stock แล้วจะทำให้ติดลบ. ตรวจ withdrawals ที่ใช้ของ PO นี้",
+        };
+      }
+      // อื่นๆ — log ไม่ block (defensive)
       console.error("[cancel] stock rollback failed:", e);
       rollbackNote = " | ⚠️ rollback stock ไม่สำเร็จ — ตรวจ manual";
     }
@@ -1039,22 +1113,9 @@ export async function revertStatusAction(
     }
 
     // 3.1) Check withdrawals — block ถ้ามีการเบิกจาก lot ของ PO นี้
-    let withdrawalCount = 0;
-    try {
-      const { data: lots } = await sb
-        .from("lots" as never)
-        .select("id")
-        .eq("po_id", poId);
-      const lotIds = ((lots ?? []) as Array<{ id: string }>).map((l) => l.id);
-      if (lotIds.length > 0) {
-        const { count } = await sb
-          .from("withdrawals")
-          .select("id", { count: "exact", head: true })
-          .in("lot_id", lotIds);
-        withdrawalCount = count ?? 0;
-      }
-    } catch { /* lots table may not exist if migration not run */ }
-
+    //      ตรวจทั้ง 2 layer: legacy withdrawals.lot_id + withdrawal_lot_usage (F3)
+    //      ก่อน: เช็คแค่ withdrawals.lot_id — multi-lot ที่ primary ต่างกันหลุด
+    const withdrawalCount = await countWithdrawalsAgainstPoLots(poId);
     if (withdrawalCount > 0) {
       return {
         ok: false,
@@ -1082,19 +1143,30 @@ export async function revertStatusAction(
     let stockRollbackCount = 0;
     if (lastDelivery) {
       // 3.3) Rollback stock for each equipment item in last delivery
+      //      ก่อน: try/catch เงียบ — RPC error กลายเป็น silent success (P1 bug)
+      //      หลัง: propagate error → return ให้ user แก้
       for (const item of lastDelivery.items_received ?? []) {
         if (!item.equipment_id) continue;
         const qty = Math.floor(item.qty_received ?? 0);
         if (qty <= 0) continue;
-        try {
-          await sb.rpc("increment_equipment_stock", {
-            p_id: item.equipment_id,
-            p_qty: -qty,
-          });
-          stockRollbackCount++;
-        } catch (e) {
-          console.warn("[revert] stock rollback failed:", e);
+        const { error: rpcErr } = await sb.rpc("increment_equipment_stock", {
+          p_id: item.equipment_id,
+          p_qty: -qty,
+        });
+        if (rpcErr) {
+          const msg = (rpcErr as { message?: string })?.message?.toLowerCase() ?? "";
+          if (msg.includes("stock_underflow")) {
+            return {
+              ok: false,
+              error:
+                `ย้อนสถานะไม่ได้ — คืน stock ${qty} จะทำให้ติดลบ ` +
+                `(equipment_id=${item.equipment_id}). ตรวจ withdrawal ที่ใช้ของ delivery นี้ก่อน`,
+            };
+          }
+          // RPC missing / อื่นๆ → warn ต่อ (fallback ทำงานอัตโนมัติภายใน RPC layer หรือ manual)
+          console.warn("[revert] stock rollback RPC error:", rpcErr);
         }
+        stockRollbackCount++;
       }
 
       // 3.4) Delete lots from this delivery (no withdrawals ref'd — already checked)
