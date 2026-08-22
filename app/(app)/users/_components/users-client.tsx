@@ -77,13 +77,22 @@ export function UsersClient({
     return out;
   }, [users, filter, search]);
 
-  function handleDelete() {
+  function handleDelete(confirmOpenPos = false) {
     if (!delTarget) return;
     startDelTransition(async () => {
-      await deleteUserAction(delTarget.id);
-      toast.success(`✅ ลบ ${delTarget.full_name} สำเร็จ`);
-      setDelTarget(null);
-      router.refresh();
+      const res = await deleteUserAction(delTarget.id, { confirmOpenPos });
+      if (res.ok) {
+        toast.success(`✅ ลบ ${delTarget.full_name} สำเร็จ`);
+        setDelTarget(null);
+        router.refresh();
+      } else if (res.activePoCount && res.activePoCount > 0) {
+        // มี active PO — ยืนยันอีกทีก่อนลบ
+        if (typeof window !== "undefined" && window.confirm(res.error)) {
+          handleDelete(true);
+        }
+      } else {
+        toast.error(res.error ?? "ลบไม่สำเร็จ");
+      }
     });
   }
 

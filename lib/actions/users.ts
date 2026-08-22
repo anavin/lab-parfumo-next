@@ -187,7 +187,15 @@ export async function updateUserAction(
   return { ok: true, userId };
 }
 
-export async function deleteUserAction(userId: string): Promise<ActionResult> {
+interface DeleteUserResult extends ActionResult {
+  /** จำนวน active PO ที่ user นี้เป็นเจ้าของ (ต้องยืนยัน) */
+  activePoCount?: number;
+}
+
+export async function deleteUserAction(
+  userId: string,
+  opts: { confirmOpenPos?: boolean } = {},
+): Promise<DeleteUserResult> {
   const me = await getCurrentUser();
   if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
@@ -209,6 +217,29 @@ export async function deleteUserAction(userId: string): Promise<ActionResult> {
       return {
         ok: false,
         error: "Supervisor ไม่มีสิทธิ์ลบผู้ใช้ระดับ Admin",
+      };
+    }
+  }
+
+  // ⚠️ Warn admin ถ้ามี active PO ค้างในมือ user นี้
+  //   (ก่อน: delete เงียบๆ → user เห็น session ถูก kill กลาง flow, admin ไม่รู้)
+  //   (หลัง: count active PO + require confirm ก่อนลบ)
+  if (!opts.confirmOpenPos) {
+    const OPEN = ["รอจัดซื้อดำเนินการ", "สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา"];
+    const { count: openCount } = await sb
+      .from("purchase_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", userId)
+      .in("status", OPEN)
+      .is("deleted_at", null);
+    if ((openCount ?? 0) > 0) {
+      return {
+        ok: false,
+        error:
+          `⚠️ User นี้มี ${openCount} PO ที่ยังทำงานอยู่ ` +
+          `(รอจัดซื้อ/สั่งซื้อ/กำลังขนส่ง/รับของ/มีปัญหา). ` +
+          `ยืนยันลบ user (PO จะยังคงอยู่แต่ actor แสดง "(deactivated)")?`,
+        activePoCount: openCount ?? 0,
       };
     }
   }

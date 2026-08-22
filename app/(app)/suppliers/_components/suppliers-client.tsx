@@ -62,9 +62,9 @@ export function SuppliersClient({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
-  function handleSyncAll() {
+  function handleSyncAll(confirmCollisions = false) {
     startSyncTransition(async () => {
-      const res = await syncAllSupplierSnapshotsAction();
+      const res = await syncAllSupplierSnapshotsAction({ confirmCollisions });
       if (res.ok) {
         const total = (res.linkedFixed ?? 0) + (res.legacyFixed ?? 0);
         if (total === 0) {
@@ -76,6 +76,18 @@ export function SuppliersClient({
           );
         }
         router.refresh();
+      } else if (res.collisionWarnings && res.collisionWarnings.length > 0) {
+        // เจอ collision — ถามยืนยัน browser confirm ก่อน rerun ด้วย confirmCollisions
+        const msg =
+          `${res.error}\n\nกลุ่มชื่อที่ชนกัน:\n` +
+          res.collisionWarnings.slice(0, 5).join("\n") +
+          (res.collisionWarnings.length > 5 ? `\n… และอีก ${res.collisionWarnings.length - 5}` : "") +
+          `\n\nยืนยัน sync ต่อ (จะเลือก supplier แบบ arbitrary ตาม order DB)?`;
+        if (typeof window !== "undefined" && window.confirm(msg)) {
+          handleSyncAll(true);
+        } else {
+          toast.warning("ยกเลิก — แก้ชื่อ supplier ให้ต่างกันก่อน");
+        }
       } else {
         toast.error(res.error ?? "ซิงค์ไม่สำเร็จ");
       }
@@ -265,7 +277,7 @@ export function SuppliersClient({
                 <>
                   <Button
                     variant="secondary"
-                    onClick={handleSyncAll}
+                    onClick={() => handleSyncAll()}
                     loading={syncPending}
                     title="ซิงค์ชื่อ Supplier บน PO ทั้งหมดให้ตรงกับตาราง Supplier (สำหรับแก้ข้อมูลเก่าที่ค้าง)"
                   >

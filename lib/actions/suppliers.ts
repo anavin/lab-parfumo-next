@@ -256,9 +256,13 @@ export interface SyncAllResult {
   legacyFixed?: number;
   /** total ที่ตรวจ */
   totalChecked?: number;
+  /** ชื่อ supplier ที่ normalized ชนกัน (case/whitespace) — ต้องแก้ก่อน */
+  collisionWarnings?: string[];
 }
 
-export async function syncAllSupplierSnapshotsAction(): Promise<SyncAllResult> {
+export async function syncAllSupplierSnapshotsAction(
+  opts: { confirmCollisions?: boolean } = {},
+): Promise<SyncAllResult> {
   const me = await getCurrentUser();
   if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
@@ -269,7 +273,8 @@ export async function syncAllSupplierSnapshotsAction(): Promise<SyncAllResult> {
   // 1. ดึง suppliers ทุกตัว
   const { data: suppliersRaw, error: sErr } = await sb
     .from("suppliers" as never)
-    .select("id, name");
+    .select("id, name")
+    .is("deleted_at", null);
   if (sErr || !suppliersRaw) {
     console.error("[sync-all] fetch suppliers failed:", sErr);
     return { ok: false, error: "อ่านข้อมูล Supplier ไม่สำเร็จ" };
@@ -277,9 +282,33 @@ export async function syncAllSupplierSnapshotsAction(): Promise<SyncAllResult> {
   type SupRow = { id: string; name: string };
   const suppliers = (suppliersRaw as SupRow[]).filter((s) => !!s.name);
   // Map: lowercased trimmed name → { id, canonicalName }
+  // ก่อน: 2 suppliers ชื่อคล้าย (case/whitespace ต่าง) → 1 arbitrarily wins
+  // หลัง: เก็บ collision + require confirmCollisions=true เพื่อรัน
   const nameToSupplier = new Map<string, { id: string; name: string }>();
+  const collisions = new Map<string, string[]>(); // normalized → [canonical names]
   for (const s of suppliers) {
-    nameToSupplier.set(s.name.trim().toLowerCase(), { id: s.id, name: s.name });
+    const norm = s.name.trim().toLowerCase();
+    const existing = nameToSupplier.get(norm);
+    if (existing && existing.id !== s.id) {
+      const arr = collisions.get(norm) ?? [existing.name];
+      if (!arr.includes(s.name)) arr.push(s.name);
+      collisions.set(norm, arr);
+    }
+    nameToSupplier.set(norm, { id: s.id, name: s.name });
+  }
+
+  if (collisions.size > 0 && !opts.confirmCollisions) {
+    const warnings = Array.from(collisions.values()).map(
+      (names) => `[${names.join(" | ")}]`,
+    );
+    return {
+      ok: false,
+      error:
+        `พบชื่อ Supplier ที่ normalized ชนกัน ${collisions.size} กลุ่ม — ` +
+        `sync จะเลือก supplier ตัวใดตัวหนึ่งแบบ arbitrary. ` +
+        `กรุณาแก้ชื่อให้ต่างกันก่อน หรือกดยืนยันเพื่อ sync ต่อ`,
+      collisionWarnings: warnings,
+    };
   }
 
   // 2. ดึง PO ทุกใบที่มี supplier_name (เปล่า → ข้าม)
@@ -456,10 +485,19 @@ export interface HardDeleteResult extends ActionResult {
 /**
  * Preview — เช็คก่อนลบว่าจะกระทบกี่ PO (อ่านอย่างเดียว ไม่แก้ DB)
  * ใช้ใน UI confirm dialog เพื่อแสดง warning ที่ถูกต้อง
+ *
+ * นับเฉพาะ PO ที่ยังไม่อยู่ในถังขยะ + แยก count ของ PO ที่อยู่ใน active workflow
+ * (สั่งซื้อแล้ว/กำลังขนส่ง/รับของแล้ว/มีปัญหา) → warn admin ก่อน move to trash
  */
 export async function previewSupplierDeleteAction(
   id: string,
-): Promise<{ ok: boolean; error?: string; supplierName?: string; linkedPoCount?: number }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  supplierName?: string;
+  linkedPoCount?: number;
+  activeWorkflowPoCount?: number;
+}> {
   const me = await getCurrentUser();
   if (!me || (me.role !== "admin" && me.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
@@ -476,15 +514,28 @@ export async function previewSupplierDeleteAction(
   const supName = (sup as { name?: string } | null)?.name;
   if (!supName) return { ok: false, error: "ไม่พบ Supplier" };
 
-  const { count } = await sb
-    .from("purchase_orders")
-    .select("id", { count: "exact", head: true })
-    .eq("supplier_id", id);
+  // ก่อน: count ไม่ filter deleted_at → PO ในถังขยะถูกนับด้วย (warning overstates)
+  // หลัง: filter เอา trashed PO ออก, แยกนับ active workflow แจ้ง admin
+  const ACTIVE_WORKFLOW = ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา"];
+  const [{ count: totalCount }, { count: activeCount }] = await Promise.all([
+    sb
+      .from("purchase_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("supplier_id", id)
+      .is("deleted_at", null),
+    sb
+      .from("purchase_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("supplier_id", id)
+      .is("deleted_at", null)
+      .in("status", ACTIVE_WORKFLOW),
+  ]);
 
   return {
     ok: true,
     supplierName: supName,
-    linkedPoCount: count ?? 0,
+    linkedPoCount: totalCount ?? 0,
+    activeWorkflowPoCount: activeCount ?? 0,
   };
 }
 
