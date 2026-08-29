@@ -15,6 +15,7 @@
  */
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { captureError } from "@/lib/observability/capture";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +104,16 @@ export async function GET(req: Request) {
 
   const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
   const anyError = results.some((r) => !r.ok);
+
+  // ถ้ามี table ใดล้มเหลว — capture ให้ Sentry เห็น (log ยังคงอยู่)
+  if (anyError) {
+    const failures = results.filter((r) => !r.ok);
+    captureError(
+      new Error(`cron/cleanup partial failure: ${failures.map((f) => f.table).join(", ")}`),
+      "cron/cleanup",
+      { failures },
+    );
+  }
 
   console.log(
     `[cron/cleanup] pruned ${totalDeleted} rows across ${results.length} tables`,

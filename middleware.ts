@@ -9,6 +9,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 
 const PUBLIC_PATHS = new Set(["/login", "/api/health"]);
+// /api/health อยู่ใน PUBLIC_PATHS อยู่แล้ว — สามารถ hit ได้จาก uptime monitor
+// โดยไม่ต้อง auth (ตอบ JSON status ทุกครั้ง status 200 พร้อม ok: true/false)
 
 /**
  * Prefix paths that MUST bypass session cookie check.

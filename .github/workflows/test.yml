@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [main, cloudflare]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test -- --run
+
+      # Optional: verify build (catches Next-specific issues test doesn't)
+      # Disabled by default — enable if build is stable enough to not break PRs
+      # - name: Build
+      #   env:
+      #     NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      #     NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      #     SUPABASE_SERVICE_ROLE_KEY: placeholder
+      #   run: npm run build
