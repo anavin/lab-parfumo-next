@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { sendDailyDigest, type DigestData } from "@/lib/email";
+import { authorizeCron } from "@/lib/auth/cron-auth";
 import type { PurchaseOrder, PoItem } from "@/lib/types/db";
 
 export const runtime = "nodejs";
@@ -18,19 +19,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function authorize(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  // Production-safe: ไม่มี secret → ปฏิเสธทุกคำขอ
-  // (เดิม return true ในกรณีไม่มี secret → endpoint เปิดให้ใครก็ trigger)
-  if (!cronSecret) {
-    console.warn(
-      "[cron/daily-digest] CRON_SECRET not set — rejecting all requests for safety. " +
-      "Set CRON_SECRET in env to enable.",
-    );
-    return false;
-  }
-  // ใช้เฉพาะ Authorization header (ไม่รับ ?token= เพื่อกัน leak ใน log/referer)
-  const auth = req.headers.get("authorization");
-  return auth === `Bearer ${cronSecret}`;
+  return authorizeCron(req, "cron/daily-digest");
 }
 
 export async function GET(req: Request) {

@@ -2,15 +2,22 @@
 
 /**
  * Triggers window.print() once on mount — so opening /po/[id]/print
- * pops the browser print dialog immediately
+ * pops the browser print dialog immediately.
+ *
+ * Skips auto-print if URL has ?noauto=1 — for users who navigated by
+ * accident or want to review before printing.
  */
 import { useEffect } from "react";
 
 export function PrintTrigger() {
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Skip auto-print if URL says so
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("noauto")) return;
     // Wait one frame to ensure layout settled
     const t = setTimeout(() => {
-      if (typeof window !== "undefined") window.print();
+      window.print();
     }, 250);
     return () => clearTimeout(t);
   }, []);

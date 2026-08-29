@@ -44,12 +44,20 @@ export default async function NotificationsPage({
         />
       ) : (
         <>
-          {/* Stats — show TOTAL across all pages */}
+          {/* Stats — total counts across all pages (bell badge = true total) */}
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="ทั้งหมด" value={paged.total} icon="📬" />
-            <StatCard label="ยังไม่อ่าน (หน้านี้)" value={unread.length} icon="🔵"
-                      tone={unread.length > 0 ? "warning" : undefined} />
-            <StatCard label="อ่านแล้ว (หน้านี้)" value={read.length} icon="✓" />
+            <StatCard
+              label={page > 0 ? "ยังไม่อ่าน (ในหน้านี้)" : "ยังไม่อ่าน"}
+              value={unread.length}
+              icon="🔵"
+              tone={unread.length > 0 ? "warning" : undefined}
+            />
+            <StatCard
+              label={page > 0 ? "อ่านแล้ว (ในหน้านี้)" : "อ่านแล้ว"}
+              value={read.length}
+              icon="✓"
+            />
           </div>
 
           <NotificationsList notifications={notifs} hasUnread={unread.length > 0} />

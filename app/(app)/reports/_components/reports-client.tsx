@@ -216,11 +216,15 @@ export function ReportsClient({ pos }: { pos: PurchaseOrder[] }) {
       p.expected_date ?? "",
       p.received_date ?? "",
     ]);
+    // Formula-injection guard — Excel/Sheets จะ execute cell ที่ขึ้นต้นด้วย =/+/-/@
+    // ต้อง prepend ' เพื่อ neutralise (invisible ใน UI). ตรงกับ /api/po/export/route.ts
+    const safeCell = (v: unknown): string => {
+      let s = String(v ?? "");
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const lines = [headers, ...rows].map((row) =>
-      row.map((v) => {
-        const s = String(v ?? "");
-        return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(","),
+      row.map(safeCell).join(","),
     );
     const csv = "﻿" + lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

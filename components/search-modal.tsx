@@ -6,7 +6,7 @@
  * Uses Radix Dialog primitive → focus trap + return-focus + Esc + aria-modal
  * ก่อน: plain div → Tab หลุด background, no focus trap, no SR announcement
  */
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, FileText, Package, Truck, Loader2,
@@ -56,6 +56,12 @@ export function SearchModal({
   }
 
   const total = results.pos.length + results.equipment.length + results.suppliers.length;
+
+  // ⌘/Ctrl glyph ตาม platform — Mac = ⌘, Win/Linux = Ctrl
+  const modKey = useMemo(() => {
+    if (typeof navigator === "undefined") return "⌘";
+    return /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "⌘" : "Ctrl";
+  }, []);
 
   return (
     <DialogPrimitive.Root
@@ -114,7 +120,7 @@ export function SearchModal({
                 💡 พิมพ์เพื่อค้นหา — เลข PO, ชื่อสินค้า, SKU, supplier
                 <div className="mt-3 text-xs">
                   <kbd className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                    ⌘ K
+                    {modKey} K
                   </kbd> เปิดค้นหา
                 </div>
               </div>

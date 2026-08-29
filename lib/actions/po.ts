@@ -1537,7 +1537,6 @@ export async function addPoAttachmentsAction(
   let retries = 0;
   const MAX_RETRIES = 3;
   let poRow: PoRow | null = null;
-  let mergedFinal = 0;
 
   while (retries < MAX_RETRIES) {
     const { data, error: selectErr } = await sb
@@ -1573,7 +1572,6 @@ export async function addPoAttachmentsAction(
       uploaded_by: user.full_name,
     }));
     const merged = [...existing, ...enriched];
-    mergedFinal = merged.length;
 
     // Optimistic lock: UPDATE เฉพาะเมื่อ updated_at ยังตรงกับที่ read มา
     const newUpdatedAt = new Date().toISOString();
@@ -1613,7 +1611,6 @@ export async function addPoAttachmentsAction(
     return { ok: false, error: "ไม่พบใบ PO" };
   }
   const po = poRow;
-  void mergedFinal;
 
   await logActivity(
     poId, user.full_name, user.role, "attached",

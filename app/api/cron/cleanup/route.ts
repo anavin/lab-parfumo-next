@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { captureError } from "@/lib/observability/capture";
+import { authorizeCron } from "@/lib/auth/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,15 +24,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function authorize(req: Request): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.warn(
-      "[cron/cleanup] CRON_SECRET not set — rejecting all requests for safety.",
-    );
-    return false;
-  }
-  const auth = req.headers.get("authorization");
-  return auth === `Bearer ${cronSecret}`;
+  return authorizeCron(req, "cron/cleanup");
 }
 
 type Result = { table: string; deleted: number; ok: boolean; error?: string };

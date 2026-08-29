@@ -104,6 +104,14 @@ export default async function PrintPoPage({
           main { padding: 0 !important; max-width: none !important; }
           body, .min-h-screen { background: #fff !important; }
           .print-page { box-shadow: none !important; border: none !important; padding: 0 !important; }
+          /* Preserve background colors of status chips + table headers
+             โดย default browser strip background graphics ตอนพิมพ์ →
+             status pill กลายเป็น white on white อ่านไม่ออก */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
         }
         .print-page {
           background: #fff;
