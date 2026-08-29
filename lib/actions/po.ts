@@ -44,6 +44,30 @@ async function logActivity(
 }
 
 /**
+ * Insert in-app notification only if the target user is still active.
+ * Use this for lightweight edit notifications (price/notes) where we don't
+ * want to run through the full notifyUser() email pipeline.
+ *
+ * ก่อน: direct sb.from("notifications").insert() → bypass is_active filter
+ *      → deactivated users still got noti (though session dead, harmless
+ *      but leaks activity to a deleted account row).
+ */
+async function notifyIfActive(
+  userId: string, poId: string, title: string, message: string,
+) {
+  const sb = getSupabaseAdmin();
+  const { data } = await sb
+    .from("users")
+    .select("is_active")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!data || (data as { is_active?: boolean }).is_active === false) return;
+  await sb.from("notifications").insert({
+    user_id: userId, po_id: poId, title, message,
+  });
+}
+
+/**
  * Notification kind → maps to user pref key (Phase B)
  * - po_status_change: สถานะ PO เปลี่ยน (สั่งซื้อ/ขนส่ง/รับของ/เสร็จ)
  * - po_cancelled:     PO ถูกยกเลิก
@@ -896,13 +920,26 @@ async function rollbackPoStock(poId: string): Promise<{
  * เช็คทั้ง 2 layer: legacy withdrawals.lot_id + withdrawal_lot_usage table (F3)
  * Returns 0 ถ้าไม่มี — safe จะ delete lots + rollback stock ได้
  */
-async function countWithdrawalsAgainstPoLots(poId: string): Promise<number> {
+/**
+ * Returns null on transient errors (connection blip, RLS regression, timeout).
+ * Callers should treat null as "cannot verify — bail out for safety" instead
+ * of "safe to proceed."
+ *
+ * ก่อน: catch ทุกอย่าง → return 0 → เข้าใจผิดว่าปลอดภัย → drift/data loss
+ * หลัง: swallow เฉพาะ table-missing (PGRST/42P01) → other error = null
+ */
+async function countWithdrawalsAgainstPoLots(poId: string): Promise<number | null> {
   const sb = getSupabaseAdmin();
   try {
-    const { data: lotRows } = await sb
+    const { data: lotRows, error: lotErr } = await sb
       .from("lots" as never)
       .select("id")
       .eq("po_id", poId);
+    if (lotErr) {
+      if (isTableMissingError(lotErr)) return 0;
+      console.error("[countWithdrawalsAgainstPoLots] lots query failed:", lotErr);
+      return null;
+    }
     const lotIds = ((lotRows ?? []) as Array<{ id: string }>).map((r) => r.id);
     if (lotIds.length === 0) return 0;
 
@@ -913,11 +950,31 @@ async function countWithdrawalsAgainstPoLots(poId: string): Promise<number> {
         .select("id", { count: "exact", head: true })
         .in("lot_id", lotIds),
     ]);
+    // withdrawal_lot_usage อาจไม่มีหากยังไม่ migrate — ยอมได้
+    if (usage.error && !isTableMissingError(usage.error)) {
+      console.error("[countWithdrawalsAgainstPoLots] usage query failed:", usage.error);
+      return null;
+    }
+    if (legacy.error) {
+      console.error("[countWithdrawalsAgainstPoLots] withdrawals query failed:", legacy.error);
+      return null;
+    }
     return Math.max(legacy.count ?? 0, usage.count ?? 0);
-  } catch {
-    // Tables may not exist yet — treat as 0
-    return 0;
+  } catch (e) {
+    console.error("[countWithdrawalsAgainstPoLots] threw:", e);
+    return null;
   }
+}
+
+function isTableMissingError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  const code = e?.code ?? "";
+  const msg = (e?.message ?? "").toLowerCase();
+  // Postgres undefined_table = 42P01; PostgREST returns PGRST20x / 205
+  return code === "42P01"
+    || code.startsWith("PGRST")
+    || msg.includes("does not exist")
+    || msg.includes("no such table");
 }
 
 export async function cancelPoAction(
@@ -979,6 +1036,15 @@ export async function cancelPoAction(
     // ไม่งั้น: cancel = ลด stock ทั้งก้อนคืน แต่ lots ที่ถูกเบิกไปแล้ว
     // จะทำให้ SUM(lots.qty_remaining) > equipment.stock (drift)
     const wCount = await countWithdrawalsAgainstPoLots(poId);
+    if (wCount === null) {
+      // Cannot verify — refuse ดีกว่าเสี่ยง drift
+      return {
+        ok: false,
+        error:
+          "ยกเลิกไม่ได้ — เช็ค withdrawals ที่อ้าง lot ไม่สำเร็จ (DB error). " +
+          "ลองอีกครั้ง หรือดู Vercel logs",
+      };
+    }
     if (wCount > 0) {
       return {
         ok: false,
@@ -1156,6 +1222,12 @@ export async function revertStatusAction(
     //      ตรวจทั้ง 2 layer: legacy withdrawals.lot_id + withdrawal_lot_usage (F3)
     //      ก่อน: เช็คแค่ withdrawals.lot_id — multi-lot ที่ primary ต่างกันหลุด
     const withdrawalCount = await countWithdrawalsAgainstPoLots(poId);
+    if (withdrawalCount === null) {
+      return {
+        ok: false,
+        error: "ย้อนสถานะไม่ได้ — ตรวจ withdrawals ที่อ้าง lot ไม่สำเร็จ",
+      };
+    }
     if (withdrawalCount > 0) {
       return {
         ok: false,
@@ -1770,14 +1842,14 @@ export async function updateExpectedDateAction(
   );
 
   // Notify creator (in-app) ถ้าไม่ใช่คนแก้เอง — ETA เปลี่ยนเป็นข้อมูลที่ creator ควรรู้
+  //   ใช้ notifyIfActive → skip ถ้า user ถูก deactivate แล้ว
   try {
     if (po.created_by && po.created_by !== user.id) {
-      await sb.from("notifications").insert({
-        user_id: po.created_by,
-        po_id: poId,
-        title: `📅 ${po.po_number} อัปเดตวันที่คาดว่าจะได้รับ`,
-        message: `เป็น ${expectedDate} โดย ${user.full_name}`,
-      } as never);
+      await notifyIfActive(
+        po.created_by, poId,
+        `📅 ${po.po_number} อัปเดตวันที่คาดว่าจะได้รับ`,
+        `เป็น ${expectedDate} โดย ${user.full_name}`,
+      );
     }
   } catch (e) {
     console.warn("[po updateExpectedDate] notify failed:", e);
@@ -1954,15 +2026,15 @@ export async function updatePoPricesAction(
 
   // Notify creator (in-app) — ราคาเปลี่ยน = ข้อมูลที่ creator ควรรู้
   //   ไม่ส่ง email (เป็น edit ไม่ใช่ status change) — เข้า /notifications แทน
+  //   ใช้ notifyIfActive → skip ถ้า user ถูก deactivate แล้ว
   try {
     const poRow = po as { created_by: string | null; po_number: string };
     if (poRow.created_by && poRow.created_by !== user.id) {
-      await sb.from("notifications").insert({
-        user_id: poRow.created_by,
-        po_id: poId,
-        title: `💰 ${poRow.po_number} มีการแก้ราคา`,
-        message: `ยอดรวม ฿${fmtMoney(oldTotal)} → ฿${fmtMoney(total)} โดย ${user.full_name}`,
-      } as never);
+      await notifyIfActive(
+        poRow.created_by, poId,
+        `💰 ${poRow.po_number} มีการแก้ราคา`,
+        `ยอดรวม ฿${fmtMoney(oldTotal)} → ฿${fmtMoney(total)} โดย ${user.full_name}`,
+      );
     }
   } catch (e) {
     console.warn("[po updatePoPrices] notify failed:", e);
@@ -2036,15 +2108,15 @@ export async function updateProcurementNotesAction(
 
   // Notify creator (in-app) — หมายเหตุจัดซื้ออาจกระทบการรับของ
   //   Privacy: ไม่ใส่เนื้อหา notes ในข้อความ (creator เข้าดูใน /po/[id])
+  //   ใช้ notifyIfActive → skip deactivated user
   try {
     const poRow = po as { created_by: string | null; po_number: string };
     if (poRow.created_by && poRow.created_by !== user.id) {
-      await sb.from("notifications").insert({
-        user_id: poRow.created_by,
-        po_id: poId,
-        title: `📝 ${poRow.po_number} หมายเหตุจัดซื้อถูกแก้`,
-        message: `โดย ${user.full_name} — ดูเนื้อหาที่หน้า PO`,
-      } as never);
+      await notifyIfActive(
+        poRow.created_by, poId,
+        `📝 ${poRow.po_number} หมายเหตุจัดซื้อถูกแก้`,
+        `โดย ${user.full_name} — ดูเนื้อหาที่หน้า PO`,
+      );
     }
   } catch (e) {
     console.warn("[po updateProcurementNotes] notify failed:", e);

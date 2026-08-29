@@ -118,7 +118,8 @@ export interface BulkResult {
   inserted: number;
   skipped: number;          // ซ้ำชื่อ
   failed: number;           // insert ผิดพลาด
-  failedReasons?: string[]; // เก็บ 5 รายแรกพอ
+  failedReasons?: string[]; // เหตุผลที่ insert ล้ม (แสดงเป็น error สีแดง)
+  warnings?: string[];      // เตือนที่ไม่ block insert (เช่น unit/category typo) — แสดงสี amber
 }
 
 export async function bulkCreateEquipmentAction(
@@ -265,14 +266,16 @@ export async function bulkCreateEquipmentAction(
   }
 
   revalidatePath("/equipment");
-  // Merge validation errors into failedReasons (deduplicate)
-  const allReasons = [...validationErrors, ...failedReasons].slice(0, 10);
+  // ก่อน: merge validationErrors เข้า failedReasons → แสดงเป็น "❌ ล้มเหลว" สีแดง
+  //       ทั้งที่ insert สำเร็จ (แค่ warn)
+  // หลัง: แยก field — failedReasons จริง ๆ (insert ล้ม) vs warnings (soft)
   return {
     ok: true,
     inserted,
     skipped,
     failed,
-    failedReasons: allReasons.length ? allReasons : undefined,
+    failedReasons: failedReasons.length ? failedReasons.slice(0, 10) : undefined,
+    warnings: validationErrors.length ? validationErrors.slice(0, 20) : undefined,
   };
 }
 

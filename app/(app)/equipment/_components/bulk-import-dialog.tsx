@@ -42,6 +42,7 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
     skipped: number;
     failed: number;
     failedReasons?: string[];
+    warnings?: string[];
   } | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -132,6 +133,7 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
         skipped: r.skipped + (rows.length - validRows.length),
         failed: r.failed,
         failedReasons: r.failedReasons,
+        warnings: r.warnings,
       });
       setStep("done");
       toast.success(`เพิ่ม ${r.inserted} รายการ`);
@@ -342,10 +344,19 @@ export function BulkImportDialog({ onClose }: { onClose: () => void }) {
                     </>
                   )}
                 </div>
-                {result.failedReasons && (
-                  <div className="text-xs text-red-600 mt-2 text-left bg-red-50 border border-red-200 rounded p-2">
+                {result.failedReasons && result.failedReasons.length > 0 && (
+                  <div className="text-xs text-red-700 mt-2 text-left bg-red-50 border border-red-200 rounded p-2">
+                    <div className="font-semibold mb-1">❌ ล้มเหลว:</div>
                     {result.failedReasons.map((r, i) => (
                       <div key={i}>• {r}</div>
+                    ))}
+                  </div>
+                )}
+                {result.warnings && result.warnings.length > 0 && (
+                  <div className="text-xs text-amber-800 mt-2 text-left bg-amber-50 border border-amber-200 rounded p-2">
+                    <div className="font-semibold mb-1">⚠️ คำเตือน (ยัง insert ได้ แต่ควรตรวจ):</div>
+                    {result.warnings.map((w, i) => (
+                      <div key={i}>• {w}</div>
                     ))}
                   </div>
                 )}

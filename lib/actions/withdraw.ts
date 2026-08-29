@@ -196,6 +196,19 @@ export async function createWithdrawalAction(input: {
       console.warn("[withdraw] atomic RPC unavailable, falling back:", atomicErr.message);
     }
   } catch (e) {
+    // แม้ RPC จะ throw (v2 supabase-js network layer) → ตรวจ message ว่าเป็น business RAISE ไหม
+    // ก่อน: fall back เสมอ → bypass invariant check → drift
+    const msg = (e as { message?: string })?.message?.toLowerCase() ?? "";
+    if (msg.includes("unallocated_stock")) {
+      return {
+        ok: false,
+        error:
+          "สต็อกกับ Lot ไม่ตรงกัน — reconcile ก่อนเบิก (ไปที่ /lots ตรวจ qty_remaining)",
+      };
+    }
+    if (msg.includes("stock_underflow")) {
+      return { ok: false, error: "สต็อกไม่พอ" };
+    }
     console.warn("[withdraw] atomic RPC threw, falling back:", e);
   }
 

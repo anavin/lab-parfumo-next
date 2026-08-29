@@ -112,18 +112,32 @@ export async function updateLotAction(
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
 
-  // Validate: expiry_date ต้อง >= manufactured_date
-  //   (มี default OK, undefined = ไม่เปลี่ยนช่องนั้น)
-  const finalMfg = patch.manufacturedDate;
-  const finalExp = patch.expiryDate;
+  const sb = getSupabaseAdmin();
+
+  // Merge patch with stored values BEFORE compare
+  //   ก่อน: check เฉพาะค่าใน patch → ถ้าส่งแค่ {expiryDate} ที่ก่อน manufactured_date
+  //         ที่มีอยู่แล้วใน DB → guard skipped, invariant violated silently
+  //   หลัง: fetch current lot ก่อน merge → compare final effective values
+  const { data: current } = await sb
+    .from("lots" as never)
+    .select("manufactured_date, expiry_date")
+    .eq("id", lotId)
+    .maybeSingle();
+  type LotDates = { manufactured_date: string | null; expiry_date: string | null };
+  const cur = (current ?? {}) as LotDates;
+
+  const finalMfg = patch.manufacturedDate !== undefined
+    ? patch.manufacturedDate
+    : cur.manufactured_date;
+  const finalExp = patch.expiryDate !== undefined
+    ? patch.expiryDate
+    : cur.expiry_date;
   if (finalMfg && finalExp && finalExp < finalMfg) {
     return {
       ok: false,
       error: `วันหมดอายุ (${finalExp}) ต้องไม่ก่อนวันผลิต (${finalMfg})`,
     };
   }
-
-  const sb = getSupabaseAdmin();
   const update: Record<string, unknown> = {};
   if (patch.supplierLotNo !== undefined) {
     update.supplier_lot_no = patch.supplierLotNo.trim() || null;
