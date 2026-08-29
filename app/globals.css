@@ -159,11 +159,13 @@
   .lp-pill-shipping { @apply bg-brand-100   text-brand-700    border-brand-300; }
   .lp-pill-shipping::before { @apply bg-brand-700; }
 
-  .lp-pill-received { @apply bg-emerald-50  text-emerald-700  border-emerald-200; }
-  .lp-pill-received::before { @apply bg-emerald-600; }
+  /* รับของแล้ว = cyan (fresh delivery), เสร็จสมบูรณ์ = deep green (final state)
+     ก่อน: ทั้งคู่ emerald เหมือนกัน → แยกไม่ออกด้วยตา (WCAG 1.4.1 fail) */
+  .lp-pill-received { @apply bg-cyan-50     text-cyan-700     border-cyan-200; }
+  .lp-pill-received::before { @apply bg-cyan-600; }
 
-  .lp-pill-done     { @apply bg-emerald-50  text-emerald-700  border-emerald-200; }
-  .lp-pill-done::before     { @apply bg-emerald-600; }
+  .lp-pill-done     { @apply bg-emerald-50  text-emerald-800  border-emerald-300; }
+  .lp-pill-done::before     { @apply bg-emerald-700; }
 
   .lp-pill-problem  { @apply bg-red-50      text-red-700      border-red-200; }
   .lp-pill-problem::before  { @apply bg-red-600; }

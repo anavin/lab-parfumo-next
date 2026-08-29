@@ -334,8 +334,11 @@ export interface PoComment {
 }
 
 /**
- * ดึงคอมเมนต์ของ PO — ล่าสุด 200 รายการ (ordering ascending → oldest แสดงบนสุด)
- * ในกรณีเกิน limit → newest 200 (order desc + slice + reverse ก็ได้ ในอนาคต)
+ * ดึงคอมเมนต์ของ PO — เอา newest 200 มาก่อน แล้ว reverse ให้ oldest แสดงบนสุด
+ *
+ * ก่อน: order ASC + limit 200 → ได้ตัวเก่าที่สุด, PO ที่ comment > 200 → ไม่เห็นตัวใหม่เลย
+ * หลัง: order DESC + limit 200 → newest 200 rows → reverse → ordering ตามเดิม
+ *      (UI ยัง render oldest บนสุด → newest ล่าง — เหมือน chat)
  */
 export async function getPoComments(poId: string): Promise<PoComment[]> {
   const sb = getSupabaseAdmin();
@@ -343,9 +346,10 @@ export async function getPoComments(poId: string): Promise<PoComment[]> {
     .from("po_comments" as never)
     .select("*")
     .eq("po_id", poId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(200);
-  return (data ?? []) as unknown as PoComment[];
+  const rows = (data ?? []) as unknown as PoComment[];
+  return rows.reverse();
 }
 
 export async function getPoDeliveries(poId: string): Promise<PoDelivery[]> {
