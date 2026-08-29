@@ -143,7 +143,7 @@ export function EditPricesDialog({
                     <div className="col-span-4">
                       <label className="block text-[10px] text-muted-foreground mb-0.5">ราคา/หน่วย</label>
                       <input
-                        type="number" min="0" step="0.01"
+                        type="number" min="0" step="0.01" inputMode="decimal"
                         value={prices[i] === 0 ? "" : prices[i]}
                         onChange={(e) => {
                           const v = parseFloat(e.target.value);
@@ -174,7 +174,7 @@ export function EditPricesDialog({
                 ส่วนลด (฿)
               </label>
               <input
-                type="number" min="0" step="0.01"
+                type="number" min="0" step="0.01" inputMode="decimal"
                 value={discount === 0 ? "" : discount}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
@@ -191,7 +191,7 @@ export function EditPricesDialog({
                 ค่าจัดส่ง (฿)
               </label>
               <input
-                type="number" min="0" step="0.01"
+                type="number" min="0" step="0.01" inputMode="decimal"
                 value={shippingFee === 0 ? "" : shippingFee}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);

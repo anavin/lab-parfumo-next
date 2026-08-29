@@ -223,9 +223,11 @@ export function PoListClient({
       })}
 
       {/* Sticky bottom action bar — appears when selection */}
+      {/* Uses safe-area inset — เลี่ยงชนกับ iOS home indicator */}
       {selected.size > 0 && (
         <div
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-2xl shadow-2xl backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-150"
+          style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
         >
           <span className="text-sm font-medium">
             เลือก <strong className="text-primary tabular-nums">{selected.size}</strong> ใบ

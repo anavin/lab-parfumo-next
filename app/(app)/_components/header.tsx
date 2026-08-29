@@ -9,6 +9,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getUnreadNotificationCount } from "@/lib/db/users";
 import { NavLinks } from "./nav-links";
 import { SearchTrigger } from "./search-trigger";
 
@@ -18,9 +19,12 @@ const ROLE_LABEL: Record<string, string> = {
   requester: "Staff",
 };
 
-export function AppHeader({ user }: { user: User }) {
+export async function AppHeader({ user }: { user: User }) {
   const isAdmin = user.role === "admin";
   const isPrivileged = user.role === "admin" || user.role === "supervisor";
+
+  // Fetch unread count for bell badge — cached per-request via React.cache
+  const unreadCount = await getUnreadNotificationCount(user.id).catch(() => 0);
 
   return (
     <header className="sticky top-0 z-30 w-full bg-background/80 backdrop-blur-md border-b border-border/60 supports-[backdrop-filter]:bg-background/70">
@@ -87,9 +91,21 @@ export function AppHeader({ user }: { user: User }) {
           <div className="flex items-center gap-1">
             <SearchTrigger />
 
-            <Link href="/notifications">
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="size-5" />
+            <Link href="/notifications" aria-label={
+              unreadCount > 0
+                ? `การแจ้งเตือน — มี ${unreadCount} รายการที่ยังไม่อ่าน`
+                : "การแจ้งเตือน"
+            }>
+              <Button variant="ghost" size="icon" className="relative focus-visible:ring-2 focus-visible:ring-brand-400">
+                <Bell className="size-5" aria-hidden="true" />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none"
+                    aria-hidden="true"
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
                 <span className="sr-only">การแจ้งเตือน</span>
               </Button>
             </Link>

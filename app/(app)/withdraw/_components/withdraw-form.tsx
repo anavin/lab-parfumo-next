@@ -562,7 +562,7 @@ function SelectedItemForm({
                 จำนวน * <span className="text-muted-foreground/70 font-normal">(สูงสุด {stock})</span>
               </label>
               <input
-                type="number" min="0" max={stock}
+                type="number" min="0" max={stock} inputMode="numeric"
                 value={qty === 0 ? "" : qty}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
@@ -673,7 +673,11 @@ function SelectedItemForm({
             </div>
           )}
 
-          {error && <Alert tone="danger" className="text-sm">❌ {error}</Alert>}
+          {error && (
+            <Alert tone="danger" className="text-sm" role="alert" aria-live="assertive">
+              ❌ {error}
+            </Alert>
+          )}
 
           <div className="flex gap-2 pt-2">
             <Button onClick={handleSubmit} loading={pending}>

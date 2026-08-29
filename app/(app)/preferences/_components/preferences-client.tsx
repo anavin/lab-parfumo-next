@@ -128,8 +128,11 @@ export function PreferencesClient({
         </CardContent>
       </Card>
 
-      {/* Save bar */}
-      <div className="sticky bottom-0 bg-background/80 backdrop-blur-sm py-3 -mx-4 px-4 border-t border-border/40 flex justify-end">
+      {/* Save bar — safe-area padding for iOS home indicator */}
+      <div
+        className="sticky bg-background/80 backdrop-blur-sm py-3 -mx-4 px-4 border-t border-border/40 flex justify-end"
+        style={{ bottom: "env(safe-area-inset-bottom, 0)" }}
+      >
         <Button onClick={save} disabled={!dirty || pending} size="sm">
           <Save className="size-4 mr-2" />
           {pending ? "กำลังบันทึก..." : "บันทึก"}
