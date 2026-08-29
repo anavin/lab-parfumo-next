@@ -2610,8 +2610,17 @@ export async function addDeliveryAction(
     return { ok: false, error: "PO นี้อยู่ในถังขยะ — กู้คืนก่อน" };
   }
 
-  // Note: ทุก user (admin + staff) สามารถกดรับสินค้าได้บน PO ใดๆ ก็ได้
-  // ผู้กดรับจะถูกบันทึกใน received_by_name ด้านล่าง
+  // Permission: creator OR privileged (admin/supervisor)
+  //   ก่อน: ทุก user รับของบน PO ใดก็ได้ → staff คนอื่นยัน stock ปลอมได้
+  //         (สร้าง PO ปลอม + รับของ = inject stock; หรือรับของแทนคนอื่นเพื่อปกปิด)
+  //   หลัง: เฉพาะคนที่สร้าง PO หรือแอดมิน — audit trail สอดคล้อง
+  const isPrivileged = user.role === "admin" || user.role === "supervisor";
+  if (!isPrivileged && po.created_by !== user.id) {
+    return {
+      ok: false,
+      error: "คุณไม่ใช่เจ้าของ PO นี้ — เฉพาะเจ้าของ PO หรือแอดมินรับของได้",
+    };
+  }
 
   // Workflow gate: รับของได้เมื่อสถานะอยู่ในช่วงรับ
   //  - "กำลังขนส่ง"  → รับครั้งแรก

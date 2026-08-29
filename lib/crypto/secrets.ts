@@ -65,7 +65,8 @@ export function resetKeyCache() {
 
 /**
  * Encrypt plaintext → "enc:v1:..." format
- * - ไม่มี key → return plaintext (graceful degradation)
+ * - Prod ไม่มี key → THROW (กัน SMTP password ถูกเก็บ plaintext ใน DB)
+ * - Dev ไม่มี key → return plaintext + warn (graceful degradation)
  * - input ว่าง → return ""
  * - input encrypted แล้ว → return เดิม (idempotent)
  */
@@ -73,7 +74,17 @@ export function encryptSecret(plaintext: string): string {
   if (!plaintext) return "";
   if (plaintext.startsWith(PREFIX)) return plaintext;
   const key = getKey();
-  if (!key) return plaintext;
+  if (!key) {
+    // ก่อน: return plaintext เงียบๆ → prod เก็บ SMTP password ไม่ encrypt
+    // หลัง: hard fail ใน prod, degrade เฉพาะ dev/test
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "ENCRYPTION_KEY not set in production — cannot store secret safely. " +
+        "Set env var (openssl rand -hex 32) and redeploy.",
+      );
+    }
+    return plaintext;
+  }
 
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);

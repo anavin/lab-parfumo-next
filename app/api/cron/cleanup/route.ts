@@ -18,6 +18,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// ครั้งแรก log ที่สะสมมาก อาจ prune หลายหมื่นแถว
+export const maxDuration = 60;
 
 function authorize(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;

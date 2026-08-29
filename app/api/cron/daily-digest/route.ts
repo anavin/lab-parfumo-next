@@ -14,6 +14,8 @@ import type { PurchaseOrder, PoItem } from "@/lib/types/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Vercel: 60s ceiling (Pro tier); Hobby จำกัด 10s. Digest ปกติ < 5s แต่หลาย admin กระจาย SMTP อาจเกิน
+export const maxDuration = 60;
 
 function authorize(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -133,8 +135,10 @@ export async function GET(req: Request) {
     (company as { name_th?: string; name?: string } | null)?.name ||
     "Lab Parfumo";
 
+  // ต้องใส่ calendar: "gregory" ไม่งั้น ICU default → Buddhist Era
+  // → "27 เมษายน 2569" แทนที่จะเป็น 2026 ปีเพี้ยน 543
   const dateStr = new Date(startUtc.getTime() + 7 * 3600_000).toLocaleDateString("th-TH", {
-    day: "numeric", month: "long", year: "numeric",
+    day: "numeric", month: "long", year: "numeric", calendar: "gregory",
   });
 
   // Send to each admin (parallel, best-effort)

@@ -10,11 +10,23 @@ import { SESSION_COOKIE } from "@/lib/auth/constants";
 
 const PUBLIC_PATHS = new Set(["/login", "/api/health"]);
 
+/**
+ * Prefix paths that MUST bypass session cookie check.
+ *   - /api/cron/*     — invoked by Vercel Cron หรือ external monitors ด้วย
+ *                        Bearer $CRON_SECRET (self-authenticated)
+ *                        ก่อน: middleware redirect → /login (HTML) → curl เห็น
+ *                        "Redirecting..." แทน 401 JSON
+ */
+const PUBLIC_PREFIXES = ["/api/cron/"];
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Public paths — ผ่าน
   if (PUBLIC_PATHS.has(pathname)) {
+    return NextResponse.next();
+  }
+  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 

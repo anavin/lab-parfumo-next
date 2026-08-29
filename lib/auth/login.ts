@@ -11,6 +11,14 @@ import type { User } from "@/lib/types/db";
 const LOCKOUT_MIN = 15;
 const MAX_ATTEMPTS = 5;
 
+// Static bcrypt hash of a random long string — used to burn ~1s CPU when a
+// login attempt targets a non-existent username. Without this, the response
+// time gap between "user exists (bcrypt)" and "user missing (early return)"
+// leaks enumeration despite rate limits. Pre-computed to keep imports light.
+//   Corresponds to a random 64-char blob — never valid for any user.
+const TIMING_EQUALIZER_HASH =
+  "$2b$14$D9dLj5RczkkzM3rNLR8t.OO2ivVeCVAlM8DwZ0KwF57.EjRRV4c1G";
+
 export interface LoginResult {
   ok: boolean;
   user?: User;
@@ -65,6 +73,15 @@ export async function loginWithPassword(
     .maybeSingle();
 
   if (!user) {
+    // Burn equivalent CPU to bcrypt.compare so the response time doesn't
+    // reveal whether the username exists (user enumeration defense).
+    //   ก่อน: no-user return ~10ms, real user path ~1s → attacker enumerates.
+    //   หลัง: no-user still runs bcrypt against dummy hash → same ~1s.
+    try {
+      await verifyBcrypt(password, TIMING_EQUALIZER_HASH);
+    } catch {
+      // ignore — purely for timing
+    }
     await logAttempt(username, false);
     const remaining = await getRemainingAttempts(username);
     return {

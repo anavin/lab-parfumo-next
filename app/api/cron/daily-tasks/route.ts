@@ -24,6 +24,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Close reminder + admin alerts ต่อ PO 200 ใบ อาจใช้เวลา sending mail — ให้เวลาเต็ม
+export const maxDuration = 60;
 
 function authorize(req: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -359,12 +361,14 @@ export async function GET(req: Request) {
         // ignore
       }
 
+      // calendar: "gregory" — กัน ICU default Buddhist Era (ปีเพี้ยน 543)
       const dateStr = new Date(
         Date.now() + 7 * 3600_000,
       ).toLocaleDateString("th-TH", {
         day: "numeric",
         month: "long",
         year: "numeric",
+        calendar: "gregory",
       });
 
       const alertResults = await Promise.allSettled(

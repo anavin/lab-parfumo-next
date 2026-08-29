@@ -152,13 +152,60 @@ export async function updateLookupAction(
 
 // ==================================================================
 // Delete (hard delete — only if not used)
+//
+// Server-side usage check — ก่อน: UI enforce only → curl call ลบได้
+// referenced rows (suppliers.category, equipment.unit, ฯลฯ) กลายเป็น orphan
 // ==================================================================
+
+/** Map LookupType → table/column ที่ reference lookup.name */
+const USAGE_COLUMN: Record<string, { table: string; column: string }> = {
+  supplier_category: { table: "suppliers", column: "category" },
+  bank:              { table: "suppliers", column: "bank_name" },
+  equipment_unit:    { table: "equipment", column: "unit" },
+  payment_term:      { table: "suppliers", column: "payment_terms" },
+  withdrawal_purpose:{ table: "withdrawals", column: "purpose" },
+};
+
 export async function deleteLookupAction(id: string): Promise<ActionResult> {
   const me = await getCurrentUser();
   const err = checkPrivileged(me?.role);
   if (err || !me) return { ok: false, error: err ?? "ไม่ได้เข้าสู่ระบบ" };
 
   const sb = getSupabaseAdmin();
+
+  // Fetch lookup type + name first — need for usage check
+  const { data: lookup } = await sb
+    .from("lookups" as never)
+    .select("type, name")
+    .eq("id", id)
+    .maybeSingle();
+  const lk = lookup as { type?: string; name?: string } | null;
+  if (!lk?.name) {
+    return { ok: false, error: "ไม่พบ lookup" };
+  }
+
+  // Check usage count
+  const usage = USAGE_COLUMN[lk.type ?? ""];
+  if (usage) {
+    try {
+      const { count } = await sb
+        .from(usage.table as never)
+        .select("id", { count: "exact", head: true })
+        .eq(usage.column, lk.name);
+      if ((count ?? 0) > 0) {
+        return {
+          ok: false,
+          error:
+            `ลบไม่ได้ — มี ${count} ${usage.table} ที่ใช้ค่า "${lk.name}" อยู่. ` +
+            `เปลี่ยน/ลบ record ที่ใช้ก่อน หรือปิดใช้งาน (is_active=false) แทน`,
+        };
+      }
+    } catch (e) {
+      console.warn("[lookups delete] usage check failed:", e);
+      // Don't block on check failure — but log
+    }
+  }
+
   const { error } = await sb
     .from("lookups" as never)
     .delete()
