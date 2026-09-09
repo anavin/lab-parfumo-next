@@ -49,7 +49,6 @@ export function RecordPaymentDialog({
   });
   const [paidDate, setPaidDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [cardDisplay, setCardDisplay] = useState(recentCards[0] ?? "");
-  const [approvalCode, setApprovalCode] = useState("");
   const [notes, setNotes] = useState("");
   const [slipUrl, setSlipUrl] = useState<string | null>(null);
   const [slipName, setSlipName] = useState<string | null>(null);
@@ -62,7 +61,6 @@ export function RecordPaymentDialog({
       setSelectedPos({ [currentPoId]: currentPoRemaining });
       setPaidDate(new Date().toISOString().slice(0, 10));
       setCardDisplay(recentCards[0] ?? "");
-      setApprovalCode("");
       setNotes("");
       setSlipUrl(null);
       setSlipName(null);
@@ -135,7 +133,6 @@ export function RecordPaymentDialog({
         allocations: allocs,
         paidDate,
         cardDisplay: cardDisplay.trim(),
-        approvalCode: approvalCode.trim() || undefined,
         slipUrl: slipUrl || undefined,
         notes: notes.trim() || undefined,
       });
@@ -299,24 +296,14 @@ export function RecordPaymentDialog({
           </div>
 
           {/* Form fields */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">วันที่รูด *</label>
-              <Input
-                type="date"
-                value={paidDate}
-                onChange={(e) => setPaidDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Approval code</label>
-              <Input
-                value={approvalCode}
-                onChange={(e) => setApprovalCode(e.target.value)}
-                placeholder="เลขจากเครื่องรูด"
-                className="font-mono"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">วันที่รูด *</label>
+            <Input
+              type="date"
+              value={paidDate}
+              onChange={(e) => setPaidDate(e.target.value)}
+              className="max-w-[200px]"
+            />
           </div>
 
           <div>

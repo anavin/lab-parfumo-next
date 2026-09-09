@@ -230,9 +230,6 @@ export function PaymentSection({
                     </div>
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-slate-500">
-                    {p.approval_code && (
-                      <span className="font-mono">Approval: {p.approval_code}</span>
-                    )}
                     {p.slip_url && (
                       <a
                         href={p.slip_url}
