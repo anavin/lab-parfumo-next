@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, FileText, PackageOpen, Send, Box,
   Wallet, BarChart3, Users, Building2, ScrollText, Boxes,
-  ChevronDown, ClipboardList, Warehouse, Trash2,
+  ChevronDown, ClipboardList, Warehouse, Trash2, CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -70,6 +70,7 @@ const NAV: NavItem[] = [
       { href: "/po", label: "ใบ PO ทั้งหมด", icon: FileText },
       { href: "/po/pending-receipt", label: "รอรับของ", icon: PackageOpen },
       { href: "/withdraw", label: "เบิกของ", icon: Send },
+      { href: "/my-payments", label: "เบิกคืนบัตร", icon: CreditCard },
     ],
   },
   {
@@ -112,6 +113,7 @@ const FLAT_FALLBACK: NavLink[] = [
   { type: "link", href: "/po", label: "ใบ PO", icon: FileText },
   { type: "link", href: "/po/pending-receipt", label: "รอรับของ", icon: PackageOpen },
   { type: "link", href: "/withdraw", label: "เบิกของ", icon: Send },
+  { type: "link", href: "/my-payments", label: "เบิกคืนบัตร", icon: CreditCard },
   { type: "link", href: "/equipment", label: "Catalog", icon: Box, privileged: true },
   { type: "link", href: "/lots", label: "Lot", icon: Boxes, privileged: true },
   { type: "link", href: "/suppliers", label: "Supplier", icon: Building2, privileged: true },

@@ -318,6 +318,34 @@ export interface PurchaseOrder {
   /** Soft delete — null = active. NOT null = อยู่ในถังขยะ */
   deleted_at?: string | null;
   deleted_by_name?: string | null;
+  /** Credit-card payment tracking (added 202609 migration) */
+  paid_amount?: number | null;
+  payment_status?: "unpaid" | "partial" | "paid" | "overpaid" | null;
+}
+
+/**
+ * 1 การรูดบัตร 1 PO (M:N ผ่าน payment_group_id — รูดพร้อมกันหลาย PO share id)
+ */
+export interface PoPayment {
+  id: string;
+  po_id: string;
+  /** null = จ่ายเดี่ยว, UUID = รูดพร้อมกับ PO อื่นในกลุ่ม */
+  payment_group_id: string | null;
+  amount: number;
+  paid_date: string;               // YYYY-MM-DD
+  paid_by_user_id: string;
+  paid_by_name: string;
+  card_display: string | null;     // "KTC anavin •••1234"
+  approval_code: string | null;
+  slip_url: string | null;
+  reimbursed: boolean;
+  reimbursed_date: string | null;
+  reimbursement_ref: string | null;
+  reimbursed_by: string | null;
+  reimbursed_by_name: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
 }
 
 export interface Withdrawal {

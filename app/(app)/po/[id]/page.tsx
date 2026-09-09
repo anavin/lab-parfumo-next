@@ -35,7 +35,10 @@ import {
   PoActivitiesSection,
   PoActivitiesSectionSkeleton,
 } from "./_components/activities-section";
+import { PaymentSection } from "./_components/payment-section";
 import { resolveAttachmentUrls } from "@/lib/storage/attachments";
+import { getPaymentsForPo, getRecentCardsForUser } from "@/lib/db/po-payments";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -383,6 +386,22 @@ export default async function PoViewPage({
         isAdmin={isAdmin}
       />
 
+      {/* Credit-card payment tracking (only when PO has a total to pay) */}
+      {isPaymentEligible(po.status) && (po.total ?? 0) > 0 && (
+        <PaymentSection
+          poId={po.id}
+          poNumber={po.po_number}
+          poTotal={Number(po.total ?? 0)}
+          paidAmount={Number(po.paid_amount ?? 0)}
+          supplierName={po.supplier_name}
+          siblingPos={await getSiblingPosForPayment(po.id, po.supplier_id)}
+          recentCards={await getRecentCardsForUser(user.id)}
+          payments={await getPaymentsForPo(po.id)}
+          isAdmin={isAdmin}
+          isCreator={po.created_by === user.id}
+        />
+      )}
+
       {/* Comments — streamed via Suspense */}
       <Suspense fallback={<PoCommentsSectionSkeleton />}>
         <PoCommentsSection poId={po.id} />
@@ -397,8 +416,51 @@ export default async function PoViewPage({
 }
 
 // ==================================================================
-// Sub-components
+// Sub-components + helpers
 // ==================================================================
+
+/** Payment section แสดงเฉพาะ PO ที่มีค่าใช้จ่ายแล้ว (ตั้งแต่สั่งซื้อขึ้นไป) */
+function isPaymentEligible(status: string): boolean {
+  return status !== "รอจัดซื้อดำเนินการ" && status !== "ยกเลิก";
+}
+
+/**
+ * Fetch sibling POs ของ supplier เดียวกันที่ยังจ่ายไม่ครบ
+ * (เผื่อรูดพร้อมกันหลาย PO) — จำกัด 10 ใบล่าสุด
+ */
+async function getSiblingPosForPayment(
+  currentPoId: string,
+  supplierId: string | null,
+) {
+  if (!supplierId) return [];
+  const sb = getSupabaseAdmin();
+  const { data } = await sb
+    .from("purchase_orders")
+    .select("id, po_number, status, total, paid_amount, supplier_name")
+    .eq("supplier_id", supplierId)
+    .is("deleted_at", null)
+    .neq("id", currentPoId)
+    .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"])
+    .neq("payment_status", "paid")
+    .order("created_at", { ascending: false })
+    .limit(10);
+  type Row = {
+    id: string;
+    po_number: string;
+    status: string;
+    total: number | null;
+    paid_amount: number | null;
+    supplier_name: string | null;
+  };
+  return ((data ?? []) as Row[]).map((r) => ({
+    id: r.id,
+    po_number: r.po_number,
+    status: r.status,
+    total: Number(r.total ?? 0),
+    paid_amount: Number(r.paid_amount ?? 0),
+    supplier_name: r.supplier_name,
+  }));
+}
 
 function SectionTitle({
   children, icon,
