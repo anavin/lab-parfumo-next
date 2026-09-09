@@ -147,14 +147,18 @@ export function MyPaymentsClient({
   }
 
   function exportCsv() {
+    if (payments.length === 0) {
+      toast.warning("ไม่มีข้อมูลให้ export");
+      return;
+    }
     const header = [
       "รอบ_group",
       "วันที่รูด",
       "บัตร",
+      "คนจ่าย",              // added — เผื่อ admin export หลายคน
       "PO",
       "supplier",
       "จำนวน",
-      "approval_code",
       "reimbursed",
       "reimbursed_date",
       "reimbursement_ref",
@@ -170,10 +174,10 @@ export function MyPaymentsClient({
       p.payment_group_id ?? "(single)",
       p.paid_date,
       p.card_display ?? "",
+      p.paid_by_name,
       p.po_number,
       p.po_supplier_name ?? "",
       p.amount,
-      p.approval_code ?? "",
       p.reimbursed ? "yes" : "no",
       p.reimbursed_date ?? "",
       p.reimbursement_ref ?? "",
@@ -187,6 +191,7 @@ export function MyPaymentsClient({
     a.download = `payments-${targetUserName.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success(`📥 Export ${payments.length} รายการเรียบร้อย`);
   }
 
   return (

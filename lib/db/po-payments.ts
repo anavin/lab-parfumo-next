@@ -12,12 +12,15 @@ export const getPaymentsForPo = cache(async (
   poId: string,
 ): Promise<PoPayment[]> => {
   const sb = getSupabaseAdmin();
+  // Cap 500 — hidden supabase-js default is 1000. Any PO with more payments
+  // than 500 has bigger problems (e.g. someone's rapid-clicking).
   const { data } = await sb
     .from("po_payments" as never)
     .select("*")
     .eq("po_id", poId)
     .order("paid_date", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(500);
   return (data ?? []) as unknown as PoPayment[];
 });
 
@@ -66,10 +69,13 @@ export const getMyPayments = cache(async (
   filters: MyPaymentsFilters,
 ): Promise<MyPaymentRow[]> => {
   const sb = getSupabaseAdmin();
+  // Filter deleted_at IS NULL on the joined PO — hide payments for trashed POs
+  // (they're preserved in DB for audit but shouldn't appear in the working list)
   let q = sb
     .from("po_payments" as never)
-    .select("*, purchase_orders!inner(po_number, supplier_name)")
-    .eq("paid_by_user_id", filters.userId);
+    .select("*, purchase_orders!inner(po_number, supplier_name, deleted_at)")
+    .eq("paid_by_user_id", filters.userId)
+    .is("purchase_orders.deleted_at", null);
 
   if (filters.reimbursed === true) q = q.eq("reimbursed", true);
   else if (filters.reimbursed === false) q = q.eq("reimbursed", false);
