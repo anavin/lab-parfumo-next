@@ -169,7 +169,10 @@ export async function recordPaymentAction(
     return { ok: false, error: formatZodError(parsed.error) };
   }
   const validated = parsed.data;
-  const cardDisplay = validated.cardDisplay;
+
+  // Normalize card_display — trim + collapse internal whitespace
+  //   กัน typo variants ("KTC  •••1234" vs "KTC •••1234") ที่ทำให้ auto-suggest แยกกัน
+  const cardDisplay = validated.cardDisplay.replace(/\s+/g, " ").trim();
 
   const sb = getSupabaseAdmin();
 

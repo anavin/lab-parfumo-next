@@ -292,21 +292,45 @@ export function MyPaymentsClient({
               <AlertTriangle className="size-3.5" /> Aging — ยอดค้างเบิกต่อพนักงาน
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
-              {aging.slice(0, 12).map((a) => (
-                <button
-                  key={a.paid_by_user_id}
-                  onClick={() => pushFilter({ user: a.paid_by_user_id, reimbursed: "no" })}
-                  className="text-left border border-slate-200 rounded px-3 py-2 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex justify-between items-baseline gap-2">
-                    <span className="font-medium">{a.paid_by_name}</span>
-                    <span className="font-mono font-bold text-red-700">฿{fmtBaht(a.total_amount)}</span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    {a.count} รายการ · ค้างสุด {a.days_oldest} วัน
-                  </div>
-                </button>
-              ))}
+              {aging.slice(0, 12).map((a) => {
+                // Color escalation: >60d red, >30d amber, else default
+                const tier = a.days_oldest > 60 ? "red"
+                  : a.days_oldest > 30 ? "amber"
+                    : "default";
+                const cardClass = tier === "red"
+                  ? "border-red-300 bg-red-50/40"
+                  : tier === "amber"
+                    ? "border-amber-300 bg-amber-50/40"
+                    : "border-slate-200";
+                const amountClass = tier === "red"
+                  ? "text-red-700"
+                  : tier === "amber"
+                    ? "text-amber-700"
+                    : "text-slate-800";
+                const dayClass = tier === "red"
+                  ? "text-red-700 font-semibold"
+                  : tier === "amber"
+                    ? "text-amber-700 font-semibold"
+                    : "text-slate-500";
+                return (
+                  <button
+                    key={a.paid_by_user_id}
+                    onClick={() => pushFilter({ user: a.paid_by_user_id, reimbursed: "no" })}
+                    className={`text-left border rounded px-3 py-2 hover:bg-slate-50 transition-colors ${cardClass}`}
+                  >
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="font-medium">{a.paid_by_name}</span>
+                      <span className={`font-mono font-bold ${amountClass}`}>฿{fmtBaht(a.total_amount)}</span>
+                    </div>
+                    <div className="text-xs mt-0.5">
+                      <span className="text-slate-500">{a.count} รายการ · </span>
+                      <span className={dayClass}>
+                        ค้างสุด {a.days_oldest} วัน{tier === "red" ? " ⚠️" : ""}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -315,9 +339,23 @@ export function MyPaymentsClient({
       {/* Groups list */}
       {payments.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center text-slate-500">
-            <p className="text-4xl mb-2">💳</p>
-            <p className="text-sm">ไม่พบ payments ตาม filter — ลองเปลี่ยนช่วงวันที่</p>
+          <CardContent className="p-8 text-center text-slate-500 space-y-3">
+            <p className="text-4xl">💳</p>
+            <p className="text-sm">ไม่พบ payments ตาม filter</p>
+            <div className="flex justify-center gap-2 pt-2">
+              {(currentReimbursedFilter !== "no" || currentFrom || currentTo) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => pushFilter({ reimbursed: "no", from: "", to: "" })}
+                >
+                  ล้าง filter
+                </Button>
+              )}
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/po">ไปดูใบ PO เพื่อบันทึกจ่าย →</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -352,10 +390,10 @@ export function MyPaymentsClient({
                     <span className="text-slate-700">· {g.card ?? "-"}</span>
                     {g.isGroup ? (
                       <span className="text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full text-[10px] font-semibold">
-                        🔗 รูดครั้งเดียว · {g.payments.length} PO
+                        🔗 รูดพร้อมกัน · {g.payments.length} PO
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-[10px]">รูดเดี่ยว</span>
+                      <span className="text-slate-400 text-[10px]">รูด PO เดียว</span>
                     )}
                     <span className="ml-auto font-mono font-bold">฿{fmtBaht(g.totalAmount)}</span>
                   </div>
