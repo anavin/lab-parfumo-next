@@ -127,6 +127,10 @@ export function RecordPaymentDialog({
       setError("ระบุบัตรที่รูด");
       return;
     }
+    if (!slipUrl) {
+      setError("กรุณาแนบสลิป (หลักฐานการรูดบัตร)");
+      return;
+    }
 
     start(async () => {
       const res = await recordPaymentAction({

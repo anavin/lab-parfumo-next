@@ -14,6 +14,13 @@ import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import {
+  recordPaymentSchema,
+  markReimbursedSchema,
+  unmarkReimbursedSchema,
+  voidPaymentSchema,
+  formatZodError,
+} from "./schemas";
 
 /**
  * Count confirmed po_payments ผูกกับ PO — สำหรับใช้ block cancel/revert
@@ -131,28 +138,18 @@ export async function recordPaymentAction(
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
 
-  // Validate input
-  if (!input.allocations?.length) {
-    return { ok: false, error: "ไม่มี PO ที่จะจ่าย" };
+  // Validate input via Zod (field caps + cent precision + shape)
+  const parsed = recordPaymentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
   }
-  if (input.allocations.some((a) => !a.poId || !Number.isFinite(a.amount) || a.amount <= 0)) {
-    return { ok: false, error: "ยอดจ่ายต่อ PO ต้องมากกว่า 0" };
-  }
-  if (!input.paidDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.paidDate)) {
-    return { ok: false, error: "รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)" };
-  }
-  const cardDisplay = (input.cardDisplay ?? "").trim();
-  if (!cardDisplay) {
-    return { ok: false, error: "กรุณาระบุบัตร (เช่น KTC anavin •••1234)" };
-  }
-  if (cardDisplay.length > 100) {
-    return { ok: false, error: "ชื่อบัตรยาวเกินไป (สูงสุด 100 ตัวอักษร)" };
-  }
+  const validated = parsed.data;
+  const cardDisplay = validated.cardDisplay;
 
   const sb = getSupabaseAdmin();
 
   // Permission gate — creator หรือ privileged ของ **ทุก PO** ที่ผูก
-  const poIds = input.allocations.map((a) => a.poId);
+  const poIds = validated.allocations.map((a) => a.poId);
   const { data: pos } = await sb
     .from("purchase_orders")
     .select("id, po_number, created_by, status, deleted_at, total, paid_amount")
@@ -188,7 +185,7 @@ export async function recordPaymentAction(
     // Guard overpay — allow up to 110% (fee ปกติ 1-3%, duplicate slip ปกติ = 100% ซ้ำ)
     // ก่อน: 150% ผ่อนเกิน → duplicate charge ผ่านได้
     // หลัง: 110% + message ชัด
-    const alloc = input.allocations.find((a) => a.poId === po.id)!;
+    const alloc = validated.allocations.find((a) => a.poId === po.id)!;
     const existing = Number(po.paid_amount ?? 0);
     const poTotal = Number(po.total ?? 0);
     if (poTotal > 0 && existing + alloc.amount > poTotal * 1.10) {
@@ -202,20 +199,20 @@ export async function recordPaymentAction(
   }
 
   // Generate payment_group_id ถ้ามี > 1 PO
-  const groupId = input.allocations.length > 1 ? randomUUID() : null;
+  const groupId = validated.allocations.length > 1 ? randomUUID() : null;
 
   // Insert รายละ 1 PO
-  const rows = input.allocations.map((a) => ({
+  const rows = validated.allocations.map((a) => ({
     po_id: a.poId,
     payment_group_id: groupId,
     amount: a.amount,
-    paid_date: input.paidDate,
+    paid_date: validated.paidDate,
     paid_by_user_id: user.id,
     paid_by_name: user.full_name,
     card_display: cardDisplay,
-    approval_code: input.approvalCode?.trim() || null,
-    slip_url: input.slipUrl || null,
-    notes: input.notes?.trim() || null,
+    approval_code: validated.approvalCode ?? null,
+    slip_url: validated.slipUrl ?? null,
+    notes: validated.notes ?? null,
     created_by: user.id,
   }));
 
@@ -226,7 +223,16 @@ export async function recordPaymentAction(
   }
 
   // Refresh PO payment_status สำหรับทุก PO ที่กระทบ (parallel)
-  await Promise.allSettled(poIds.map((id) => refreshPoPaymentStatus(id)));
+  // — log rejected rejections so we notice stale statuses
+  const refreshResults = await Promise.allSettled(
+    poIds.map((id) => refreshPoPaymentStatus(id)),
+  );
+  const refreshErrors = refreshResults
+    .map((r, i) => r.status === "rejected" ? { poId: poIds[i], err: r.reason } : null)
+    .filter(Boolean);
+  if (refreshErrors.length > 0) {
+    console.error("[po-payments] refresh failed for some POs — status stale:", refreshErrors);
+  }
 
   // Revalidate — ทุก PO detail + list + my-payments dashboard
   for (const id of poIds) revalidatePath(`/po/${id}`);
@@ -245,31 +251,30 @@ export async function recordPaymentAction(
  */
 export async function markReimbursedAction(input: {
   paymentIds: string[];
-  reimbursedDate: string;           // YYYY-MM-DD
+  reimbursedDate: string;
   reimbursementRef?: string;
 }): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
-  if (!input.paymentIds?.length) {
-    return { ok: false, error: "ไม่มี payment ที่จะ mark" };
+  const parsed = markReimbursedSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.reimbursedDate)) {
-    return { ok: false, error: "รูปแบบวันที่ไม่ถูกต้อง" };
-  }
+  const v = parsed.data;
 
   const sb = getSupabaseAdmin();
   const { error } = await sb
     .from("po_payments" as never)
     .update({
       reimbursed: true,
-      reimbursed_date: input.reimbursedDate,
-      reimbursement_ref: input.reimbursementRef?.trim() || null,
+      reimbursed_date: v.reimbursedDate,
+      reimbursement_ref: v.reimbursementRef ?? null,
       reimbursed_by: user.id,
       reimbursed_by_name: user.full_name,
     } as never)
-    .in("id", input.paymentIds);
+    .in("id", v.paymentIds);
 
   if (error) {
     console.error("[po-payments markReimbursed] failed:", error);
@@ -279,9 +284,9 @@ export async function markReimbursedAction(input: {
   revalidatePath("/my-payments");
   revalidatePath("/po");
   console.log(
-    `[po-payments] user=${user.full_name} marked ${input.paymentIds.length} payment(s) reimbursed`,
+    `[po-payments] user=${user.full_name} marked ${v.paymentIds.length} payment(s) reimbursed`,
   );
-  return { ok: true, count: input.paymentIds.length };
+  return { ok: true, count: v.paymentIds.length };
 }
 
 /**
@@ -294,9 +299,11 @@ export async function unmarkReimbursedAction(input: {
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
   }
-  if (!input.paymentIds?.length) {
-    return { ok: false, error: "ไม่มี payment ที่จะ unmark" };
+  const parsed = unmarkReimbursedSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
   }
+  const v = parsed.data;
 
   const sb = getSupabaseAdmin();
   const { error } = await sb
@@ -308,13 +315,13 @@ export async function unmarkReimbursedAction(input: {
       reimbursed_by: null,
       reimbursed_by_name: null,
     } as never)
-    .in("id", input.paymentIds);
+    .in("id", v.paymentIds);
 
   if (error) return { ok: false, error: `Undo ไม่สำเร็จ: ${error.message}` };
 
   revalidatePath("/my-payments");
   revalidatePath("/po");
-  return { ok: true, count: input.paymentIds.length };
+  return { ok: true, count: v.paymentIds.length };
 }
 
 /**
@@ -328,6 +335,10 @@ export async function voidPaymentAction(
   const user = await getCurrentUser();
   if (!user || (user.role !== "admin" && user.role !== "supervisor")) {
     return { ok: false, error: "เฉพาะแอดมินหรือ Supervisor" };
+  }
+  const parsed = voidPaymentSchema.safeParse({ paymentId, reason });
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
   }
 
   const sb = getSupabaseAdmin();
@@ -354,11 +365,22 @@ export async function voidPaymentAction(
     };
   }
 
-  const { error } = await sb
+  // Race-safe delete — WHERE reimbursed = false — กัน race กับ markReimbursed
+  //   ก่อน: delete without check → concurrent mark wins → reimbursed record ถูกลบเงียบๆ
+  //   หลัง: delete only if still !reimbursed → 0 rows deleted = something changed → reject
+  const { error, count } = await sb
     .from("po_payments" as never)
-    .delete()
-    .eq("id", paymentId);
+    .delete({ count: "exact" })
+    .eq("id", paymentId)
+    .eq("reimbursed", false);
   if (error) return { ok: false, error: `ลบไม่สำเร็จ: ${error.message}` };
+  if (count === 0) {
+    return {
+      ok: false,
+      error:
+        "Payment เพิ่งถูก mark reimbursed ระหว่างกำลังลบ — refresh หน้าและตรวจก่อนลองใหม่",
+    };
+  }
 
   await refreshPoPaymentStatus(pRow.po_id);
 

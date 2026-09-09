@@ -109,6 +109,49 @@ export const createSupplierSchema = z.object({
 export const updateSupplierSchema = createSupplierSchema.partial();
 
 // ==================================================================
+// Credit-card payments
+// ==================================================================
+
+/** Amount ที่กรอก: ต้อง > 0, ≤ 99M, 2dp precision */
+const positiveMoney = z.number()
+  .finite()
+  .positive("ยอดต้อง > 0")
+  .max(99_000_000, "ยอดใหญ่เกินไป")
+  .transform((n) => Math.round(n * 100) / 100);
+
+/** วันที่: strict YYYY-MM-DD */
+const isoDate = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "รูปแบบวันที่ต้องเป็น YYYY-MM-DD");
+
+export const recordPaymentSchema = z.object({
+  allocations: z.array(z.object({
+    poId: z.string().uuid("po_id ไม่ถูกต้อง"),
+    amount: positiveMoney,
+  })).min(1, "เลือก PO อย่างน้อย 1 ใบ").max(20, "จ่ายพร้อมกันสูงสุด 20 PO"),
+  paidDate: isoDate,
+  cardDisplay: z.string().trim().min(1, "กรุณาระบุบัตร").max(100),
+  slipUrl: z.string().url().max(2000).optional(),
+  approvalCode: z.string().trim().max(50).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
+export const markReimbursedSchema = z.object({
+  paymentIds: z.array(z.string().uuid()).min(1, "เลือก payment อย่างน้อย 1")
+    .max(500, "bulk mark สูงสุด 500 รายการ"),
+  reimbursedDate: isoDate,
+  reimbursementRef: z.string().trim().max(200).optional(),
+});
+
+export const unmarkReimbursedSchema = z.object({
+  paymentIds: z.array(z.string().uuid()).min(1).max(500),
+});
+
+export const voidPaymentSchema = z.object({
+  paymentId: z.string().uuid(),
+  reason: z.string().trim().min(1, "ระบุเหตุผลในการลบ").max(500),
+});
+
+// ==================================================================
 // Helper: format zod errors as Thai-friendly string
 // ==================================================================
 export function formatZodError(err: z.ZodError): string {
