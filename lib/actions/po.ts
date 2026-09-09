@@ -731,15 +731,18 @@ export async function permanentDeletePoAction(
   // Cascade delete related — parallel (each independent, no ordering dep)
   //   ก่อน: sequential — 4x roundtrips + partial-fail leaves orphans
   //   หลัง: Promise.allSettled — 1x wall clock + collect failures for retry
+  //   Note: po_payments has ON DELETE RESTRICT — ต้องลบก่อน purchase_orders
+  //   (แต่ก็ลบพร้อมกันได้เพราะ FK เช็คเมื่อ tx commit — Postgres ยอม)
   const cascadeResults = await Promise.allSettled([
     sb.from("po_activities" as never).delete().in("po_id", ids),
     sb.from("po_comments" as never).delete().in("po_id", ids),
     sb.from("po_deliveries" as never).delete().in("po_id", ids),
     sb.from("notifications").delete().in("po_id", ids),
+    sb.from("po_payments" as never).delete().in("po_id", ids),
   ]);
   const cascadeFailures = cascadeResults
     .map((r, i) => ({
-      table: ["po_activities", "po_comments", "po_deliveries", "notifications"][i],
+      table: ["po_activities", "po_comments", "po_deliveries", "notifications", "po_payments"][i],
       failed: r.status === "rejected"
         ? r.reason
         : (r.value as { error?: unknown })?.error,
@@ -1029,6 +1032,24 @@ export async function cancelPoAction(
     }
   }
 
+  // Payment gate — block cancel ถ้ามี payment records (mirror withdrawal check)
+  //   เพราะ cancel = PO ตาย แต่ payment ยังอยู่ = orphan (พนักงานไม่รู้ต้องไปยังไง)
+  const paymentCount = await (await import("./po-payments")).countPaymentsForPo(poId);
+  if (paymentCount === null) {
+    return {
+      ok: false,
+      error: "ยกเลิกไม่ได้ — เช็ค payments ไม่สำเร็จ (DB error). ลองอีกครั้ง",
+    };
+  }
+  if (paymentCount > 0) {
+    return {
+      ok: false,
+      error:
+        `ยกเลิกไม่ได้ — มี ${paymentCount} payment ผูกกับ PO นี้. ` +
+        `Void payments ก่อน (admin: หน้า PO detail → เมนู ⋯ → ลบ payment)`,
+    };
+  }
+
   // Stock rollback: ถ้าเคยรับของไปแล้ว → ถอย stock ออก
   let rollbackNote = "";
   if (RECEIVED_STATUSES.includes(po.status as PoStatus)) {
@@ -1144,8 +1165,24 @@ export async function revertStatusAction(
   // Case 1: สั่งซื้อแล้ว → รอจัดซื้อ
   //   - Clear supplier + dates + prices + totals
   //   - Reset items prices
+  //   - Block ถ้ามี payments (revert = clear total → payments กลายเป็น "overpaid" ตลอด)
   // ──────────────────────────────────────────────
   if (currentStatus === "สั่งซื้อแล้ว") {
+    const paymentCount = await (await import("./po-payments")).countPaymentsForPo(poId);
+    if (paymentCount === null) {
+      return {
+        ok: false,
+        error: "ย้อนสถานะไม่ได้ — เช็ค payments ไม่สำเร็จ (DB error)",
+      };
+    }
+    if (paymentCount > 0) {
+      return {
+        ok: false,
+        error:
+          `ย้อนสถานะไม่ได้ — มี ${paymentCount} payment ผูกกับ PO นี้. ` +
+          `Void payments ก่อน (เพราะ revert จะ clear total → payment กลายเป็น overpaid)`,
+      };
+    }
     // F4: snapshot ค่าก่อน clear
     preRevertSnapshot.supplier_name = po.supplier_name;
     preRevertSnapshot.supplier_contact = po.supplier_contact;

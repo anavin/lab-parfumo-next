@@ -386,15 +386,21 @@ export default async function PoViewPage({
         isAdmin={isAdmin}
       />
 
-      {/* Credit-card payment tracking (only when PO has a total to pay) */}
-      {isPaymentEligible(po.status) && (po.total ?? 0) > 0 && (
+      {/* Credit-card payment tracking
+        * Show เฉพาะ admin/supervisor หรือ creator ของ PO เท่านั้น
+        * เพราะ payment เผยข้อมูลบัตร + สลิป + คนจ่าย = privacy สำคัญ
+        * Staff คนอื่น (team-visible) เห็นแค่ status pill ปกติของ PO ก็พอ
+        */}
+      {isPaymentEligible(po.status)
+        && (po.total ?? 0) > 0
+        && (isAdmin || po.created_by === user.id) && (
         <PaymentSection
           poId={po.id}
           poNumber={po.po_number}
           poTotal={Number(po.total ?? 0)}
           paidAmount={Number(po.paid_amount ?? 0)}
           supplierName={po.supplier_name}
-          siblingPos={await getSiblingPosForPayment(po.id, po.supplier_id)}
+          siblingPos={await getSiblingPosForPayment(po.id, po.supplier_id, po.supplier_name)}
           recentCards={await getRecentCardsForUser(user.id)}
           payments={await getPaymentsForPo(po.id)}
           isAdmin={isAdmin}
@@ -427,23 +433,38 @@ function isPaymentEligible(status: string): boolean {
 /**
  * Fetch sibling POs ของ supplier เดียวกันที่ยังจ่ายไม่ครบ
  * (เผื่อรูดพร้อมกันหลาย PO) — จำกัด 10 ใบล่าสุด
+ *
+ * Filter fix: `.neq("payment_status", "paid")` แปล NULL เป็น NULL (3VL) → filter drop
+ *   PO เก่าที่ pre-migration payment_status = NULL. ใช้ `.or(...)` include null ด้วย
+ *   + exclude "overpaid" (จะจ่ายเพิ่มบน PO ที่จ่ายเกินไปแล้ว = ไม่สมเหตุสมผล)
+ * Supplier fallback: ถ้าไม่มี supplier_id (legacy) → match ด้วย supplier_name
  */
 async function getSiblingPosForPayment(
   currentPoId: string,
   supplierId: string | null,
+  supplierName: string | null,
 ) {
-  if (!supplierId) return [];
   const sb = getSupabaseAdmin();
-  const { data } = await sb
+  let q = sb
     .from("purchase_orders")
-    .select("id, po_number, status, total, paid_amount, supplier_name")
-    .eq("supplier_id", supplierId)
+    .select("id, po_number, status, total, paid_amount, supplier_name, supplier_id")
     .is("deleted_at", null)
     .neq("id", currentPoId)
     .in("status", ["สั่งซื้อแล้ว", "กำลังขนส่ง", "รับของแล้ว", "มีปัญหา", "เสร็จสมบูรณ์"])
-    .neq("payment_status", "paid")
-    .order("created_at", { ascending: false })
-    .limit(10);
+    // include NULL (rows pre-migration) + not "paid" and not "overpaid"
+    .or("payment_status.is.null,and(payment_status.neq.paid,payment_status.neq.overpaid)");
+
+  if (supplierId) {
+    q = q.eq("supplier_id", supplierId);
+  } else if (supplierName) {
+    // Fallback for legacy POs — match by name (escape ILIKE wildcards)
+    const escaped = supplierName.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
+    q = q.ilike("supplier_name", escaped);
+  } else {
+    return [];
+  }
+
+  const { data } = await q.order("created_at", { ascending: false }).limit(10);
   type Row = {
     id: string;
     po_number: string;

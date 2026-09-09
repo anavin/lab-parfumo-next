@@ -15,6 +15,37 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+/**
+ * Count confirmed po_payments ผูกกับ PO — สำหรับใช้ block cancel/revert
+ * ที่จะทำให้ payment record ค้างระบบ
+ *
+ * Return null = query failed (transient) — caller ควร treat as "cannot verify"
+ * แล้ว block operation ดีกว่าปล่อย proceed (mirror countWithdrawalsAgainstPoLots)
+ */
+export async function countPaymentsForPo(poId: string): Promise<number | null> {
+  const sb = getSupabaseAdmin();
+  try {
+    const { count, error } = await sb
+      .from("po_payments" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("po_id", poId);
+    if (error) {
+      const code = (error as { code?: string }).code ?? "";
+      const msg = (error.message ?? "").toLowerCase();
+      // Table missing (migration ยังไม่รัน) → treat as 0 = safe
+      if (code === "42P01" || code.startsWith("PGRST") || msg.includes("does not exist")) {
+        return 0;
+      }
+      console.error("[countPaymentsForPo] query failed:", error);
+      return null;
+    }
+    return count ?? 0;
+  } catch (e) {
+    console.error("[countPaymentsForPo] threw:", e);
+    return null;
+  }
+}
+
 interface ActionResult {
   ok: boolean;
   error?: string;
@@ -35,35 +66,56 @@ interface RecordPaymentInput {
 /**
  * Recompute PO.paid_amount + payment_status from po_payments
  * (ทดแทน trigger — call ทุกครั้งที่ payments เปลี่ยน)
+ *
+ * Uses tolerance (< 0.005 THB, i.e. half สตางค์) for float-safe comparison —
+ * float SUM ใน JS drift ได้ (33.33 × 3 vs 100.00)
  */
-async function refreshPoPaymentStatus(poId: string): Promise<void> {
+export async function refreshPoPaymentStatus(poId: string): Promise<void> {
   const sb = getSupabaseAdmin();
 
-  // Sum active payments (ไม่ track voided แยก — void = delete row)
   const { data: sumRow } = await sb
     .from("po_payments" as never)
     .select("amount")
     .eq("po_id", poId);
   const total = ((sumRow ?? []) as Array<{ amount: number }>)
     .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const totalRounded = Math.round(total * 100) / 100;
 
   const { data: po } = await sb
     .from("purchase_orders")
     .select("total")
     .eq("id", poId)
     .maybeSingle();
-  const poTotal = Number(po?.total ?? 0);
+  const rawPoTotal = po?.total;
 
+  // Guard: PO ยังไม่มี total (draft — total = null) → skip refresh
+  // ก่อน: Number(null) = 0 → status = "overpaid" ทุกที่ที่มี payment
+  // (แต่ปกติ record payment เรียก guard ว่า status ≥ "สั่งซื้อแล้ว" → มี total อยู่แล้ว)
+  if (rawPoTotal === null || rawPoTotal === undefined) {
+    await sb
+      .from("purchase_orders")
+      .update({
+        paid_amount: totalRounded,
+        payment_status: totalRounded > 0.005 ? "overpaid" : "unpaid",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", poId);
+    return;
+  }
+  const poTotal = Math.round(Number(rawPoTotal) * 100) / 100;
+
+  // Tolerance-based compare — กัน float drift
+  const TOL = 0.005;
   let status: "unpaid" | "partial" | "paid" | "overpaid" = "unpaid";
-  if (total === 0) status = "unpaid";
-  else if (total < poTotal) status = "partial";
-  else if (total === poTotal) status = "paid";
+  if (totalRounded < TOL) status = "unpaid";
+  else if (totalRounded < poTotal - TOL) status = "partial";
+  else if (Math.abs(totalRounded - poTotal) < TOL) status = "paid";
   else status = "overpaid";
 
   await sb
     .from("purchase_orders")
     .update({
-      paid_amount: total,
+      paid_amount: totalRounded,
       payment_status: status,
       updated_at: new Date().toISOString(),
     })
@@ -133,16 +185,18 @@ export async function recordPaymentAction(
         error: `PO ${po.po_number} สถานะ "${po.status}" ยังไม่พร้อมจ่าย`,
       };
     }
-    // Guard overpay
+    // Guard overpay — allow up to 110% (fee ปกติ 1-3%, duplicate slip ปกติ = 100% ซ้ำ)
+    // ก่อน: 150% ผ่อนเกิน → duplicate charge ผ่านได้
+    // หลัง: 110% + message ชัด
     const alloc = input.allocations.find((a) => a.poId === po.id)!;
     const existing = Number(po.paid_amount ?? 0);
     const poTotal = Number(po.total ?? 0);
-    if (existing + alloc.amount > poTotal * 1.5) {
+    if (poTotal > 0 && existing + alloc.amount > poTotal * 1.10) {
       return {
         ok: false,
         error:
           `PO ${po.po_number}: ยอดจ่าย ${(existing + alloc.amount).toLocaleString()} ` +
-          `เกินยอด PO ${poTotal.toLocaleString()} > 50% — ตรวจก่อน`,
+          `เกินยอด PO ${poTotal.toLocaleString()} > 10% — ตรวจก่อน (อาจเป็น duplicate slip)`,
       };
     }
   }
