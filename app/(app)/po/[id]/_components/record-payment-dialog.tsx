@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, Upload, X } from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -159,37 +160,45 @@ export function RecordPaymentDialog({
     });
   }
 
-  if (!open) return null;
+  // Prevent close while uploading or saving (else user loses slip / partial state)
+  const busy = pending || uploading;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-slate-900/40 flex items-start justify-center p-4 pt-[8vh] overflow-y-auto"
-      onClick={onClose}
+    <DialogPrimitive.Root
+      open={open}
+      onOpenChange={(o) => { if (!o && !busy) onClose(); }}
     >
-      <div
-        className="bg-white rounded-2xl w-full max-w-xl shadow-2xl my-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-5 border-b border-slate-200">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 inline-flex items-center gap-2">
-              <CreditCard className="size-5 text-brand-600" /> บันทึกจ่ายผ่านบัตรเครดิต
-            </h2>
-            {supplierName && (
-              <p className="text-xs text-slate-500 mt-0.5">{supplierName}</p>
-            )}
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        />
+        <DialogPrimitive.Content
+          onPointerDownOutside={(e) => { if (busy) e.preventDefault(); }}
+          onEscapeKeyDown={(e) => { if (busy) e.preventDefault(); }}
+          onInteractOutside={(e) => { if (busy) e.preventDefault(); }}
+          className="fixed left-[50%] top-[8vh] z-50 w-[calc(100vw-2rem)] max-w-xl translate-x-[-50%] bg-white rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          aria-describedby={undefined}
+        >
+          <div className="flex items-center justify-between p-5 border-b border-slate-200">
+            <div>
+              <DialogPrimitive.Title className="text-lg font-bold text-slate-900 inline-flex items-center gap-2">
+                <CreditCard className="size-5 text-brand-600" aria-hidden="true" />
+                บันทึกจ่ายผ่านบัตรเครดิต
+              </DialogPrimitive.Title>
+              {supplierName && (
+                <p className="text-xs text-slate-500 mt-0.5">{supplierName}</p>
+              )}
+            </div>
+            <DialogPrimitive.Close
+              className="text-slate-400 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded disabled:opacity-40"
+              aria-label="ปิด"
+              disabled={busy}
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </DialogPrimitive.Close>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700"
-            aria-label="ปิด"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
 
-        <div className="p-5 space-y-4">
+          <div className="p-5 space-y-4">
           {/* PO selection */}
           <div>
             <div className="flex items-center gap-4 mb-3">
@@ -384,15 +393,16 @@ export function RecordPaymentDialog({
               ❌ {error}
             </div>
           )}
-        </div>
+          </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-200 bg-slate-50">
-          <Button variant="outline" onClick={onClose} disabled={pending}>ยกเลิก</Button>
-          <Button onClick={handleSubmit} disabled={pending || uploading}>
-            {pending ? "กำลังบันทึก..." : `บันทึก · ฿${totalAmount.toLocaleString()}`}
-          </Button>
-        </div>
-      </div>
-    </div>
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-200 bg-slate-50">
+            <Button variant="outline" onClick={onClose} disabled={busy}>ยกเลิก</Button>
+            <Button onClick={handleSubmit} disabled={busy}>
+              {pending ? "กำลังบันทึก..." : `บันทึก · ฿${totalAmount.toLocaleString()}`}
+            </Button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
