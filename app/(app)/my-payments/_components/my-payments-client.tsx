@@ -106,6 +106,8 @@ export function MyPaymentsClient({
       if (v && v !== "") url.searchParams.set(k, v);
       else url.searchParams.delete(k);
     }
+    // Clear selected — stale IDs after filter change would apply to invisible rows
+    setSelected(new Set());
     router.push(url.pathname + url.search, { scroll: false });
   }
 

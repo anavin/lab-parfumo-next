@@ -2047,6 +2047,15 @@ export async function updatePoPricesAction(
     await Promise.allSettled(eqUpdates);
   }
 
+  // refresh payment_status — total เปลี่ยน → status อาจเพี้ยน
+  // (เช่น เดิม total=1000 paid_amount=800 = partial → total=800 paid_amount=800 = paid)
+  try {
+    const { refreshPoPaymentStatus } = await import("./po-payments");
+    await refreshPoPaymentStatus(poId);
+  } catch (e) {
+    console.warn("[updatePoPrices] payment_status refresh failed:", e);
+  }
+
   const fmtMoney = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
   await logActivity(
     poId,

@@ -55,6 +55,12 @@ export function RecordPaymentDialog({
   const [error, setError] = useState<string | null>(null);
 
   // Reset เมื่อเปิดใหม่
+  // Reset only when the dialog TOGGLES open (not on every parent re-render).
+  //   ก่อน: deps รวม recentCards array → parent re-render สร้าง reference ใหม่ →
+  //         effect รันซ้ำระหว่างที่ user แก้ค่ากลาง dialog → ล้างข้อมูล
+  //   หลัง: deps แค่ open + PO id — recentCards[0] snapshot ใน default
+  //         ตอนเปิด. User สามารถเปลี่ยนได้เอง.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) {
       setMode("single");
@@ -66,7 +72,7 @@ export function RecordPaymentDialog({
       setSlipName(null);
       setError(null);
     }
-  }, [open, currentPoId, currentPoRemaining, recentCards]);
+  }, [open, currentPoId, currentPoRemaining]);
 
   const totalAmount = useMemo(
     () => Object.values(selectedPos).reduce((s, v) => s + (Number(v) || 0), 0),
@@ -190,7 +196,7 @@ export function RecordPaymentDialog({
               <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <input
                   type="radio"
-                  name="mode"
+                  name={`mode-${currentPoId}`}
                   checked={mode === "single"}
                   onChange={() => {
                     setMode("single");
@@ -203,7 +209,7 @@ export function RecordPaymentDialog({
                 <label className="inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
                   <input
                     type="radio"
-                    name="mode"
+                    name={`mode-${currentPoId}`}
                     checked={mode === "group"}
                     onChange={() => setMode("group")}
                   />

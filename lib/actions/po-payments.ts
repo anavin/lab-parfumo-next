@@ -23,6 +23,31 @@ import {
 } from "./schemas";
 
 /**
+ * Insert row ใน po_activities สำหรับ audit trail — payment เกี่ยวโดยตรงกับ PO
+ * (best-effort — ไม่ block flow ถ้า activity insert fail)
+ */
+async function logPaymentActivity(
+  poId: string,
+  userName: string,
+  userRole: string,
+  action: "payment_recorded" | "payment_reimbursed" | "payment_unreimbursed" | "payment_voided",
+  description: string,
+) {
+  const sb = getSupabaseAdmin();
+  try {
+    await sb.from("po_activities" as never).insert({
+      po_id: poId,
+      user_name: userName,
+      user_role: userRole,
+      action,
+      description,
+    } as never);
+  } catch (e) {
+    console.warn("[po-payments logActivity] failed:", e);
+  }
+}
+
+/**
  * Count confirmed po_payments ผูกกับ PO — สำหรับใช้ block cancel/revert
  * ที่จะทำให้ payment record ค้างระบบ
  *
@@ -240,6 +265,15 @@ export async function recordPaymentAction(
   revalidatePath("/my-payments");
   revalidatePath("/dashboard");
 
+  // Audit log — 1 activity ต่อ PO (แม้ share group)
+  for (const alloc of validated.allocations) {
+    await logPaymentActivity(
+      alloc.poId, user.full_name, user.role, "payment_recorded",
+      `บันทึกจ่าย ฿${alloc.amount.toLocaleString()} ผ่าน ${cardDisplay}` +
+      (groupId ? ` · รูดพร้อม ${validated.allocations.length - 1} PO อื่น` : ""),
+    );
+  }
+
   console.log(
     `[po-payments] user=${user.full_name} recorded ${rows.length} payment(s), group=${groupId ?? "(single)"}`,
   );
@@ -281,6 +315,24 @@ export async function markReimbursedAction(input: {
     return { ok: false, error: `Mark ไม่สำเร็จ: ${error.message}` };
   }
 
+  // Audit log per PO — fetch po_id ของ payments ที่ mark
+  try {
+    const { data: rows } = await sb
+      .from("po_payments" as never)
+      .select("po_id, amount")
+      .in("id", v.paymentIds);
+    type Row = { po_id: string; amount: number };
+    for (const r of ((rows ?? []) as Row[])) {
+      await logPaymentActivity(
+        r.po_id, user.full_name, user.role, "payment_reimbursed",
+        `Mark เบิกแล้ว ฿${Number(r.amount).toLocaleString()} วันที่ ${v.reimbursedDate}` +
+        (v.reimbursementRef ? ` · ref ${v.reimbursementRef}` : ""),
+      );
+    }
+  } catch (e) {
+    console.warn("[markReimbursed] audit failed:", e);
+  }
+
   revalidatePath("/my-payments");
   revalidatePath("/po");
   console.log(
@@ -318,6 +370,23 @@ export async function unmarkReimbursedAction(input: {
     .in("id", v.paymentIds);
 
   if (error) return { ok: false, error: `Undo ไม่สำเร็จ: ${error.message}` };
+
+  // Audit log per PO
+  try {
+    const { data: rows } = await sb
+      .from("po_payments" as never)
+      .select("po_id, amount")
+      .in("id", v.paymentIds);
+    type Row = { po_id: string; amount: number };
+    for (const r of ((rows ?? []) as Row[])) {
+      await logPaymentActivity(
+        r.po_id, user.full_name, user.role, "payment_unreimbursed",
+        `Undo mark เบิก · ฿${Number(r.amount).toLocaleString()}`,
+      );
+    }
+  } catch (e) {
+    console.warn("[unmarkReimbursed] audit failed:", e);
+  }
 
   revalidatePath("/my-payments");
   revalidatePath("/po");
@@ -383,6 +452,13 @@ export async function voidPaymentAction(
   }
 
   await refreshPoPaymentStatus(pRow.po_id);
+
+  // Audit log — reason ยาว 500 chars, cap 250 in description ให้ table อ่านง่าย
+  await logPaymentActivity(
+    pRow.po_id, user.full_name, user.role, "payment_voided",
+    `ลบ payment ฿${Number(pRow.amount).toLocaleString()} (${pRow.card_display ?? "-"}, ` +
+    `จ่ายโดย ${pRow.paid_by_name}) · เหตุผล: ${parsed.data.reason.slice(0, 250)}`,
+  );
 
   revalidatePath(`/po/${pRow.po_id}`);
   revalidatePath("/po");

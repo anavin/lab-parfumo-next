@@ -59,6 +59,11 @@ const ACTION_LABEL: Record<string, string> = {
   trashed: "ย้ายไปถังขยะ",
   restored: "กู้คืน",
   permanent_deleted: "ลบถาวร",
+  // payment
+  payment_recorded: "บันทึกจ่ายบัตร",
+  payment_reimbursed: "Mark เบิกแล้ว",
+  payment_unreimbursed: "Undo mark เบิก",
+  payment_voided: "ลบ payment",
 };
 
 export function AuditClient({
