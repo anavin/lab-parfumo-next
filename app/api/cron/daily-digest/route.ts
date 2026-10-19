@@ -93,12 +93,33 @@ export async function GET(req: Request) {
     .select("*", { count: "exact", head: true })
     .eq("approval_status", "pending");
 
+  // PO ค้างรอจัดซื้อดำเนินการ — ทั้งหมดในระบบ (ไม่ใช่แค่วันนี้)
+  // แยก query เพราะ posRaw filter เฉพาะที่ created/updated 24 ชม. ล่าสุด
+  // → PO ค้างเก่ากว่านั้นจะหลุด → ต้อง query ตรงๆ
+  const { data: pendingProcRaw } = await sb
+    .from("purchase_orders")
+    .select("po_number, created_at")
+    .eq("status", "รอจัดซื้อดำเนินการ")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(500);
+  type PendingRow = { po_number: string; created_at: string };
+  const pendingRows = (pendingProcRaw ?? []) as PendingRow[];
+  const nowMs = Date.now();
+  const pendingProcurementList = pendingRows.map((r) => ({
+    po_number: r.po_number,
+    days: Math.max(0, Math.floor((nowMs - new Date(r.created_at).getTime()) / 86_400_000)),
+  }));
+  const pendingProcurementCount = pendingProcurementList.length;
+
   const data: DigestData = {
     newPoCount,
     shippedToday,
     receivedToday,
     overdueCount,
     pendingApprovalCount: pendingApprovalCount ?? 0,
+    pendingProcurementCount,
+    pendingProcurementList,
     totalValueToday,
     topItems,
   };

@@ -297,6 +297,10 @@ export interface DigestData {
   receivedToday: number;
   overdueCount: number;
   pendingApprovalCount: number;
+  /** PO ค้างสถานะ "รอจัดซื้อดำเนินการ" (ยังไม่ได้สั่งซื้อ) — ทั้งหมดในระบบ */
+  pendingProcurementCount: number;
+  /** รายชื่อ PO ค้างรอจัดซื้อ เรียงเก่าสุดก่อน (เพื่อแสดง top 5 ใน email) */
+  pendingProcurementList: Array<{ po_number: string; days: number }>;
   totalValueToday: number;
   topItems: Array<{ name: string; qty: number }>;
 }
@@ -322,12 +326,35 @@ export async function sendDailyDigest(opts: {
          <td align="right" style="padding:6px 0; font-size:13px; font-weight:600; color:#1E293B;">×${it.qty}</td></tr>`,
       ).join("");
 
-  const alertHtml = d.overdueCount + d.pendingApprovalCount > 0
+  // รวม alert ยอดฮิต: เลยกำหนด + รออนุมัติ + ค้างรอจัดซื้อ
+  const alertParts: string[] = [];
+  if (d.overdueCount > 0) alertParts.push(`<strong>${d.overdueCount}</strong> ใบเลยกำหนดรับของ`);
+  if (d.pendingProcurementCount > 0) alertParts.push(`<strong>${d.pendingProcurementCount}</strong> ใบค้างรอจัดซื้อ`);
+  if (d.pendingApprovalCount > 0) alertParts.push(`<strong>${d.pendingApprovalCount}</strong> รายการรออนุมัติ`);
+  const alertHtml = alertParts.length > 0
     ? `<div style="background:#FEF3C7; border-left:4px solid #F59E0B; padding:12px 14px; border-radius:8px; margin:18px 0; font-size:13px; color:#78350F;">
-         ⚠️ ${d.overdueCount > 0 ? `<strong>${d.overdueCount}</strong> ใบเลยกำหนดรับของ` : ""}
-         ${d.overdueCount > 0 && d.pendingApprovalCount > 0 ? " • " : ""}
-         ${d.pendingApprovalCount > 0 ? `<strong>${d.pendingApprovalCount}</strong> รายการรออนุมัติ` : ""}
+         ⚠️ ${alertParts.join(" • ")}
        </div>`
+    : "";
+
+  // รายการ PO ค้างรอจัดซื้อ (top 5 เก่าสุด) — เน้นเวลาค้างให้จัดซื้อเห็นด้วยตา
+  const pendingProcHtml = d.pendingProcurementCount > 0
+    ? `<h3 style="font-size:14px; color:#475569; margin:20px 0 8px; padding-bottom:6px; border-bottom:1px solid #E2E8F0;">⏳ รอจัดซื้อดำเนินการ (${d.pendingProcurementCount} ใบ)</h3>
+       <table cellpadding="0" cellspacing="0" width="100%">
+         ${d.pendingProcurementList.slice(0, 5).map((p) => {
+           const over7 = p.days >= 7;
+           const over3 = p.days >= 3;
+           const color = over7 ? "#B91C1C" : over3 ? "#B45309" : "#475569";
+           const weight = over3 ? "700" : "500";
+           return `<tr>
+             <td style="padding:6px 0; font-size:13px; color:#1E293B; font-family:'JetBrains Mono',monospace;">${escHtml(p.po_number)}</td>
+             <td align="right" style="padding:6px 0; font-size:13px; color:${color}; font-weight:${weight};">ค้าง ${p.days} วัน</td>
+           </tr>`;
+         }).join("")}
+         ${d.pendingProcurementCount > 5
+           ? `<tr><td colspan="2" align="right" style="padding:6px 0; font-size:12px; color:#94A3B8;">+ อีก ${d.pendingProcurementCount - 5} ใบ</td></tr>`
+           : ""}
+       </table>`
     : "";
 
   const html = `<!doctype html>
@@ -372,6 +399,8 @@ export async function sendDailyDigest(opts: {
             </tr>
           </table>
 
+          ${pendingProcHtml}
+
           <h3 style="font-size:14px; color:#475569; margin:20px 0 8px; padding-bottom:6px; border-bottom:1px solid #E2E8F0;">🏆 Top สินค้าที่สั่งวันนี้</h3>
           <table cellpadding="0" cellspacing="0" width="100%">${itemsHtml}</table>
 
@@ -387,13 +416,20 @@ export async function sendDailyDigest(opts: {
   </table>
 </body></html>`;
 
+  const pendingProcText = d.pendingProcurementCount > 0
+    ? `
+⏳ รอจัดซื้อดำเนินการ (${d.pendingProcurementCount} ใบ):
+${d.pendingProcurementList.slice(0, 5).map((p) => `  • ${p.po_number} — ค้าง ${p.days} วัน`).join("\n")}${d.pendingProcurementCount > 5 ? `\n  + อีก ${d.pendingProcurementCount - 5} ใบ` : ""}
+`
+    : "";
+
   const text = `สรุปประจำวัน ${opts.date} — ${opts.companyName}
 
 📥 สร้างใหม่: ${d.newPoCount} ใบ
 💰 ยอดรวมวันนี้: ${fmt(d.totalValueToday)}
 🚚 อยู่ระหว่างขนส่ง: ${d.shippedToday}
 📦 รับของ: ${d.receivedToday}
-${d.overdueCount > 0 ? `⚠️ เลยกำหนด: ${d.overdueCount} ใบ\n` : ""}${d.pendingApprovalCount > 0 ? `⚠️ รออนุมัติ: ${d.pendingApprovalCount}\n` : ""}
+${d.overdueCount > 0 ? `⚠️ เลยกำหนด: ${d.overdueCount} ใบ\n` : ""}${d.pendingProcurementCount > 0 ? `⏳ ค้างรอจัดซื้อ: ${d.pendingProcurementCount} ใบ\n` : ""}${d.pendingApprovalCount > 0 ? `⚠️ รออนุมัติ: ${d.pendingApprovalCount}\n` : ""}${pendingProcText}
 Top รายการ:
 ${d.topItems.slice(0, 5).map((it) => `  • ${it.name} ×${it.qty}`).join("\n") || "  — ไม่มี —"}
 
