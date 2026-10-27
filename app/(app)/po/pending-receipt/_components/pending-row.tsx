@@ -149,7 +149,7 @@ export function PendingRow({
   const isShipping = po.status === "กำลังขนส่ง";
 
   const amountStr = isAdmin && po.total
-    ? `฿${po.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`
+    ? `฿${po.total.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : null;
 
   return (

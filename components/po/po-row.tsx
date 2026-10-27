@@ -46,7 +46,7 @@ export function PoRow({
 
   const amountStr =
     isAdmin && po.total
-      ? `฿${po.total.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`
+      ? `฿${po.total.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : null;
 
   const days = ageDays(po.created_at);
